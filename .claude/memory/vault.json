@@ -1,0 +1,155 @@
+{
+  "project": "tradingbaby",
+  "system_name": "Curl if Flow",
+  "author": "Weatherman118",
+  "last_compact": "2026-05-01T22:24:00Z",
+  "compact_count": 1,
+  "confirmed_entry_conditions": {
+    "stoch_rsi": {
+      "trigger": "K crosses UP through 20 from below \u2014 ta.crossover(k, 20)",
+      "requirement": "K must be above D at trigger",
+      "pre_entry_state": "K typically at 0-10 before cross (near absolute zero)",
+      "settings": "RSI=14, Stoch=14, K_smooth=3, D_smooth=3, Source=Close"
+    },
+    "smoothed_ha": {
+      "trigger": "Current candle must be green (sha_close > sha_open)",
+      "calculation": "Double EMA(10,10) on Heikin Ashi values",
+      "note": "First green candle after red = curl forming"
+    },
+    "zlsma_50": {
+      "trigger": "Price (close) must be ABOVE ZLSMA-50",
+      "formula": "2 * EMA(close,50) - EMA(EMA(close,50),50)",
+      "rule": "NEVER enter if price is below ZLSMA-50 \u2014 trade is invalid"
+    },
+    "volume": {
+      "trigger": "Volume >= 1.5x the 20-bar average",
+      "weight": "confirming (not critical)"
+    },
+    "float": "< 20M shares, /home/user/tradingbaby/.claude/hooks/pre-compact-vault.sh.10-/home/user/tradingbaby/.claude/memory/vault.json5, NASDAQ only",
+    "catalyst": "Tier 1 (FDA/merger/earnings), Tier 2 (halt-resume/sympathy), Tier 3 (China momentum)"
+  },
+  "confirmed_exit_rules": {
+    "hard_stop": "-8% from entry \u2014 no exceptions",
+    "T1": "+15% \u2014 trim 1/3, move stop to breakeven",
+    "T2": "+30% \u2014 trim 1/3 of original, trail 10%",
+    "T3": "+60% \u2014 trail 10% on final 1/3",
+    "sha_exit": "SHA flips red for 2+ consecutive candles",
+    "zlsma_exit": "Price closes below ZLSMA-50",
+    "stoch_exit": "Stoch RSI K crosses back below 20"
+  },
+  "confirmed_reentry_rule": "Stoch RSI must RESET BELOW 20 and curl UP again \u2014 not just mid-range pullback",
+  "chart_data_extracted": {
+    "YAAS_1m": {
+      "K": 37.04,
+      "D": 24.35,
+      "context": "Curling through 20s at entry"
+    },
+    "YAAS_5m": {
+      "K": 93.42,
+      "D": 89.62,
+      "context": "Overbought during run"
+    },
+    "BIYA_5m": {
+      "K": 9.29,
+      "D": 7.11,
+      "context": "Near zero pre-spike"
+    },
+    "BIYA_1m": {
+      "K": 18.24,
+      "D": 7.78,
+      "context": "Sub-20 curling at entry"
+    },
+    "ATER_5m": {
+      "K": 0.69,
+      "D": 0.0,
+      "context": "Absolute zero pre-spike"
+    },
+    "ATER_1m": {
+      "K": 39.27,
+      "D": 19.49,
+      "context": "Curling through 20 at entry"
+    },
+    "AKAN_5m_reentry": {
+      "K": 14.41,
+      "D": 11.75,
+      "context": "Below 20 re-entry setup"
+    },
+    "SAGT_5m": {
+      "K": 1.7,
+      "D": 0.14,
+      "context": "Absolute zero pre-spike"
+    },
+    "SAGT_1m": {
+      "K": 41.21,
+      "D": 28.19,
+      "context": "Curling 20-40 at entry"
+    },
+    "SAFX_5m": {
+      "K": 17.53,
+      "D": 9.3,
+      "context": "Below 20 pre-spike"
+    },
+    "SAFX_1m": {
+      "K": 93.03,
+      "D": 81.91,
+      "context": "After move (overbought)"
+    },
+    "USEG_5m": {
+      "K": 16.38,
+      "D": 5.52,
+      "context": "Reset after PM spike"
+    },
+    "FATN_1m": {
+      "K": 58,
+      "D": 47,
+      "context": "Mid-range at entry \u2014 less ideal"
+    },
+    "FATN_5m": {
+      "K": 93,
+      "D": 81,
+      "context": "Overbought during run"
+    }
+  },
+  "key_insight": "Pre-entry Stoch RSI K is consistently 0-20 (usually 0-10) on the 5m chart. Entry fires at the moment K crosses above 20. The Pine Script ta.crossover(k, 20) is correct. This IS the beginning of the spike \u2014 not chasing.",
+  "trade_data": {
+    "total_trades": 52,
+    "win_rate_pct": 96.2,
+    "wins": 50,
+    "losses": 2,
+    "avg_winner_pct": 50.0,
+    "avg_loser_pct": 13.5,
+    "best_trade": "AKAN +426.0%",
+    "pm_wins": 28,
+    "rth_wins": 22,
+    "date_range": "2026-04-27 to 2026-03-24"
+  },
+  "key_files": {
+    "trades": "/home/user/tradingbaby/data/trades-parsed.json",
+    "settings": "/home/user/tradingbaby/data/settings.json",
+    "pine_script": "/home/user/tradingbaby/pine-script/weatherman118-curl-flow.pine",
+    "journal": "/home/user/tradingbaby/journal/index.html",
+    "parser": "/home/user/tradingbaby/parser/discord_parser.py",
+    "backtest": "/home/user/tradingbaby/backtest/backtest_curl_if_flow.py",
+    "vault": "/home/user/tradingbaby/.claude/memory/vault.json"
+  },
+  "github": {
+    "repo": "positivitysparkles/tradingbaby",
+    "branch": "claude/push-tradingbaby-ESEFn",
+    "google_drive_email": "iris.at.ps@positivitysparkles.com"
+  },
+  "pending_tasks": [
+    "Run backtest_curl_if_flow.py against all 52 trades to measure signal capture %",
+    "Read March 23-28 PDF from Google Drive (Canva march 23-28 2026 day trades.pdf) \u2014 file was too large last attempt",
+    "Pine Script: optionally add pre-condition that K was below 10 before the crossover",
+    "Continue adding new Discord recaps to trades-parsed.json as user shares them",
+    "Paper trade system \u2014 use journal/index.html to log live trades",
+    "Build confidence to 843%+ win consistency before going live"
+  ],
+  "open_questions": [
+    "Exact Stoch RSI K value at entry \u2014 confirmed as 'crossing above 20' but is there a min pre-entry depth?",
+    "Does SHA need 2+ consecutive green candles or just the current one?",
+    "On re-entries: full reset below 20 confirmed \u2014 but does price need to touch ZLSMA-50?",
+    "Volume multiplier: 1.5x confirmed in settings \u2014 is it ever eyeballed higher?",
+    "Session timing: PM entries have higher win rate (56%) \u2014 is midday always avoided?"
+  ]
+}
