@@ -1,0 +1,102 @@
+// Weatherman118 "Curl if Flow" — NASDAQ Small-Cap Momentum System
+// Reverse-engineered by positivitysparkles
+// 5m chart | SHA + ZLSMA-50 + Stoch RSI (80/50/20)
+//@version=5
+strategy("W118 Curl if Flow", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=25)
+
+// ─── INPUTS ───────────────────────────────────────────────────────────────────
+sha_len1    = input.int(10, "SHA Smooth 1", group="Smoothed Heikin Ashi")
+sha_len2    = input.int(10, "SHA Smooth 2", group="Smoothed Heikin Ashi")
+zlsma_len   = input.int(50, "ZLSMA Length", group="ZLSMA-50")
+rsi_len     = input.int(14, "RSI Length",   group="Stoch RSI")
+stoch_len   = input.int(14, "Stoch Length", group="Stoch RSI")
+k_smooth    = input.int(3,  "K Smooth",     group="Stoch RSI")
+d_smooth    = input.int(3,  "D Smooth",     group="Stoch RSI")
+vol_mult    = input.float(1.5, "Volume Multiplier", group="Volume Filter")
+vol_lookback = input.int(20,  "Volume Lookback",    group="Volume Filter")
+stop_pct    = input.float(8.0,  "Stop Loss %",  group="Exits")
+t1_pct      = input.float(15.0, "T1 Target %",  group="Exits")
+t2_pct      = input.float(30.0, "T2 Target %",  group="Exits")
+trail_pct   = input.float(10.0, "Trail Stop %", group="Exits")
+
+// ─── SMOOTHED HEIKIN ASHI ─────────────────────────────────────────────────────
+ha_close = (open + high + low + close) / 4
+ha_open  = float(na)
+ha_open  := na(ha_open[1]) ? (open + close) / 2 : (nz(ha_open[1]) + nz(ha_close[1])) / 2
+ha_high  = math.max(high, math.max(ha_open, ha_close))
+ha_low   = math.min(low,  math.min(ha_open, ha_close))
+
+sha_close = ta.ema(ta.ema(ha_close, sha_len1), sha_len2)
+sha_open  = ta.ema(ta.ema(ha_open,  sha_len1), sha_len2)
+sha_high  = ta.ema(ta.ema(ha_high,  sha_len1), sha_len2)
+sha_low   = ta.ema(ta.ema(ha_low,   sha_len1), sha_len2)
+
+sha_green = sha_close > sha_open
+sha_red   = sha_close < sha_open
+
+sha_bull_col = color.new(color.green, 15)
+sha_bear_col = color.new(color.red,   15)
+plotcandle(sha_open, sha_high, sha_low, sha_close, "Smoothed HA",
+     color=sha_green ? sha_bull_col : sha_bear_col,
+     wickcolor=sha_green ? sha_bull_col : sha_bear_col,
+     bordercolor=sha_green ? sha_bull_col : sha_bear_col)
+
+// ─── ZLSMA-50 ─────────────────────────────────────────────────────────────────
+ema1   = ta.ema(close, zlsma_len)
+ema2   = ta.ema(ema1,  zlsma_len)
+zlsma  = 2 * ema1 - ema2
+plot(zlsma, "ZLSMA-50", color=color.yellow, linewidth=2)
+
+above_zlsma = close > zlsma
+bgcolor(above_zlsma ? color.new(color.green, 93) : color.new(color.red, 93), title="Flow Zone")
+
+// ─── STOCHASTIC RSI ───────────────────────────────────────────────────────────
+rsi_val  = ta.rsi(close, rsi_len)
+stoch_k_raw = ta.stoch(rsi_val, rsi_val, rsi_val, stoch_len)
+k = ta.sma(stoch_k_raw, k_smooth)
+d = ta.sma(k, d_smooth)
+
+// ─── VOLUME FILTER ────────────────────────────────────────────────────────────
+avg_vol   = ta.sma(volume, vol_lookback)
+vol_surge = volume >= avg_vol * vol_mult
+
+// ─── ENTRY CONDITIONS ─────────────────────────────────────────────────────────
+k_curl_up     = ta.crossover(k, 20)       // K crosses above 20
+k_above_d     = k > d
+sha_is_green  = sha_green
+price_in_flow = above_zlsma
+
+entry_signal = k_curl_up and k_above_d and sha_is_green and price_in_flow and vol_surge
+
+// ─── STRATEGY EXECUTION ───────────────────────────────────────────────────────
+if entry_signal and strategy.position_size == 0
+    strategy.entry("Long", strategy.long)
+
+entry_price_ref = strategy.position_avg_price
+
+if strategy.position_size > 0
+    stop_level = entry_price_ref * (1 - stop_pct / 100)
+    t1_level   = entry_price_ref * (1 + t1_pct  / 100)
+    t2_level   = entry_price_ref * (1 + t2_pct  / 100)
+
+    strategy.exit("Stop",  "Long", stop=stop_level)
+    strategy.exit("T1",    "Long", limit=t1_level,  qty_percent=34)
+    strategy.exit("T2",    "Long", limit=t2_level,  qty_percent=50)
+    strategy.exit("Trail", "Long", trail_price=t2_level, trail_offset=trail_pct / 100 * entry_price_ref / syminfo.mintick)
+
+// ─── LABELS ───────────────────────────────────────────────────────────────────
+if entry_signal
+    label.new(bar_index, low, "BUY\n" + str.tostring(close, "#.##"),
+         color=color.new(color.green, 10), textcolor=color.white,
+         style=label.style_label_up, size=size.small)
+
+exit_signal = strategy.position_size[1] > 0 and strategy.position_size == 0
+if exit_signal
+    label.new(bar_index, high, "EXIT\n" + str.tostring(close, "#.##"),
+         color=color.new(color.red, 10), textcolor=color.white,
+         style=label.style_label_down, size=size.small)
+
+// ─── ALERTS ───────────────────────────────────────────────────────────────────
+alertcondition(entry_signal,                        "Curl if Flow Entry",   "W118 Entry: {{ticker}} @ {{close}} — Stoch RSI curl + SHA green + above ZLSMA-50")
+alertcondition(k_curl_up and not price_in_flow,     "Curl but NO Flow",     "W118 Warning: {{ticker}} curl but price BELOW ZLSMA-50 — skip")
+alertcondition(exit_signal,                         "Position Exited",      "W118 Exit: {{ticker}} @ {{close}}")

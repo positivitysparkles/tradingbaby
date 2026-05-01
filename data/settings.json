@@ -1,0 +1,223 @@
+{
+  "system": {
+    "name": "Curl if Flow",
+    "author": "Weatherman118",
+    "description": "NASDAQ small-cap momentum system. Entry on Stoch RSI K curl from below 20 with Smoothed HA green and price above ZLSMA-50.",
+    "universe": "NASDAQ",
+    "timeframe_primary": "5m",
+    "timeframe_entry_confirm": "1m",
+    "paper_account_start": 5000
+  },
+  "tradingview_chart_settings": {
+    "chart_type": "Heikin Ashi (replaced by custom Smoothed HA overlay)",
+    "timeframe": "5m",
+    "extended_hours": true,
+    "theme": "dark",
+    "indicators_on_chart": ["Smoothed Heikin Ashi", "ZLSMA-50"],
+    "indicators_lower_pane": ["Stochastic RSI"]
+  },
+  "indicators": {
+    "smoothed_heikin_ashi": {
+      "name": "Smoothed Heikin Ashi (SHA)",
+      "method": "Double EMA on HA values",
+      "smoothing_length": 10,
+      "smoothing_length_2": 10,
+      "signal": "Green candle = bullish momentum, Red = bearish",
+      "entry_requirement": "Current candle must be green at entry"
+    },
+    "zlsma_50": {
+      "name": "Zero Lag SMA 50 (ZLSMA-50)",
+      "length": 50,
+      "formula": "2 * EMA(close, 50) - EMA(EMA(close, 50), 50)",
+      "color": "yellow",
+      "signal": "Price above = in flow / bullish bias",
+      "entry_requirement": "Price must be above ZLSMA-50 at entry"
+    },
+    "stochastic_rsi": {
+      "name": "Stochastic RSI",
+      "rsi_length": 14,
+      "stoch_length": 14,
+      "k_smooth": 3,
+      "d_smooth": 3,
+      "upper_band": 80,
+      "middle_band": 50,
+      "lower_band": 20,
+      "entry_requirement": "K crosses UP through 20, K above D",
+      "mystery": "Exact K/D values at entry unknown — screenshots of 1m chart at entry will crack this"
+    }
+  },
+  "entry_system": {
+    "name": "6-Condition Checklist",
+    "all_required": true,
+    "conditions": [
+      {
+        "id": 1,
+        "name": "Stoch RSI Curl",
+        "description": "K line crosses UP through the 20 level, K above D",
+        "weight": "critical",
+        "timeframe": "5m or 1m confirm"
+      },
+      {
+        "id": 2,
+        "name": "SHA Green",
+        "description": "Smoothed Heikin Ashi candle is green at time of entry",
+        "weight": "critical",
+        "timeframe": "5m"
+      },
+      {
+        "id": 3,
+        "name": "Above ZLSMA-50",
+        "description": "Current price is above the ZLSMA-50 yellow line",
+        "weight": "critical",
+        "timeframe": "5m"
+      },
+      {
+        "id": 4,
+        "name": "Volume Surge",
+        "description": "Current bar volume >= 1.5x the 20-bar average volume",
+        "weight": "confirming",
+        "timeframe": "5m"
+      },
+      {
+        "id": 5,
+        "name": "In Float Universe",
+        "description": "Stock float < 20M shares, price $0.10–$15, NASDAQ listed",
+        "weight": "filter",
+        "timeframe": "pre-scan"
+      },
+      {
+        "id": 6,
+        "name": "Catalyst Present",
+        "description": "Manual check: news, halt-resume, day 2-3 runner, or China momentum",
+        "weight": "confirming",
+        "timeframe": "pre-market"
+      }
+    ]
+  },
+  "stock_selection_criteria": {
+    "price_range": {"min": 0.10, "max": 15.00},
+    "float_max_shares": 20000000,
+    "exchange": "NASDAQ",
+    "catalyst_tiers": {
+      "tier_1": "Major news: FDA, merger, earnings beat — highest priority",
+      "tier_2": "Halt-resume plays, sympathy moves, day 2-3 runners",
+      "tier_3": "China stocks in momentum cycle, low-float technical setups"
+    },
+    "preferred_setups": [
+      "Halt-resume breakout",
+      "Day 2 or Day 3 runner with consolidation",
+      "China small-cap momentum",
+      "Pre-market gap with volume"
+    ]
+  },
+  "position_sizing": {
+    "paper_account": 5000,
+    "risk_per_trade_pct": 2,
+    "risk_per_trade_dollars": 100,
+    "stop_loss_pct": 8,
+    "position_size_formula": "risk_dollars / stop_pct = $100 / 0.08 = $1250 base position",
+    "scaling": {
+      "initial": "1/3 of planned position at first entry",
+      "add_1": "1/3 on confirmation (price holds, SHA stays green)",
+      "add_2": "1/3 on strong momentum continuation"
+    }
+  },
+  "exit_system": {
+    "stop_loss": {
+      "pct": -8,
+      "type": "hard stop",
+      "note": "No exceptions — exit if -8% from entry"
+    },
+    "targets": [
+      {
+        "name": "T1",
+        "pct_gain": 15,
+        "trim_size": "1/3 of position",
+        "action": "Sell 1/3, move stop to breakeven"
+      },
+      {
+        "name": "T2",
+        "pct_gain": 30,
+        "trim_size": "1/2 of remaining (= 1/3 of original)",
+        "action": "Sell half remaining, trail stop 10%"
+      },
+      {
+        "name": "T3",
+        "pct_gain": 60,
+        "trim_size": "runner",
+        "action": "Trail 10% stop on final 1/3 — let it run"
+      }
+    ],
+    "trailing_stop": {
+      "pct": 10,
+      "applied_after": "T2 hit",
+      "note": "10% trail from highest close on 5m chart"
+    }
+  },
+  "re_entry_rules": {
+    "allowed": true,
+    "conditions": [
+      "Stock pulled back to ZLSMA-50 and bounced",
+      "Stoch RSI reset below 50 and curling up again",
+      "SHA turned green again after red",
+      "Same catalyst still in play"
+    ],
+    "note": "Re-entries observed in 18 of 52 historical trades — very common pattern"
+  },
+  "timing_system": {
+    "sessions": {
+      "premarket": {
+        "hours_est": "4:00am–9:30am",
+        "priority": "highest",
+        "note": "Best entries — low competition, big moves before RTH open"
+      },
+      "rth_open": {
+        "hours_est": "9:30am–10:30am",
+        "priority": "high",
+        "note": "Open drive continuation plays"
+      },
+      "midday": {
+        "hours_est": "10:30am–3:00pm",
+        "priority": "low",
+        "note": "Avoid unless very strong setup — chop kills momentum"
+      },
+      "power_hour": {
+        "hours_est": "3:00pm–4:00pm",
+        "priority": "medium",
+        "note": "Late-day momentum plays — smaller size"
+      }
+    }
+  },
+  "self_audit_tracker": {
+    "questions_after_each_trade": [
+      "Did all 6 conditions align at entry?",
+      "Did I size correctly per the 2% rule?",
+      "Did I take T1 at +15%?",
+      "Did I move stop to BE after T1?",
+      "Did I let the runner run with trailing stop?"
+    ],
+    "grade_scale": {
+      "A+": "All 6 conditions, perfect execution of exits",
+      "A": "All 6 conditions, minor exit error",
+      "B": "5 of 6 conditions, decent execution",
+      "C": "4 or fewer conditions, or broke a rule"
+    }
+  },
+  "paper_trading_workflow": {
+    "step_1": "Pre-market scan: find catalysts, build watchlist by 7am EST",
+    "step_2": "Check each candidate: price range, float, NASDAQ",
+    "step_3": "Load 5m chart in TradingView with SHA + ZLSMA-50 + Stoch RSI",
+    "step_4": "Wait for 6-condition entry alignment",
+    "step_5": "Paper trade the entry, log in journal immediately",
+    "step_6": "Manage exits per T1/T2/T3 plan",
+    "step_7": "Post-trade: grade A/B/C, note what conditions were present",
+    "step_8": "End of day: paste recap text into discord_parser.py, update trades-parsed.json"
+  },
+  "five_questions_to_crack_secret_sauce": [
+    "What is the exact Stoch RSI K value at entry — above 20 crossing, or already at 30–40?",
+    "Does SHA need to be green for multiple consecutive candles, or just the current one?",
+    "Is the ZLSMA-50 check on the 5m or 1m chart?",
+    "What volume multiplier triggers — 1.5x, 2x, or is it eyeballed?",
+    "On re-entries, does he wait for a full Stoch RSI reset below 20, or just below 50?"
+  ]
+}
