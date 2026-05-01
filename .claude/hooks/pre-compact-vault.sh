@@ -157,4 +157,33 @@ with open(vault_file, "w") as f:
     json.dump(vault, f, indent=2)
 
 print(f"[tradingbaby vault] Saved to {vault_file} (compact #{vault['compact_count']})")
+
+# ── UPDATE CLAUDE.md TRADE STATS ─────────────────────────────────────────────
+claude_md = "/home/user/tradingbaby/CLAUDE.md"
+if os.path.exists(claude_md) and os.path.exists(trades_path):
+    with open(claude_md) as f:
+        md = f.read()
+    td = vault.get("trade_data", {})
+    if td:
+        import re
+        new_line = (
+            f"- **{td['total_trades']} trades** | {td['date_range']} | "
+            f"{td['wins']}W / {td['losses']}L | **{td['win_rate_pct']}% win rate**\n"
+            f"- Avg winner: +{td['avg_winner_pct']}% | Avg loser: -{td['avg_loser_pct']}% "
+            f"| Best: {td['best_trade']}"
+        )
+        md = re.sub(
+            r"- \*\*\d+ trades\*\*.*\n- Avg winner.*",
+            new_line,
+            md,
+            flags=re.DOTALL
+        )
+        md = re.sub(
+            r"(> Auto-loaded every session\. Updated by PreCompact hook\. Last manual update: )[\d-]+",
+            f"\\g<1>{timestamp[:10]}",
+            md
+        )
+        with open(claude_md, "w") as f:
+            f.write(md)
+        print(f"[tradingbaby vault] CLAUDE.md stats updated.")
 PYEOF
