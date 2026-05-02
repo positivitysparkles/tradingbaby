@@ -2,8 +2,8 @@
   "project": "tradingbaby",
   "system_name": "Curl if Flow",
   "author": "Weatherman118",
-  "last_compact": "2026-05-01T22:24:00Z",
-  "compact_count": 1,
+  "last_compact": "2026-05-02T03:21:59Z",
+  "compact_count": 2,
   "confirmed_entry_conditions": {
     "stoch_rsi": {
       "trigger": "K crosses UP through 20 from below \u2014 ta.crossover(k, 20)",
@@ -112,16 +112,16 @@
   },
   "key_insight": "Pre-entry Stoch RSI K is consistently 0-20 (usually 0-10) on the 5m chart. Entry fires at the moment K crosses above 20. The Pine Script ta.crossover(k, 20) is correct. This IS the beginning of the spike \u2014 not chasing.",
   "trade_data": {
-    "total_trades": 52,
-    "win_rate_pct": 96.2,
-    "wins": 50,
+    "total_trades": 101,
+    "win_rate_pct": 98.0,
+    "wins": 99,
     "losses": 2,
-    "avg_winner_pct": 50.0,
+    "avg_winner_pct": 53.7,
     "avg_loser_pct": 13.5,
-    "best_trade": "AKAN +426.0%",
-    "pm_wins": 28,
-    "rth_wins": 22,
-    "date_range": "2026-04-27 to 2026-03-24"
+    "best_trade": "UGRO +692.0%",
+    "pm_wins": 62,
+    "rth_wins": 37,
+    "date_range": "2026-03-23 to 2026-04-30"
   },
   "key_files": {
     "trades": "/home/user/tradingbaby/data/trades-parsed.json",

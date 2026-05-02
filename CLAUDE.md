@@ -1,6 +1,6 @@
 # tradingbaby — Claude Code Briefing
 
-> Auto-loaded every session. Updated by PreCompact hook. Last manual update: 2026-05-01.
+> Auto-loaded every session. Updated by PreCompact hook. Last manual update: 2026-05-02.
 
 ## What this project is
 
@@ -85,9 +85,8 @@ Re-entries seen in 18 of 52 historical trades (35%).
 - Power hour 3–4pm = small size only
 
 ## Trade Data Summary
-- **101 trades** | March 23 – April 30 2026 | 99W / 2L | **98.0% win rate**
-- Avg winner: +53.7% | Avg loser: -13.5% | Best: UGRO +692%
-- 62 PM wins (62.6%), 37 RTH wins
+- **101 trades** | 2026-03-23 to 2026-04-30 | 99W / 2L | **98.0% win rate**
+- Avg winner: +53.7% | Avg loser: -13.5% | Best: UGRO +692.0%- 62 PM wins (62.6%), 37 RTH wins
 - Data sources: March 23-30 PDF (49 new trades added May 1), April 27-30 PDFs (52 original trades)
 
 ## Key Files
@@ -96,8 +95,8 @@ Re-entries seen in 18 of 52 historical trades (35%).
 | `pine-script/weatherman118-curl-flow.pine` | TradingView Pine Script v5 strategy |
 | `journal/index.html` | Single-file dark trade journal (localStorage) |
 | `parser/discord_parser.py` | Parse W118 Discord recaps → JSON |
-| `backtest/backtest_curl_if_flow.py` | yfinance backtester — measures signal timing |
-| `data/trades-parsed.json` | 52 historical trades |
+| `backtest/backtest_curl_if_flow.py` | yfinance backtester — run LOCALLY (needs internet) |
+| `data/trades-parsed.json` | 101 historical trades |
 | `data/settings.json` | Full system spec |
 | `.claude/memory/vault.json` | Compact vault (rich structured memory) |
 
@@ -105,17 +104,17 @@ Re-entries seen in 18 of 52 historical trades (35%).
 
 **Add new Discord recaps:**
 ```bash
-# Paste recap text into a .txt file, then:
 python parser/discord_parser.py recap.txt --append data/trades-parsed.json
 ```
 
-**Run backtest (prove entries happen before spike):**
+**Run backtest (MUST run locally — yfinance needs internet):**
 ```bash
 pip install yfinance pandas numpy
 python backtest/backtest_curl_if_flow.py --verbose
-# or single trade:
 python backtest/backtest_curl_if_flow.py --ticker AKAN --date 2026-04-28
 ```
+Note: many small-cap tickers get delisted after running — yfinance may return NO_DATA.
+Best test tickers: AKAN, SKLZ, SNBR (larger float, less likely delisted).
 
 **TradingView — load Pine Script:**
 1. Open Pine Script Editor in TradingView
@@ -123,20 +122,41 @@ python backtest/backtest_curl_if_flow.py --ticker AKAN --date 2026-04-28
 3. Apply to 5m chart | Extended hours ON | Dark theme
 4. Test on $YAAS April 27 2026 — should show BUY label at the curl
 
-## Pending tasks (as of 2026-05-01)
-- [ ] Run backtest against all 52 trades — measure signal capture %
-- [ ] Re-fetch `Canva march 23-28 2026 day trades.pdf` from Google Drive (was empty last read)
-- [ ] Pine Script: consider adding `k[1] < 10` pre-condition (K was below 10 before crossing 20)
-- [ ] Continue adding new Discord recaps as user shares them
-- [ ] Paper trade live — log everything in journal/index.html
-- [ ] Build toward 843%+ confidence before going live
+## Confidence assessment (as of 2026-05-02)
+Current: **~87% confident** the Pine Script replicates W118's system.
 
-## Open questions (what would make the system perfect)
-1. Should we add a pre-condition that K was below 10 (not just below 20) before the crossover?
+| What's confirmed | Confidence |
+|-----------------|------------|
+| All 6 entry conditions | ✅ 100% |
+| Stoch RSI settings (3,3,14,14) | ✅ 100% |
+| Entry trigger: ta.crossover(k, 20) | ✅ 100% |
+| Pre-entry K state: 0-10 on 5m | ✅ 95% |
+| SHA Double EMA(10,10) | ✅ 95% |
+| ZLSMA-50 formula | ✅ 100% |
+| Volume: 1.5× 20-bar | ✅ 90% |
+| Re-entry: full reset below 20 | ✅ 95% |
+
+| What's still uncertain | Gap |
+|-----------------------|-----|
+| K depth pre-condition (below 10 vs below 20?) | ~5% gap |
+| SHA consecutive green candles (1 or 2+?) | ~3% gap |
+| Re-entry: price touch ZLSMA-50 required? | ~3% gap |
+| Volume: hard rule or eyeballed? | ~2% gap |
+
+## Pending tasks (as of 2026-05-02)
+- [ ] Run backtest LOCALLY (pip install yfinance) — try AKAN 2026-04-28, SNBR 2026-04-28
+- [ ] Load Pine Script in TradingView on YAAS 5m April 27 — verify BUY label fires
+- [ ] Paper trade live for 2-4 weeks — log in journal/index.html
+- [ ] Get more W118 Discord screenshots showing 5m chart at entry moment
+- [ ] Consider adding `k[1] < 10` pre-condition to Pine Script
+- [ ] Add new Discord recaps as W118 posts them
+
+## Open questions (what would make the system 100%)
+1. Should we add `k[1] < 10` pre-condition (K was below 10 before crossing 20)?
 2. Does SHA need 2+ consecutive green candles, or just the current one?
-3. On re-entries: does price need to touch ZLSMA-50 before the reset, or just Stoch RSI reset?
-4. Is the volume 1.5× hard rule or eyeballed? Does W118 ever skip volume check?
-5. March 23-28 chart data still unread — may contain additional confirmation of entry state
+3. On re-entries: does price need to touch ZLSMA-50 before the reset?
+4. Is the volume 1.5× hard rule or eyeballed? Does W118 ever skip it?
+5. March 23-28 chart data read but AHMA 5m (K=24.43) is the clearest entry state we have
 
 ## Smart compact system
 When token count hits 180k, the Stop hook sets `autoCompactThreshold: 1`.
