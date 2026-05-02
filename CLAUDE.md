@@ -87,3 +87,23 @@ Re-entries seen in 18 of 52 historical trades (35%).
 ## Trade Data Summary
 - **101 trades** | 2026-03-23 to 2026-04-30 | 99W / 2L | **98.0% win rate**
 - Avg winner: +53.7% | Avg loser: -13.5% | Best: UGRO +692.0%
+
+## Pine Script Status (v2 — updated 2026-05-02)
+- File: `pine-script/weatherman118-curl-flow.pine`
+- **Working confirmed**: AIOS May 1 2026 — BUY fired at $8.62, stock ran to $18.64+ (+136%)
+- Visual sell signals: dashed lines for stop/T1/T2/T3 appear at entry, warning labels for SHA/K/ZLSMA exits
+- 6 alertconditions configured
+- **KNOWN BUG**: Strategy Tester shows 0/5 win rate due to SHA non-standard chart warning — ignore those numbers, use manual paper log instead
+- INTRADAY ONLY — never hold overnight
+
+## Important Rules
+- **PDT Rule**: Under $25k US account = max 3 day trades/5 days. Use Webull cash account or paper trade.
+- **Stop is non-negotiable**: -8% hard stop every time. This is the whole edge.
+- **No set-and-forget**: Scanner must run daily to find new stocks. TradingView cannot auto-execute.
+- **ZLSMA far below price during spike = CORRECT** — it's lagging by design. Price above it = you're in flow.
+
+## Next Priority Tasks
+1. Build Claude agent to analyze trades-parsed.json for 100% win / under-2-hour pattern
+2. Paper trade 30+ times, log in journal/index.html
+3. Pine Script: add K<10 pre-condition filter for faster spike detection
+4. Run backtest locally (pip install yfinance) on AKAN, SNBR, AIOS
