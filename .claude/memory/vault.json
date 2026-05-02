@@ -2,8 +2,8 @@
   "project": "tradingbaby",
   "system_name": "Curl if Flow",
   "author": "Weatherman118",
-  "last_compact": "2026-05-02T03:21:59Z",
-  "compact_count": 2,
+  "last_compact": "2026-05-02T03:48:34Z",
+  "compact_count": 3,
   "confirmed_entry_conditions": {
     "stoch_rsi": {
       "trigger": "K crosses UP through 20 from below \u2014 ta.crossover(k, 20)",
