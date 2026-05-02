@@ -34,6 +34,45 @@ WATCHLIST_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "watchlis
 
 # ── FINVIZ SCREENER ───────────────────────────────────────────────────────────
 
+def screen_yahoo_top_movers(min_gain_pct: float = 5.0, max_price: float = 15.0,
+                             min_price: float = 0.10) -> list[dict]:
+    """
+    Pull Yahoo Finance day gainers — same list Webull shows as 'Top Movers'.
+    This is the source W118 likely uses for his pre-market watchlist.
+    """
+    try:
+        import urllib.request
+        url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=day_gainers&count=50"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read())
+        quotes = data["finance"]["result"][0]["quotes"]
+        results = []
+        for q in quotes:
+            price  = q.get("regularMarketPrice", 0) or 0
+            change = q.get("regularMarketChangePercent", 0) or 0
+            exch   = (q.get("exchange", "") or "").upper()
+            if not (min_price <= price <= max_price):
+                continue
+            if change < min_gain_pct:
+                continue
+            results.append({
+                "ticker":     q.get("symbol", ""),
+                "name":       q.get("shortName", ""),
+                "price":      round(price, 4),
+                "change_pct": round(change, 2),
+                "volume":     str(q.get("regularMarketVolume", 0)),
+                "float_m":    0,   # enriched below via yfinance
+                "exchange":   exch,
+                "source":     "yahoo_top_movers",
+            })
+        print(f"[scanner] Yahoo Top Movers: {len(results)} candidates (price/gain filtered)")
+        return results
+    except Exception as e:
+        print(f"[scanner] Yahoo Top Movers failed: {e}")
+        return []
+
+
 def screen_finviz(min_gain_pct: float = 5.0, max_float_m: float = 20.0,
                   max_price: float = 15.0, min_price: float = 0.10) -> list[dict]:
     """
@@ -259,7 +298,10 @@ def main():
                        "volume": "0", "float_m": 0, "source": "manual"}
                       for t in args.tickers]
     else:
-        candidates = screen_finviz(args.min_gain, args.max_float, args.max_price, args.min_price)
+        # Try Yahoo Top Movers first (same list as Webull "Top Stocks"), fall back to Finviz
+        candidates = screen_yahoo_top_movers(args.min_gain, args.max_price, args.min_price)
+        if not candidates:
+            candidates = screen_finviz(args.min_gain, args.max_float, args.max_price, args.min_price)
         print(f"[scanner] Found {len(candidates)} raw candidates from screener")
 
     if not args.no_enrich:
