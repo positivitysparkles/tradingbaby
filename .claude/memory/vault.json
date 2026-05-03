@@ -175,14 +175,16 @@
     "stop_discipline": "The -8% stop is NON-NEGOTIABLE. Breaking it is how accounts blow up. W118's edge = tiny losses, huge wins.",
     "no_set_and_forget": "Cannot automate without daily scanner running. New stocks must be found each morning. TradingView cannot auto-execute trades.",
     "strategy_tester_warning": "Strategy Tester is UNRELIABLE with SHA scripts. Always shows non-standard chart warning. Ignore those numbers.",
-    "one_pine_script": "There is ONE Pine Script. File: pine-script/weatherman118-curl-flow.pine on branch claude/push-tradingbaby-ESEFn. Perfect this one script over time."
+    "one_pine_script": "There is ONE Pine Script. File: pine-script/weatherman118-curl-flow.pine on branch claude/push-tradingbaby-ESEFn. Perfect this one script over time. Old versions saved in pine-script/versions/ for comparison.",
+    "one_branch": "ALWAYS use claude/push-tradingbaby-ESEFn. Never create new branches. User confirmed this 2026-05-03."
   },
 
   "github": {
     "repo": "positivitysparkles/tradingbaby",
     "working_branch": "claude/push-tradingbaby-ESEFn",
     "main_branch": "main",
-    "branch_explanation": "main = skeleton only (2 commits). claude/push-tradingbaby-ESEFn = ALL real work. PR merges claude branch → main eventually. Only ONE Pine Script exists, on the claude branch.",
+    "branch_explanation": "ONE branch only: claude/push-tradingbaby-ESEFn = ALL real work. Every new chat must checkout this branch. Do NOT create new branches. main = skeleton only. Pine Script versions saved in pine-script/versions/. Compact hooks in .claude/hooks/.",
+    "branch_rule": "NEVER create a new branch. Always work on claude/push-tradingbaby-ESEFn. User deleted extra branches 2026-05-03.",
     "google_drive_email": "iris.at.ps@positivitysparkles.com"
   },
 
