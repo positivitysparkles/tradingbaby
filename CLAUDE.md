@@ -1,6 +1,6 @@
 # tradingbaby — Claude Code Briefing
 
-> Auto-loaded every session. Updated by PreCompact hook. Last manual update: 2026-05-02.
+> Auto-loaded every session. Updated by PreCompact hook. Last manual update: 2026-05-22.
 
 ## What this project is
 

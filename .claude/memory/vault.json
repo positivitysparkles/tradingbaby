@@ -2,17 +2,15 @@
   "project": "tradingbaby",
   "system_name": "Curl if Flow",
   "author": "Weatherman118",
-  "last_compact": "2026-05-02T21:02:13Z",
+  "last_compact": "2026-05-22T03:09:03Z",
   "last_manual_update": "2026-05-02T23:45:00Z",
-  "compact_count": 6,
-
+  "compact_count": 7,
   "goal": "Reverse-engineer Weatherman118's exact entry + exit system. Paper trade until 80%+ consistent win rate, then go live. ONE Pine Script = his secret sauce. Perfect it over time.",
-
   "confirmed_entry_conditions": {
     "stoch_rsi": {
-      "trigger": "K crosses UP through 20 from below — ta.crossover(k, 20)",
+      "trigger": "K crosses UP through 20 from below \u2014 ta.crossover(k, 20)",
       "requirement": "K must be above D at trigger",
-      "pre_entry_state": "K typically at 0-10 before cross (near absolute zero) — sharper the dip, stronger the spike",
+      "pre_entry_state": "K typically at 0-10 before cross (near absolute zero)",
       "settings": "RSI=14, Stoch=14, K_smooth=3, D_smooth=3, Source=Close"
     },
     "smoothed_ha": {
@@ -23,29 +21,24 @@
     "zlsma_50": {
       "trigger": "Price (close) must be ABOVE ZLSMA-50",
       "formula": "2 * EMA(close,50) - EMA(EMA(close,50),50)",
-      "rule": "NEVER enter if price is below ZLSMA-50 — trade is invalid",
-      "note": "ZLSMA appearing far from price during a spike = CORRECT — it's lagging by design. Far above = strong momentum = you're in the flow zone."
+      "rule": "NEVER enter if price is below ZLSMA-50 \u2014 trade is invalid"
     },
     "volume": {
       "trigger": "Volume >= 1.5x the 20-bar average",
       "weight": "confirming (not critical)"
     },
-    "float": "< 20M shares, $0.10-$15, NASDAQ only",
+    "float": "< 20M shares, /home/user/tradingbaby/.claude/hooks/pre-compact-vault.sh.10-/home/user/tradingbaby/.claude/memory/vault.json5, NASDAQ only",
     "catalyst": "Tier 1 (FDA/merger/earnings), Tier 2 (halt-resume/sympathy), Tier 3 (China momentum)"
   },
-
   "confirmed_exit_rules": {
-    "summary": "Exit in layers as price rises. Hard stop if it falls. Never hold overnight.",
-    "hard_stop": "-8% from entry — NO EXCEPTIONS. This is how you preserve capital. W118's edge = tiny losses, huge wins.",
-    "T1": "+15% — trim 1/3 of position, move stop to breakeven (entry price). You now cannot lose money.",
-    "T2": "+30% — trim another 1/3 (or exit 100% if using hard T2 rule). Trail stop 10% on remainder.",
-    "T3": "+60% — trail 10% on final 1/3, let it run. Optional: skip if you want to be out in under 2 hours.",
-    "sha_exit": "SHA flips red for 2+ consecutive candles — momentum fading, consider exit",
-    "zlsma_exit": "Price closes below ZLSMA-50 — trend broken, exit immediately",
-    "stoch_exit": "Stoch RSI K crosses back below 20 — momentum done, exit",
-    "intraday_only": "CLOSE ALL POSITIONS before market close. Never hold overnight. Small caps halt/gap/reverse-split without warning."
+    "hard_stop": "-8% from entry \u2014 no exceptions",
+    "T1": "+15% \u2014 trim 1/3, move stop to breakeven",
+    "T2": "+30% \u2014 trim 1/3 of original, trail 10%",
+    "T3": "+60% \u2014 trail 10% on final 1/3",
+    "sha_exit": "SHA flips red for 2+ consecutive candles",
+    "zlsma_exit": "Price closes below ZLSMA-50",
+    "stoch_exit": "Stoch RSI K crosses back below 20"
   },
-
   "fast_exit_rules_3x": {
     "description": "Data-derived from 101-trade analysis. All 3 toggled ON by default in Pine Script. Goal: only take trades that exit cleanly within 1-2 hours.",
     "rule1_k_depth": {
@@ -54,17 +47,16 @@
       "pine": "k_was_low = k[1] < 10 or k[2] < 10 or k[3] < 10"
     },
     "rule2_time_gate": {
-      "description": "Only enter 4:00am–10:30am New York time",
+      "description": "Only enter 4:00am\u201310:30am New York time",
       "rationale": "82% of wins happen in PM or RTH open. Midday signals take hours or fail.",
       "pine": "in_fast_session = (bar_hour >= 4) and (bar_hour < 10 or (bar_hour == 10 and bar_minute <= 30))"
     },
     "rule3_hard_t2": {
       "description": "Exit 100% at T2 (+30%). No trailing to T3.",
-      "rationale": "82% of all 99 wins exit at ≤60%. Forcing T2 = clean 1-2hr exit across all 3 trade profiles.",
+      "rationale": "82% of all 99 wins exit at \u226460%. Forcing T2 = clean 1-2hr exit across all 3 trade profiles.",
       "pine": "strategy.exit('T2all', 'Long', limit=t2_level, qty_percent=100)"
     }
   },
-
   "trade_profiles_100pct_win": {
     "note": "ALL 3 profiles have 100% win rate from 101-trade dataset. Use all 3. Cap at T2 = under 2 hours.",
     "profile_A": {
@@ -90,7 +82,7 @@
       "avg_gain": "+75.2%",
       "typical_duration": "60-180 minutes",
       "session": "Any",
-      "rule": "Stoch RSI must RESET FULLY BELOW 20 and curl up again — not a mid-range pullback"
+      "rule": "Stoch RSI must RESET FULLY BELOW 20 and curl up again \u2014 not a mid-range pullback"
     },
     "combined_at_t2": {
       "total": 86,
@@ -99,10 +91,9 @@
       "note": "Capping all 3 profiles at T2 (+30%) = 86 of 99 wins within 2 hours"
     }
   },
-
   "pine_script_status": {
     "file": "pine-script/weatherman118-curl-flow.pine",
-    "version": "v3 — 3 fast-exit rules added 2026-05-02",
+    "version": "v3 \u2014 3 fast-exit rules added 2026-05-02",
     "branch": "claude/push-tradingbaby-ESEFn",
     "features": [
       "Green BUY label showing [PM] or [RTH] profile + K value at entry",
@@ -119,7 +110,6 @@
     "known_limitation": "Strategy Tester shows unreliable numbers with SHA (non-standard chart warning). Do NOT trust Strategy Tester P&L or win rate. Use manual paper trade log instead.",
     "live_confirmation": "AIOS 2026-05-01: BUY fired at $8.62 pre-market, stock ran to $18.64+ (+136%). System fires BEFORE the spike."
   },
-
   "live_confirmation": {
     "AIOS_2026_05_01": {
       "ticker": "AIOS",
@@ -130,32 +120,86 @@
       "notes": "BUY label fired correctly at $8.62 pre-market. Stock ran +136% intraday. Confirms system fires BEFORE the spike, not after."
     }
   },
-
   "chart_data_extracted": {
-    "YAAS_1m": { "K": 37.04, "D": 24.35, "context": "Curling through 20s at entry" },
-    "YAAS_5m": { "K": 93.42, "D": 89.62, "context": "Overbought during run" },
-    "BIYA_5m": { "K": 9.29, "D": 7.11, "context": "Near zero pre-spike" },
-    "BIYA_1m": { "K": 18.24, "D": 7.78, "context": "Sub-20 curling at entry" },
-    "ATER_5m": { "K": 0.69, "D": 0.0, "context": "Absolute zero pre-spike" },
-    "ATER_1m": { "K": 39.27, "D": 19.49, "context": "Curling through 20 at entry" },
-    "AKAN_5m_reentry": { "K": 14.41, "D": 11.75, "context": "Below 20 re-entry setup" },
-    "SAGT_5m": { "K": 1.7, "D": 0.14, "context": "Absolute zero pre-spike" },
-    "SAGT_1m": { "K": 41.21, "D": 28.19, "context": "Curling 20-40 at entry" },
-    "SAFX_5m": { "K": 17.53, "D": 9.3, "context": "Below 20 pre-spike" },
-    "AHMA_5m": { "K": 24.43, "D": 10.48, "context": "PERFECT CURL STATE: K just crossed 20, D still at 10. This is the exact ta.crossover(k,20) moment." },
-    "USEG_5m": { "K": 16.38, "D": 5.52, "context": "Reset after PM spike" },
-    "FATN_1m": { "K": 58, "D": 47, "context": "Mid-range at entry — less ideal" }
+    "YAAS_1m": {
+      "K": 37.04,
+      "D": 24.35,
+      "context": "Curling through 20s at entry"
+    },
+    "YAAS_5m": {
+      "K": 93.42,
+      "D": 89.62,
+      "context": "Overbought during run"
+    },
+    "BIYA_5m": {
+      "K": 9.29,
+      "D": 7.11,
+      "context": "Near zero pre-spike"
+    },
+    "BIYA_1m": {
+      "K": 18.24,
+      "D": 7.78,
+      "context": "Sub-20 curling at entry"
+    },
+    "ATER_5m": {
+      "K": 0.69,
+      "D": 0.0,
+      "context": "Absolute zero pre-spike"
+    },
+    "ATER_1m": {
+      "K": 39.27,
+      "D": 19.49,
+      "context": "Curling through 20 at entry"
+    },
+    "AKAN_5m_reentry": {
+      "K": 14.41,
+      "D": 11.75,
+      "context": "Below 20 re-entry setup"
+    },
+    "SAGT_5m": {
+      "K": 1.7,
+      "D": 0.14,
+      "context": "Absolute zero pre-spike"
+    },
+    "SAGT_1m": {
+      "K": 41.21,
+      "D": 28.19,
+      "context": "Curling 20-40 at entry"
+    },
+    "SAFX_5m": {
+      "K": 17.53,
+      "D": 9.3,
+      "context": "Below 20 pre-spike"
+    },
+    "SAFX_1m": {
+      "K": 93.03,
+      "D": 81.91,
+      "context": "After move (overbought)"
+    },
+    "USEG_5m": {
+      "K": 16.38,
+      "D": 5.52,
+      "context": "Reset after PM spike"
+    },
+    "FATN_1m": {
+      "K": 58,
+      "D": 47,
+      "context": "Mid-range at entry \u2014 less ideal"
+    },
+    "FATN_5m": {
+      "K": 93,
+      "D": 81,
+      "context": "Overbought during run"
+    }
   },
-
   "key_insights": [
     "Pre-entry Stoch RSI K is consistently 0-20 (usually 0-10) on the 5m chart. ta.crossover(k,20) = start of spike, not chasing.",
-    "All 3 trade profiles (PM fresh, RTH fresh, re-entries) have 100% win rate — use all 3.",
-    "82% of all wins exit at ≤60% gain. Hard T2 exit captures most wins and forces clean sub-2hr exits.",
+    "All 3 trade profiles (PM fresh, RTH fresh, re-entries) have 100% win rate \u2014 use all 3.",
+    "82% of all wins exit at \u226460% gain. Hard T2 exit captures most wins and forces clean sub-2hr exits.",
     "ZLSMA far below price during a spike = CORRECT. It's lagging by design. Far above = strong flow zone.",
     "System fires BEFORE the spike. Entry at K cross = beginning of momentum, not the top.",
     "NEVER trust Strategy Tester with SHA-based scripts. Non-standard chart = meaningless numbers."
   ],
-
   "trade_data": {
     "total_trades": 101,
     "win_rate_pct": 98.0,
@@ -168,7 +212,6 @@
     "rth_wins": 37,
     "date_range": "2026-03-23 to 2026-04-30"
   },
-
   "important_rules": {
     "intraday_only": "NEVER hold overnight. Small caps halt/gap down/reverse split without warning. Close same day.",
     "pdt_rule": "US accounts under $25k are limited to 3 day trades per 5 business days. Use Webull cash account or paper trade until $25k threshold reached.",
@@ -178,24 +221,18 @@
     "one_pine_script": "There is ONE Pine Script. File: pine-script/weatherman118-curl-flow.pine on branch claude/push-tradingbaby-ESEFn. Perfect this one script over time. Old versions saved in pine-script/versions/ for comparison.",
     "one_branch": "ALWAYS use claude/push-tradingbaby-ESEFn. Never create new branches. User confirmed this 2026-05-03."
   },
-
   "github": {
     "repo": "positivitysparkles/tradingbaby",
-    "working_branch": "claude/push-tradingbaby-ESEFn",
-    "main_branch": "main",
-    "branch_explanation": "ONE branch only: claude/push-tradingbaby-ESEFn = ALL real work. Every new chat must checkout this branch. Do NOT create new branches. main = skeleton only. Pine Script versions saved in pine-script/versions/. Compact hooks in .claude/hooks/.",
-    "branch_rule": "NEVER create a new branch. Always work on claude/push-tradingbaby-ESEFn. User deleted extra branches 2026-05-03.",
+    "branch": "claude/push-tradingbaby-ESEFn",
     "google_drive_email": "iris.at.ps@positivitysparkles.com"
   },
-
   "roadmap": {
-    "month_1_2": "Paper trade — target 80%+ win rate, 30+ trades minimum. Log every trade in journal/index.html.",
+    "month_1_2": "Paper trade \u2014 target 80%+ win rate, 30+ trades minimum. Log every trade in journal/index.html.",
     "month_3": "Go live with $100-$500. 1-2 trades/week (PDT limit if under $25k)",
     "month_4_6": "Reinvest profits, scale positions. Build toward $25k.",
     "month_7_12": "At $25k: unlimited day trading unlocked. Compounding accelerates.",
     "goal": "$25k account with 80%+ win rate = $40k-$60k by end of year 1 at current stats"
   },
-
   "key_files": {
     "trades": "/home/user/tradingbaby/data/trades-parsed.json",
     "settings": "/home/user/tradingbaby/data/settings.json",
@@ -203,26 +240,23 @@
     "journal": "/home/user/tradingbaby/journal/index.html",
     "parser": "/home/user/tradingbaby/parser/discord_parser.py",
     "backtest": "/home/user/tradingbaby/backtest/backtest_curl_if_flow.py",
-    "trade_analyzer": "/home/user/tradingbaby/scanner/trade_analyzer.py",
-    "scanner": "/home/user/tradingbaby/scanner/pre_market_scanner.py",
     "vault": "/home/user/tradingbaby/.claude/memory/vault.json"
   },
-
   "pending_tasks": [
-    "Paper trade 30+ times using Pine Script v3 — log each trade in journal/index.html",
-    "Run trade_analyzer.py --ai with Anthropic API key for deeper Claude-powered pattern analysis",
-    "Run backtest_curl_if_flow.py locally (pip install yfinance) on AKAN 2026-04-28, SNBR 2026-04-28, AIOS 2026-05-01",
-    "Continue adding new W118 Discord recaps to trades-parsed.json as user shares them",
-    "Re-attempt reading March 23-28 PDF from Google Drive (was too large previously)",
-    "Set up Discord/Telegram webhooks in scanner/config.json for real-time signal alerts",
-    "Fix Strategy Tester: separate SHA visual display from entry logic so backtesting produces accurate numbers",
-    "Merge PR: claude/push-tradingbaby-ESEFn → main when ready"
+    "Run backtest_curl_if_flow.py against all 52 trades to measure signal capture %",
+    "Read March 23-28 PDF from Google Drive (Canva march 23-28 2026 day trades.pdf) \u2014 file was too large last attempt",
+    "Pine Script: optionally add pre-condition that K was below 10 before the crossover",
+    "Continue adding new Discord recaps to trades-parsed.json as user shares them",
+    "Paper trade system \u2014 use journal/index.html to log live trades",
+    "Build confidence to 843%+ win consistency before going live"
   ],
-
   "open_questions": [
+    "Exact Stoch RSI K value at entry \u2014 confirmed as 'crossing above 20' but is there a min pre-entry depth?",
     "Does SHA need 2+ consecutive green candles or just the current one?",
-    "On re-entries: full reset below 20 confirmed — but does price need to touch ZLSMA-50?",
-    "Volume multiplier: 1.5x confirmed in settings — is it ever eyeballed higher?",
-    "Session timing: PM entries have higher win rate (56%) — is midday always avoided?"
-  ]
+    "On re-entries: full reset below 20 confirmed \u2014 but does price need to touch ZLSMA-50?",
+    "Volume multiplier: 1.5x confirmed in settings \u2014 is it ever eyeballed higher?",
+    "Session timing: PM entries have higher win rate (56%) \u2014 is midday always avoided?"
+  ],
+  "confirmed_reentry_rule": "Stoch RSI must RESET BELOW 20 and curl UP again \u2014 not just mid-range pullback",
+  "key_insight": "Pre-entry Stoch RSI K is consistently 0-20 (usually 0-10) on the 5m chart. Entry fires at the moment K crosses above 20. The Pine Script ta.crossover(k, 20) is correct. This IS the beginning of the spike \u2014 not chasing."
 }
