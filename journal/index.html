@@ -115,7 +115,7 @@
   <div class="stats-grid">
     <div class="stat-card">
       <div class="stat-label">Balance</div>
-      <div class="stat-value blue" id="s-balance">$5,000</div>
+      <div class="stat-value blue" id="s-balance">$173</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">P&amp;L</div>
@@ -295,7 +295,7 @@
 
 <script>
 const STORAGE_KEY = 'tradingbaby_trades';
-const ACCOUNT_START = 5000;
+const ACCOUNT_START = 173;
 const CONDITIONS = ['stoch','sha','zlsma','vol','float','cat'];
 const COND_LABELS = ['Stoch RSI','SHA Green','ZLSMA-50','Vol Surge','Float OK','Catalyst'];
 
@@ -330,12 +330,14 @@ function computeStats() {
   }
   const streakStr = streak > 0 ? `${streak} ${streakType === 'win' ? '🟢' : '🔴'}` : '—';
 
-  // paper P&L from $5000, assume $1250 position per trade, gain/loss on position
-  const pnl = trades.reduce((sum, t) => {
-    const pos = 1250;
-    return sum + pos * (t.pct_gain / 100) * (t.result === 'loss' ? -1 : 1);
-  }, 0);
-  const balance = ACCOUNT_START + pnl;
+  // compound P&L: each trade uses 90% of running balance
+  let balance = ACCOUNT_START;
+  trades.forEach(t => {
+    const pos = balance * 0.90;
+    const sign = t.result === 'loss' ? -1 : 1;
+    balance += pos * (t.pct_gain / 100) * sign;
+  });
+  const pnl = balance - ACCOUNT_START;
 
   setText('s-balance', '$' + balance.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}));
   const pnlEl = document.getElementById('s-pnl');
