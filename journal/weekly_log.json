@@ -1,0 +1,49 @@
+{
+  "week": "2026-05-18 to 2026-05-22",
+  "account_start": {
+    "schwab": 150.00,
+    "webull": 23.00,
+    "total": 173.00
+  },
+  "account_end": {
+    "schwab": 150.00,
+    "webull": 23.00,
+    "total": 173.00
+  },
+  "goal_win_rate": 80,
+  "trades": [
+    {
+      "date": "",
+      "ticker": "",
+      "account": "schwab",
+      "entry_price": 0,
+      "exit_price": 0,
+      "shares": 0,
+      "pnl_pct": 0,
+      "pnl_dollar": 0,
+      "result": "win",
+      "rules": {
+        "stoch_rsi_cross_20": false,
+        "sha_green": false,
+        "above_zlsma": false,
+        "volume_1_5x": false,
+        "float_under_20m": false,
+        "session_4am_1030am": false
+      },
+      "all_rules_followed": false,
+      "exit_reason": "",
+      "notes": ""
+    }
+  ],
+  "summary": {
+    "total_trades": 0,
+    "wins": 0,
+    "losses": 0,
+    "win_rate_pct": 0,
+    "rules_followed_pct": 0,
+    "total_pnl_dollar": 0,
+    "best_trade": "",
+    "worst_trade": "",
+    "lesson_of_the_week": ""
+  }
+}
