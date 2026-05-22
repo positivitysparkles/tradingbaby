@@ -4,6 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TradingBaby — W118 Curl if Flow Journal</title>
+<script>
+(function(){
+  const KEY = 'tb_auth';
+  const PASS = 'curlflow';
+  if (sessionStorage.getItem(KEY) !== '1') {
+    document.addEventListener('DOMContentLoaded', function() {
+      document.body.style.display = 'none';
+      var p = prompt('🔒 Enter password:');
+      if (p === PASS) { sessionStorage.setItem(KEY,'1'); document.body.style.display=''; }
+      else { document.body.innerHTML = '<div style="background:#0d1117;color:#f85149;height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace;font-size:18px;">Access denied.</div>'; document.body.style.display=''; }
+    });
+  }
+})();
+</script>
 <style>
   :root {
     --bg:       #0d1117;
