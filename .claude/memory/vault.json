@@ -2,9 +2,9 @@
   "project": "tradingbaby",
   "system_name": "Curl if Flow",
   "author": "Weatherman118",
-  "last_compact": "2026-05-22T03:09:03Z",
+  "last_compact": "2026-05-26T12:35:26Z",
   "last_manual_update": "2026-05-02T23:45:00Z",
-  "compact_count": 7,
+  "compact_count": 8,
   "goal": "Reverse-engineer Weatherman118's exact entry + exit system. Paper trade until 80%+ consistent win rate, then go live. ONE Pine Script = his secret sauce. Perfect it over time.",
   "confirmed_entry_conditions": {
     "stoch_rsi": {
