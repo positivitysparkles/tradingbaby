@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>TradingBaby Co-Pilot 🚦</title>
+<script>
+(function(){
+  const KEY='tb_auth',PASS='Curlf10w';
+  if(sessionStorage.getItem(KEY)!=='1'){
+    document.addEventListener('DOMContentLoaded',function(){
+      document.body.style.display='none';
+      var p=prompt('🔒 Enter password:');
+      if(p===PASS){sessionStorage.setItem(KEY,'1');document.body.style.display='';}
+      else{document.body.innerHTML='<div style="background:#0d1117;color:#f85149;height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace;font-size:18px;">Access denied.</div>';document.body.style.display='';}
+    });
+  }
+})();
+</script>
+<style>
+:root{--bg:#0d1117;--bg2:#161b22;--bg3:#21262d;--border:#30363d;--text:#c9d1d9;--muted:#8b949e;--green:#3fb950;--red:#f85149;--yellow:#d29922;--blue:#58a6ff;--purple:#bc8cff;}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",monospace;font-size:15px;max-width:640px;margin:0 auto;min-height:100vh;padding-bottom:32px;}
+
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 16px;position:sticky;top:0;z-index:10;}
+.header h1{font-size:17px;font-weight:800;color:var(--blue);}
+.header .sub{font-size:11px;color:var(--muted);margin-top:1px;}
+
+.tabs{display:flex;background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:53px;z-index:9;}
+.tab{flex:1;padding:13px 4px;text-align:center;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;letter-spacing:.02em;}
+.tab.active{color:var(--blue);border-bottom-color:var(--blue);}
+
+.panel{display:none;padding:14px;}
+.panel.active{display:block;}
+
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px;}
+.card-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:12px;}
+
+label.field-label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px;margin-top:12px;}
+label.field-label:first-child{margin-top:0;}
+input[type=text],input[type=number],input[type=date],select,textarea{
+  width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);
+  border-radius:8px;padding:11px 13px;font-size:15px;font-family:inherit;
+  -webkit-appearance:none;appearance:none;
+}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--blue);outline-offset:-1px;}
+textarea{resize:vertical;min-height:60px;font-size:13px;}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+
+.cond-list{display:flex;flex-direction:column;gap:6px;}
+.cond-item{display:flex;align-items:center;gap:12px;padding:12px 13px;background:var(--bg3);border-radius:8px;cursor:pointer;border:1.5px solid transparent;transition:all .12s;}
+.cond-item.checked{border-color:var(--green);background:rgba(63,185,80,.09);}
+.cond-item.checked .cond-num{background:var(--green);color:#000;}
+.cond-num{width:22px;height:22px;border-radius:50%;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;flex-shrink:0;transition:all .12s;color:var(--muted);}
+.cond-item input[type=checkbox]{display:none;}
+.cond-text{font-size:13px;line-height:1.3;}
+
+.btn{width:100%;padding:15px;border-radius:10px;border:none;cursor:pointer;font-size:15px;font-weight:800;transition:opacity .12s;letter-spacing:.02em;}
+.btn:active{opacity:.75;}
+.btn-green{background:var(--green);color:#000;}
+.btn-blue{background:var(--blue);color:#000;}
+.btn-muted{background:var(--bg3);color:var(--text);border:1px solid var(--border);}
+.btn-sm{padding:10px 16px;font-size:13px;width:auto;}
+
+.verdict{border-radius:12px;padding:18px 16px;margin-top:12px;text-align:center;}
+.verdict.go{background:rgba(63,185,80,.12);border:2px solid var(--green);}
+.verdict.caution{background:rgba(210,153,34,.12);border:2px solid var(--yellow);}
+.verdict.nogo{background:rgba(248,81,73,.12);border:2px solid var(--red);}
+.verdict-emoji{font-size:42px;margin-bottom:6px;}
+.verdict-label{font-size:26px;font-weight:900;letter-spacing:.05em;}
+.verdict.go .verdict-label{color:var(--green);}
+.verdict.caution .verdict-label{color:var(--yellow);}
+.verdict.nogo .verdict-label{color:var(--red);}
+.verdict-sub{font-size:13px;color:var(--muted);margin-top:5px;line-height:1.4;}
+
+.warn-list{display:flex;flex-direction:column;gap:6px;margin-top:10px;}
+.warn{border-radius:8px;padding:10px 13px;font-size:13px;line-height:1.4;}
+.warn.red{background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.4);color:var(--red);}
+.warn.yellow{background:rgba(210,153,34,.1);border:1px solid rgba(210,153,34,.4);color:var(--yellow);}
+.warn.green{background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.4);color:var(--green);}
+
+.targets{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px;}
+.tgt{background:var(--bg3);border-radius:8px;padding:10px 6px;text-align:center;border:1px solid var(--border);}
+.tgt-lbl{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+.tgt-price{font-size:15px;font-weight:800;margin-top:3px;}
+.tgt.stop .tgt-price{color:var(--red);}
+.tgt.t1 .tgt-price{color:var(--yellow);}
+.tgt.t2 .tgt-price{color:var(--blue);}
+.tgt.t3 .tgt-price{color:var(--green);}
+
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.stat-box{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;}
+.stat-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;}
+.stat-val{font-size:24px;font-weight:800;margin-top:3px;}
+.green{color:var(--green);}.red{color:var(--red);}.yellow{color:var(--yellow);}.blue{color:var(--blue);}
+
+.grade-huge{font-size:72px;font-weight:900;text-align:center;line-height:1;padding:8px 0 4px;}
+.coach-msg{background:var(--bg3);border-left:3px solid var(--blue);border-radius:0 8px 8px 0;padding:12px 14px;font-size:14px;line-height:1.65;margin-bottom:8px;}
+
+.trade-row{display:flex;justify-content:space-between;align-items:center;padding:11px 13px;background:var(--bg3);border-radius:8px;margin-bottom:6px;}
+.tr-ticker{font-weight:800;font-size:14px;}
+.tr-meta{font-size:11px;color:var(--muted);margin-top:2px;}
+.tr-pnl{font-weight:800;font-size:15px;}
+.badge{display:inline-block;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:800;}
+.badge-win{background:rgba(63,185,80,.2);color:var(--green);}
+.badge-loss{background:rgba(248,81,73,.2);color:var(--red);}
+
+.empty{text-align:center;padding:48px 20px;color:var(--muted);}
+.empty-icon{font-size:40px;margin-bottom:10px;}
+
+.stop-reminder{text-align:center;font-size:11px;color:var(--muted);margin-top:8px;padding:8px;background:rgba(248,81,73,.07);border-radius:8px;}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>TradingBaby Co-Pilot 🚦</h1>
+  <div class="sub">W118 Curl if Flow — Pre-Trade Checker + EOD Coach</div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('pretrade')">Pre-Trade</div>
+  <div class="tab" onclick="switchTab('logtrade')">Log Trade</div>
+  <div class="tab" onclick="switchTab('eod')">EOD Coach</div>
+  <div class="tab" onclick="switchTab('stats')">Stats</div>
+</div>
+
+<!-- ══ PRE-TRADE ══ -->
+<div class="panel active" id="panel-pretrade">
+  <div class="card">
+    <div class="card-title">Trade Setup</div>
+    <label class="field-label">Ticker</label>
+    <input type="text" id="pt-ticker" placeholder="QTTB" maxlength="6"
+      style="text-transform:uppercase;font-weight:800;font-size:22px;letter-spacing:.05em">
+    <div class="row2" style="margin-top:12px;">
+      <div>
+        <label class="field-label">Current Price $</label>
+        <input type="number" id="pt-price" step="0.001" placeholder="9.45">
+      </div>
+      <div>
+        <label class="field-label">BUY Signal Price $</label>
+        <input type="number" id="pt-signal" step="0.001" placeholder="8.37 (opt)">
+      </div>
+    </div>
+    <label class="field-label">Session</label>
+    <select id="pt-session">
+      <option value="PM">🌅 Premarket  4am – 9:30am</option>
+      <option value="RTH">📈 RTH Open  9:30 – 10:30am</option>
+      <option value="MID">⚠️ Midday  10:30am – 3pm  — AVOID</option>
+      <option value="POWER">🕒 Power Hour  3 – 4pm</option>
+    </select>
+  </div>
+
+  <div class="card">
+    <div class="card-title">6 Conditions — tap each one you see</div>
+    <div class="cond-list">
+      <div class="cond-item" id="ci-stoch" onclick="togglePT('stoch')">
+        <input type="checkbox" id="c-stoch">
+        <div class="cond-num" id="cn-stoch">1</div>
+        <div class="cond-text">Stoch RSI K curl ↑ through 20, K &gt; D</div>
+      </div>
+      <div class="cond-item" id="ci-sha" onclick="togglePT('sha')">
+        <input type="checkbox" id="c-sha">
+        <div class="cond-num" id="cn-sha">2</div>
+        <div class="cond-text">SHA candle is green</div>
+      </div>
+      <div class="cond-item" id="ci-zlsma" onclick="togglePT('zlsma')">
+        <input type="checkbox" id="c-zlsma">
+        <div class="cond-num" id="cn-zlsma">3</div>
+        <div class="cond-text">Price above ZLSMA-50 (yellow line)</div>
+      </div>
+      <div class="cond-item" id="ci-vol" onclick="togglePT('vol')">
+        <input type="checkbox" id="c-vol">
+        <div class="cond-num" id="cn-vol">4</div>
+        <div class="cond-text">Volume ≥ 1.5× average</div>
+      </div>
+      <div class="cond-item" id="ci-float" onclick="togglePT('float')">
+        <input type="checkbox" id="c-float">
+        <div class="cond-num" id="cn-float">5</div>
+        <div class="cond-text">Float &lt; 20M / Price $0.10 – $15</div>
+      </div>
+      <div class="cond-item" id="ci-cat" onclick="togglePT('cat')">
+        <input type="checkbox" id="c-cat">
+        <div class="cond-num" id="cn-cat">6</div>
+        <div class="cond-text">Catalyst confirmed (T1 / T2 / T3)</div>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn btn-blue" onclick="checkTrade()">CHECK THIS TRADE →</button>
+  <div id="verdict-area"></div>
+</div>
+
+<!-- ══ LOG TRADE ══ -->
+<div class="panel" id="panel-logtrade">
+  <div class="card">
+    <div class="card-title">Quick Trade Log</div>
+    <div class="row2">
+      <div>
+        <label class="field-label">Date</label>
+        <input type="date" id="lt-date">
+      </div>
+      <div>
+        <label class="field-label">Ticker</label>
+        <input type="text" id="lt-ticker" placeholder="QTTB" maxlength="6"
+          style="text-transform:uppercase;font-weight:800;">
+      </div>
+    </div>
+    <label class="field-label">Account</label>
+    <select id="lt-account">
+      <option value="schwab_roth">Schwab Roth IRA</option>
+      <option value="schwab_margin">Schwab Margin</option>
+      <option value="webull_cash">Webull Cash ✅ (no PDT)</option>
+      <option value="webull_margin">Webull Margin</option>
+    </select>
+    <div class="row2">
+      <div>
+        <label class="field-label">Entry $</label>
+        <input type="number" id="lt-entry" step="0.001" placeholder="9.45">
+      </div>
+      <div>
+        <label class="field-label">Exit $</label>
+        <input type="number" id="lt-exit" step="0.001" placeholder="11.55">
+      </div>
+    </div>
+    <div class="row2">
+      <div>
+        <label class="field-label">Shares</label>
+        <input type="number" id="lt-shares" placeholder="12">
+      </div>
+      <div>
+        <label class="field-label">Result</label>
+        <select id="lt-result">
+          <option value="win">✅ Win</option>
+          <option value="loss">❌ Loss</option>
+        </select>
+      </div>
+    </div>
+    <label class="field-label">Exit Reason</label>
+    <input type="text" id="lt-exit-reason" placeholder="T1 hit / Stop loss -8% / W118 SELL fired">
+    <label class="field-label">Notes (lesson, mistake, what you noticed)</label>
+    <textarea id="lt-notes" placeholder="What happened? What would you do differently?"></textarea>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Which rules were met?</div>
+    <div class="cond-list">
+      <div class="cond-item" id="lci-stoch" onclick="toggleLT('stoch')">
+        <input type="checkbox" id="lc-stoch">
+        <div class="cond-num" id="lcn-stoch">1</div>
+        <div class="cond-text">Stoch RSI K curl ↑ through 20</div>
+      </div>
+      <div class="cond-item" id="lci-sha" onclick="toggleLT('sha')">
+        <input type="checkbox" id="lc-sha">
+        <div class="cond-num" id="lcn-sha">2</div>
+        <div class="cond-text">SHA candle green</div>
+      </div>
+      <div class="cond-item" id="lci-zlsma" onclick="toggleLT('zlsma')">
+        <input type="checkbox" id="lc-zlsma">
+        <div class="cond-num" id="lcn-zlsma">3</div>
+        <div class="cond-text">Above ZLSMA-50 (yellow line)</div>
+      </div>
+      <div class="cond-item" id="lci-vol" onclick="toggleLT('vol')">
+        <input type="checkbox" id="lc-vol">
+        <div class="cond-num" id="lcn-vol">4</div>
+        <div class="cond-text">Volume ≥ 1.5×</div>
+      </div>
+      <div class="cond-item" id="lci-float" onclick="toggleLT('float')">
+        <input type="checkbox" id="lc-float">
+        <div class="cond-num" id="lcn-float">5</div>
+        <div class="cond-text">Float &lt; 20M</div>
+      </div>
+      <div class="cond-item" id="lci-cat" onclick="toggleLT('cat')">
+        <input type="checkbox" id="lc-cat">
+        <div class="cond-num" id="lcn-cat">6</div>
+        <div class="cond-text">Catalyst confirmed</div>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn btn-green" onclick="logTrade()">+ SAVE TRADE</button>
+  <button class="btn btn-muted" onclick="copyJSON()" style="margin-top:8px;">📋 Copy JSON → paste to Claude</button>
+  <div id="log-status" style="text-align:center;font-size:12px;color:var(--muted);margin-top:8px;min-height:18px;"></div>
+
+  <div id="today-trades" style="margin-top:4px;"></div>
+</div>
+
+<!-- ══ EOD COACH ══ -->
+<div class="panel" id="panel-eod">
+  <div id="eod-content"></div>
+</div>
+
+<!-- ══ STATS ══ -->
+<div class="panel" id="panel-stats">
+  <div id="stats-content"></div>
+</div>
+
+<script>
+const STORE = 'tb_copilot_v1';
+let trades = [];
+
+function load() { try { trades = JSON.parse(localStorage.getItem(STORE)||'[]'); } catch { trades=[]; } }
+function save() { localStorage.setItem(STORE, JSON.stringify(trades)); }
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+function switchTab(name) {
+  const names = ['pretrade','logtrade','eod','stats'];
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', names[i]===name));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+  if (name==='eod')   renderEOD();
+  if (name==='stats') renderStats();
+  if (name==='logtrade') { renderTodayTrades(); }
+}
+
+// ── Condition toggles ─────────────────────────────────────────────────────────
+const PT_KEYS = ['stoch','sha','zlsma','vol','float','cat'];
+
+function togglePT(key) {
+  const cb = document.getElementById('c-'+key);
+  cb.checked = !cb.checked;
+  document.getElementById('ci-'+key).classList.toggle('checked', cb.checked);
+}
+
+function toggleLT(key) {
+  const cb = document.getElementById('lc-'+key);
+  cb.checked = !cb.checked;
+  document.getElementById('lci-'+key).classList.toggle('checked', cb.checked);
+}
+
+// ── Pre-Trade Checker ─────────────────────────────────────────────────────────
+function checkTrade() {
+  const ticker  = (document.getElementById('pt-ticker').value||'TICKER').toUpperCase().trim();
+  const price   = parseFloat(document.getElementById('pt-price').value);
+  const signal  = parseFloat(document.getElementById('pt-signal').value)||null;
+  const session = document.getElementById('pt-session').value;
+
+  if (!price || isNaN(price)) { alert('Enter the current price first.'); return; }
+
+  const conds = {};
+  PT_KEYS.forEach(k => conds[k] = document.getElementById('c-'+k).checked);
+  const condCount = Object.values(conds).filter(Boolean).length;
+  const missing = ['stoch','sha','zlsma','vol','float','cat']
+    .filter(k => !conds[k])
+    .map(k => ({'stoch':'Stoch RSI','sha':'SHA green','zlsma':'ZLSMA','vol':'Volume 1.5×','float':'Float/Price','cat':'Catalyst'})[k]);
+
+  const chaseP  = signal ? ((price - signal) / signal * 100) : null;
+  const stop    = price * 0.92;
+  const t1      = price * 1.15;
+  const t2      = price * 1.30;
+  const t3      = price * 1.60;
+
+  let verdict = 'GO';
+  const warns = [];
+
+  // Chase check — first, most important
+  if (chaseP !== null) {
+    if (chaseP > 30) {
+      verdict = 'NO-GO';
+      warns.push({c:'red', m:`🚨 ${chaseP.toFixed(1)}% above BUY signal — this is a BUS CHASE. The next bus (re-entry) comes in 20 min. Wait.`});
+    } else if (chaseP > 8) {
+      verdict = 'NO-GO';
+      warns.push({c:'red', m:`⛔ ${chaseP.toFixed(1)}% above signal — too late, high loss risk. Rule: ≤ 3%.`});
+    } else if (chaseP > 3) {
+      if (verdict==='GO') verdict='CAUTION';
+      warns.push({c:'yellow', m:`⚠️ ${chaseP.toFixed(1)}% above signal — borderline chase (3% rule). Consider waiting for re-entry curl.`});
+    } else if (chaseP >= 0) {
+      warns.push({c:'green', m:`✅ ${chaseP.toFixed(1)}% above signal — within the 3% rule. Clean entry.`});
+    } else {
+      warns.push({c:'green', m:`✅ Entering AT or below BUY signal — this is perfect timing.`});
+    }
+  }
+
+  // Conditions check
+  if (condCount < 6) {
+    if (condCount <= 4) verdict = 'NO-GO';
+    else if (verdict==='GO') verdict = 'CAUTION';
+    warns.push({c: condCount<=4?'red':'yellow',
+      m:`${condCount}/6 conditions met — missing: ${missing.join(', ')}. W118 needs ALL 6.`});
+  }
+
+  // Session check
+  if (session==='MID') {
+    if (verdict==='GO') verdict='CAUTION';
+    warns.push({c:'yellow', m:'⏰ Midday chop zone (10:30am–3pm). Signals are unreliable. Reduce size or skip.'});
+  }
+
+  // Build verdict display
+  const vEmoji = {GO:'🟢',CAUTION:'🟡','NO-GO':'🔴'}[verdict];
+  const vClass = {GO:'go',CAUTION:'caution','NO-GO':'nogo'}[verdict];
+  const vSub   = {
+    GO: `${condCount}/6 conditions ✓ — valid W118 entry`,
+    CAUTION: 'Proceed with reduced size, or wait for cleaner setup',
+    'NO-GO': 'Step away. The right setup will come — protect your capital.'
+  }[verdict];
+
+  document.getElementById('verdict-area').innerHTML = `
+    <div class="verdict ${vClass}">
+      <div class="verdict-emoji">${vEmoji}</div>
+      <div class="verdict-label">${verdict}</div>
+      <div class="verdict-sub">${ticker} @ $${price.toFixed(2)}<br>${vSub}</div>
+    </div>
+    ${warns.length ? `<div class="warn-list">${warns.map(w=>`<div class="warn ${w.c}">${w.m}</div>`).join('')}</div>` : ''}
+    <div class="targets">
+      <div class="tgt stop"><div class="tgt-lbl">Stop −8%</div><div class="tgt-price">$${stop.toFixed(2)}</div></div>
+      <div class="tgt t1"><div class="tgt-lbl">T1 +15%</div><div class="tgt-price">$${t1.toFixed(2)}</div></div>
+      <div class="tgt t2"><div class="tgt-lbl">T2 +30%</div><div class="tgt-price">$${t2.toFixed(2)}</div></div>
+      <div class="tgt t3"><div class="tgt-lbl">T3 +60%</div><div class="tgt-price">$${t3.toFixed(2)}</div></div>
+    </div>
+    <div class="stop-reminder">🛑 Set stop at <strong>$${stop.toFixed(2)}</strong> the SECOND your order fills. Non-negotiable.</div>
+  `;
+}
+
+// ── Log Trade ─────────────────────────────────────────────────────────────────
+function logTrade() {
+  const ticker = (document.getElementById('lt-ticker').value||'').toUpperCase().trim();
+  const entry  = parseFloat(document.getElementById('lt-entry').value);
+  if (!ticker||!entry||isNaN(entry)) { alert('Need at least a ticker and entry price.'); return; }
+
+  const exit   = parseFloat(document.getElementById('lt-exit').value)||null;
+  const shares = parseInt(document.getElementById('lt-shares').value)||null;
+  const result = document.getElementById('lt-result').value;
+  const pnlD   = (exit && shares) ? parseFloat(((exit-entry)*shares).toFixed(2)) : null;
+  const pnlP   = exit ? parseFloat(((exit-entry)/entry*100).toFixed(2)) : null;
+
+  const rules = {};
+  PT_KEYS.forEach(k => rules[k] = document.getElementById('lc-'+k).checked);
+  const allRules = Object.values(rules).every(Boolean);
+
+  const ruleMap = {
+    stoch_rsi_cross_20: rules.stoch, sha_green: rules.sha,
+    above_zlsma: rules.zlsma, volume_1_5x: rules.vol,
+    float_under_20m: rules.float, session_4am_1030am: rules.cat
+  };
+
+  const trade = {
+    id: Date.now(),
+    date:        document.getElementById('lt-date').value,
+    ticker, result,
+    account:     document.getElementById('lt-account').value,
+    entry_price: entry,
+    exit_price:  exit,
+    shares,
+    pnl_dollar:  pnlD,
+    pnl_pct:     pnlP,
+    exit_reason: document.getElementById('lt-exit-reason').value.trim(),
+    notes:       document.getElementById('lt-notes').value.trim(),
+    rules:       ruleMap,
+    all_rules_followed: allRules,
+  };
+
+  load(); trades.push(trade); save();
+
+  // Reset form
+  ['lt-ticker','lt-entry','lt-exit','lt-shares','lt-exit-reason','lt-notes'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('lt-date').valueAsDate = new Date();
+  PT_KEYS.forEach(k=>{
+    document.getElementById('lc-'+k).checked=false;
+    document.getElementById('lci-'+k).classList.remove('checked');
+  });
+
+  const pnlStr = pnlD!==null ? ` (${result==='win'?'+':''}$${pnlD.toFixed(2)})` : '';
+  const status = document.getElementById('log-status');
+  status.textContent = `✅ ${ticker} saved${pnlStr}`;
+  status.style.color = result==='win' ? 'var(--green)' : 'var(--red)';
+  renderTodayTrades();
+}
+
+function renderTodayTrades() {
+  load();
+  const today = new Date().toISOString().slice(0,10);
+  const tt = trades.filter(t=>t.date===today);
+  const el = document.getElementById('today-trades');
+  if (!tt.length) { el.innerHTML='<div class="empty" style="padding:20px"><div style="color:var(--muted);font-size:13px">No trades logged today yet.</div></div>'; return; }
+  const net = tt.reduce((s,t)=>s+(t.pnl_dollar||0),0);
+  const wins = tt.filter(t=>t.result==='win').length;
+  el.innerHTML = `
+    <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Today's Trades</div>
+    ${tt.map(t=>`
+      <div class="trade-row">
+        <div>
+          <div class="tr-ticker">${t.ticker} <span class="badge badge-${t.result}">${t.result}</span></div>
+          <div class="tr-meta">$${t.entry_price}${t.exit_price?' → $'+t.exit_price:''} · ${t.account}</div>
+        </div>
+        <div class="tr-pnl ${t.result==='win'?'green':'red'}">${t.pnl_dollar!==null?(t.result==='win'?'+':'')+'$'+Math.abs(t.pnl_dollar).toFixed(2):'—'}</div>
+      </div>`).join('')}
+    <div style="text-align:right;font-size:13px;margin-top:4px;font-weight:700;color:${net>=0?'var(--green)':'var(--red)'}">
+      ${wins}/${tt.length} wins · Net ${net>=0?'+':''}$${net.toFixed(2)}
+    </div>`;
+}
+
+function copyJSON() {
+  load();
+  const today = new Date().toISOString().slice(0,10);
+  const tt = trades.filter(t=>t.date===today);
+  if (!tt.length) { alert('No trades logged today yet.'); return; }
+  const clean = tt.map(({id,...t})=>t);
+  navigator.clipboard.writeText(JSON.stringify(clean,null,2)).then(()=>{
+    const s=document.getElementById('log-status');
+    s.textContent='📋 Copied! Paste to Claude → weekly_log.json will be updated.';
+    s.style.color='var(--blue)';
+  }).catch(()=>alert('Copy failed — try a different browser.'));
+}
+
+// ── EOD Coach ─────────────────────────────────────────────────────────────────
+function renderEOD() {
+  load();
+  const today = new Date().toISOString().slice(0,10);
+  const tt = trades.filter(t=>t.date===today);
+  const el = document.getElementById('eod-content');
+
+  if (!tt.length) {
+    el.innerHTML=`<div class="empty"><div class="empty-icon">📊</div><div>No trades logged today.</div><div style="font-size:12px;margin-top:8px">Use the <strong>Log Trade</strong> tab after each trade, then come back here for your coaching review.</div></div>`;
+    return;
+  }
+
+  const wins   = tt.filter(t=>t.result==='win');
+  const losses = tt.filter(t=>t.result==='loss');
+  const wr     = Math.round(wins.length/tt.length*100);
+  const net    = tt.reduce((s,t)=>s+(t.pnl_dollar||0),0);
+  const ruledTrades = tt.filter(t=>t.rules);
+  const rulesPct = ruledTrades.length ? Math.round(ruledTrades.filter(t=>t.all_rules_followed).length/ruledTrades.length*100) : 100;
+
+  // Grade
+  let grade='D', gradeColor='var(--red)';
+  if (wr>=80 && rulesPct===100) { grade='A+'; gradeColor='var(--green)'; }
+  else if (wr>=80 && rulesPct>=80) { grade='A'; gradeColor='var(--green)'; }
+  else if (wr>=70 && rulesPct>=70) { grade='B+'; gradeColor='var(--blue)'; }
+  else if (wr>=60 && rulesPct>=60) { grade='B'; gradeColor='var(--blue)'; }
+  else if (wr>=50) { grade='C'; gradeColor='var(--yellow)'; }
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-title">Today's Grade — ${today}</div>
+      <div class="grade-huge" style="color:${gradeColor}">${grade}</div>
+      <div class="stat-grid" style="margin-top:12px;">
+        <div class="stat-box">
+          <div class="stat-lbl">Win Rate</div>
+          <div class="stat-val ${wr>=80?'green':wr>=60?'yellow':'red'}">${wr}%</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-lbl">Net P&L</div>
+          <div class="stat-val ${net>=0?'green':'red'}">${net>=0?'+':''}$${Math.abs(net).toFixed(2)}</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-lbl">Trades</div>
+          <div class="stat-val">${wins.length}W ${losses.length}L</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-lbl">Rules %</div>
+          <div class="stat-val ${rulesPct===100?'green':rulesPct>=70?'yellow':'red'}">${rulesPct}%</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Coach's Notes</div>
+      ${coach(tt,wins,losses,wr,rulesPct,net).map(m=>`<div class="coach-msg">${m}</div>`).join('')}
+    </div>
+
+    <div class="card">
+      <div class="card-title">Trade Breakdown</div>
+      ${tt.map(t=>`
+        <div class="trade-row">
+          <div>
+            <div class="tr-ticker">${t.ticker} <span class="badge badge-${t.result}">${t.result}</span></div>
+            <div class="tr-meta">$${t.entry_price}${t.exit_price?' → $'+t.exit_price:''} · ${t.all_rules_followed?'✅ all rules':'⚠️ rules missed'}</div>
+          </div>
+          <div class="tr-pnl ${t.result==='win'?'green':'red'}">${t.pnl_dollar!==null?(t.result==='win'?'+':'')+'$'+Math.abs(t.pnl_dollar).toFixed(2):'—'}</div>
+        </div>`).join('')}
+    </div>`;
+}
+
+function coach(tt, wins, losses, wr, rulesPct, net) {
+  const msgs = [];
+  const ruleBreakers = tt.filter(t=>!t.all_rules_followed);
+
+  if (wr>=80 && rulesPct===100)
+    msgs.push(`🏆 <strong>Perfect day.</strong> ${wr}% win rate, 100% rules followed. This is exactly how it compounds. Same process tomorrow.`);
+  else if (wr>=80)
+    msgs.push(`🟢 <strong>${wr}% win rate</strong> — W118 level execution. Your reads are getting sharper.`);
+  else if (wr>=60)
+    msgs.push(`📊 <strong>${wr}% win rate</strong> — solid. Review the loss${losses.length>1?'es':''} below and find the one thing to fix.`);
+  else
+    msgs.push(`🔄 <strong>${wr}% win rate</strong> — tough day. The best traders sit on their hands 90% of the time. Tomorrow: be MORE selective, not less.`);
+
+  if (rulesPct===100)
+    msgs.push(`✅ <strong>100% rules followed</strong> — the most important number on this screen. Process over P&L, always.`);
+  else if (ruleBreakers.length>0) {
+    const tickers = ruleBreakers.map(t=>t.ticker).join(', ');
+    msgs.push(`⚠️ <strong>Rules missed on ${tickers}.</strong> Every rules break is borrowed luck. The one time it costs you will undo weeks of gains. What specifically went wrong?`);
+  }
+
+  if (losses.length>0) {
+    const worst = losses.reduce((a,b)=>Math.abs(a.pnl_dollar||0)>Math.abs(b.pnl_dollar||0)?a:b);
+    if (worst.pnl_dollar && Math.abs(worst.pnl_dollar)>5)
+      msgs.push(`📌 <strong>Biggest loss: ${worst.ticker} −$${Math.abs(worst.pnl_dollar).toFixed(2)}.</strong> ${worst.notes||'Write one sentence: what was the exact rule that was missing?'}`);
+  }
+
+  if (net>0 && losses.length===0)
+    msgs.push(`🌙 <strong>Green day, zero losses.</strong> Read your flashcards tonight. Come back fresh tomorrow.`);
+  else if (net>0)
+    msgs.push(`💰 <strong>Net +$${net.toFixed(2)} today.</strong> Winners covered the losers. Keep following the system.`);
+
+  return msgs.length ? msgs : [`📖 Finish logging your trades above, then this section will give you your full review.`];
+}
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
+function renderStats() {
+  load();
+  const el = document.getElementById('stats-content');
+  if (!trades.length) {
+    el.innerHTML='<div class="empty"><div class="empty-icon">📈</div><div>No trades logged yet.</div><div style="font-size:12px;margin-top:8px">Use Log Trade to start building your stats.</div></div>';
+    return;
+  }
+  const wins   = trades.filter(t=>t.result==='win');
+  const losses = trades.filter(t=>t.result==='loss');
+  const wr     = (wins.length/trades.length*100).toFixed(1);
+  const net    = trades.reduce((s,t)=>s+(t.pnl_dollar||0),0);
+  const avgW   = wins.length   ? (wins.reduce((s,t)=>s+Math.abs(t.pnl_dollar||0),0)/wins.length).toFixed(2)   : 0;
+  const avgL   = losses.length ? (losses.reduce((s,t)=>s+Math.abs(t.pnl_dollar||0),0)/losses.length).toFixed(2) : 0;
+  const rulesPct = Math.round(trades.filter(t=>t.all_rules_followed).length/trades.length*100);
+
+  let streak=0, streakType='';
+  for (let i=trades.length-1;i>=0;i--) {
+    const r=trades[i].result;
+    if (i===trades.length-1){streakType=r;streak=1;}
+    else if (r===streakType) streak++;
+    else break;
+  }
+
+  const best = trades.reduce((a,b)=>(a.pnl_dollar||0)>(b.pnl_dollar||0)?a:b, trades[0]);
+
+  el.innerHTML=`
+    <div class="card">
+      <div class="card-title">All-Time Stats (${trades.length} trades)</div>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="stat-lbl">Win Rate</div><div class="stat-val ${wr>=80?'green':wr>=60?'yellow':'red'}">${wr}%</div></div>
+        <div class="stat-box"><div class="stat-lbl">Total P&L</div><div class="stat-val ${net>=0?'green':'red'}">${net>=0?'+':''}$${Math.abs(net).toFixed(2)}</div></div>
+        <div class="stat-box"><div class="stat-lbl">W / L</div><div class="stat-val">${wins.length} / ${losses.length}</div></div>
+        <div class="stat-box"><div class="stat-lbl">Current Streak</div><div class="stat-val ${streakType==='win'?'green':'red'}">${streak}${streakType==='win'?' 🟢':' 🔴'}</div></div>
+        <div class="stat-box"><div class="stat-lbl">Avg Win $</div><div class="stat-val green">+$${avgW}</div></div>
+        <div class="stat-box"><div class="stat-lbl">Avg Loss $</div><div class="stat-val red">-$${avgL}</div></div>
+        <div class="stat-box"><div class="stat-lbl">Rules %</div><div class="stat-val ${rulesPct>=90?'green':rulesPct>=70?'yellow':'red'}">${rulesPct}%</div></div>
+        <div class="stat-box"><div class="stat-lbl">R:R</div><div class="stat-val yellow">${avgL>0?(avgW/avgL).toFixed(2):'—'}</div></div>
+      </div>
+    </div>
+    ${best&&(best.pnl_dollar||0)>0?`
+    <div class="card">
+      <div class="card-title">Best Trade</div>
+      <div class="trade-row">
+        <div><div class="tr-ticker">${best.ticker} <span class="badge badge-win">win</span></div><div class="tr-meta">${best.date} · $${best.entry_price}${best.exit_price?' → $'+best.exit_price:''}</div></div>
+        <div class="tr-pnl green">+$${(best.pnl_dollar).toFixed(2)}</div>
+      </div>
+    </div>`:''}
+    <div style="text-align:center;margin-top:4px;">
+      <button class="btn btn-muted btn-sm" onclick="if(confirm('Delete ALL logged trades? This cannot be undone.')){localStorage.removeItem(STORE);trades=[];renderStats();}">Clear All Data</button>
+    </div>`;
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('lt-date').valueAsDate = new Date();
+  load();
+});
+</script>
+</body>
+</html>
