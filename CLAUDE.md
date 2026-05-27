@@ -1,6 +1,6 @@
 # tradingbaby — Claude Code Briefing
 
-> Auto-loaded every session. Updated by PreCompact hook. Last manual update: 2026-05-27.
+> Auto-loaded every session. Updated by PreCompact hook. Last manual update: 2026-05-27 (end of day).
 
 ## What this project is
 
@@ -84,6 +84,27 @@ Re-entries seen in 18 of 52 historical trades (35%).
 - Midday 10:30am–3pm = avoid (chop kills momentum)
 - Power hour 3–4pm = small size only
 
-## Trade Data Summary
+## Trade Data Summary (Historical)
 - **101 trades** | 2026-03-23 to 2026-04-30 | 99W / 2L | **98.0% win rate**
 - Avg winner: +53.7% | Avg loser: -13.5% | Best: UGRO +692.0%
+
+## Live Trading — positivitysparkles (started 2026-05-26)
+- **5 real trades** | 4W / 1L | **80% win rate**
+- Schwab Roth: $113 → $138.20 | Webull: $21 → $26.20 | **Total: $164.40**
+- Best trade: QTTB +22.2% (+$25.20) | Only loss: YMAT chase -7.8% (-$2.52)
+- Journal: `journal/weekly_log.json`
+
+## Critical Rules (burned in)
+1. **3% rule** — never enter more than 3% above BUY signal price
+2. **K=100 + SELL fired** = exit immediately, no exceptions
+3. **Cash account on Webull** = no PDT rule, unlimited day trades (use settled funds)
+4. **Good faith violations** — don't buy with unsettled funds then sell same day (3 = 90-day freeze)
+5. **Position size UP** at clean premarket setups — small size = small profit even on big % moves
+6. **Remove MACD + Supertrend** from charts — not W118 indicators
+7. **The waiting game IS the game** — 90% watching, 10% clicking
+
+## Training Materials
+- `training/pattern_recognition_guide.png` — 18×22 infographic (3 patterns, Stoch RSI guide, etc.)
+- `training/flashcards/` — 14 flashcards (make_cards.py + make_card14.py)
+- `training/flashcards/card_stories.md` — memory stories for all 14 cards
+- **Pending:** Card 14 memory story still needs to be added to card_stories.md
