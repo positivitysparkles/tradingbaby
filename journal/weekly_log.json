@@ -1,49 +1,150 @@
 {
-  "week": "2026-05-18 to 2026-05-22",
+  "week": "2026-05-26 to 2026-05-30",
   "account_start": {
-    "schwab": 150.00,
-    "webull": 23.00,
-    "total": 173.00
+    "schwab": 113.00,
+    "webull": 21.00,
+    "total": 134.00
   },
   "account_end": {
-    "schwab": 150.00,
-    "webull": 23.00,
-    "total": 173.00
+    "schwab": 138.20,
+    "webull": 26.20,
+    "total": 164.40
   },
   "goal_win_rate": 80,
   "trades": [
     {
-      "date": "",
-      "ticker": "",
+      "date": "2026-05-26",
+      "ticker": "YMAT",
       "account": "schwab",
-      "entry_price": 0,
-      "exit_price": 0,
-      "shares": 0,
-      "pnl_pct": 0,
-      "pnl_dollar": 0,
+      "entry_price": 1.37,
+      "exit_price": 1.68,
+      "shares": 18,
+      "pnl_pct": 22.6,
+      "pnl_dollar": 5.58,
       "result": "win",
+      "rules": {
+        "stoch_rsi_cross_20": true,
+        "sha_green": true,
+        "above_zlsma": true,
+        "volume_1_5x": true,
+        "float_under_20m": true,
+        "session_4am_1030am": true
+      },
+      "all_rules_followed": true,
+      "exit_reason": "T1 target hit",
+      "notes": "Clean W118 entry. Held well. First real win."
+    },
+    {
+      "date": "2026-05-26",
+      "ticker": "YMAT",
+      "account": "schwab",
+      "entry_price": 1.79,
+      "exit_price": 1.65,
+      "shares": 18,
+      "pnl_pct": -7.8,
+      "pnl_dollar": -2.52,
+      "result": "loss",
       "rules": {
         "stoch_rsi_cross_20": false,
         "sha_green": false,
-        "above_zlsma": false,
-        "volume_1_5x": false,
-        "float_under_20m": false,
-        "session_4am_1030am": false
+        "above_zlsma": true,
+        "volume_1_5x": true,
+        "float_under_20m": true,
+        "session_4am_1030am": true
       },
       "all_rules_followed": false,
-      "exit_reason": "",
-      "notes": ""
+      "exit_reason": "Stop loss -8% area",
+      "notes": "CHASED 30% above BUY signal. W118 BUY fired at $1.37, entered at $1.79. Classic bus-chasing mistake. Lesson: 3% rule — never enter more than 3% above signal."
+    },
+    {
+      "date": "2026-05-27",
+      "ticker": "QTTB",
+      "account": "schwab",
+      "entry_price": 9.45,
+      "exit_price": 11.55,
+      "shares": 12,
+      "pnl_pct": 22.2,
+      "pnl_dollar": 25.20,
+      "result": "win",
+      "rules": {
+        "stoch_rsi_cross_20": true,
+        "sha_green": true,
+        "above_zlsma": true,
+        "volume_1_5x": true,
+        "float_under_20m": true,
+        "session_4am_1030am": true
+      },
+      "all_rules_followed": false,
+      "exit_reason": "W118 SELL fired + K=100 overbought + halt resume",
+      "notes": "Entry was 12.9% above BUY signal ($8.37) — technically a chase but worked. Held through halt-up. Sold right when SELL fired. Textbook exit. Should have entered at $8.37 for +37% instead of +22%."
+    },
+    {
+      "date": "2026-05-27",
+      "ticker": "QTTB",
+      "account": "webull",
+      "entry_price": 11.25,
+      "exit_price": 11.75,
+      "shares": 2,
+      "pnl_pct": 4.4,
+      "pnl_dollar": 1.00,
+      "result": "win",
+      "rules": {
+        "stoch_rsi_cross_20": true,
+        "sha_green": true,
+        "above_zlsma": true,
+        "volume_1_5x": true,
+        "float_under_20m": true,
+        "session_4am_1030am": true
+      },
+      "all_rules_followed": true,
+      "exit_reason": "Re-entry scalp, quick exit +4.4%",
+      "notes": "Quick scalp on QTTB re-entry. Clean in and out. 8 minutes."
+    },
+    {
+      "date": "2026-05-27",
+      "ticker": "ASTC",
+      "account": "webull",
+      "entry_price": 9.42,
+      "exit_price": 10.47,
+      "shares": 4,
+      "pnl_pct": 11.1,
+      "pnl_dollar": 4.20,
+      "result": "win",
+      "rules": {
+        "stoch_rsi_cross_20": true,
+        "sha_green": true,
+        "above_zlsma": true,
+        "volume_1_5x": true,
+        "float_under_20m": true,
+        "session_4am_1030am": true
+      },
+      "all_rules_followed": true,
+      "exit_reason": "Sold on 1m chart climbing signal",
+      "notes": "Went to $11 after exit — missed $8.48 on 4 shares. Not a mistake to sell, just small position size. A+ entry was $5.54 premarket. Entered late at $9.42 (+69% from signal) but still caught +11%. Position sizing lesson: when setup is this clean from premarket, go bigger at the original signal."
+    }
+  ],
+  "paper_trades": [
+    {
+      "date": "2026-05-27",
+      "ticker": "BRTX",
+      "platform": "tradingview_paper",
+      "entry_price": 0.41,
+      "exit_price": 0.44,
+      "shares": 1000,
+      "pnl_dollar": 30.00,
+      "pnl_pct": 7.3,
+      "notes": "Paper trade. Stock ran +72% on day. Exited early at $0.44 — could have held to $0.47+. Good practice run on re-entry setup."
     }
   ],
   "summary": {
-    "total_trades": 0,
-    "wins": 0,
-    "losses": 0,
-    "win_rate_pct": 0,
-    "rules_followed_pct": 0,
-    "total_pnl_dollar": 0,
-    "best_trade": "",
-    "worst_trade": "",
-    "lesson_of_the_week": ""
+    "total_real_trades": 5,
+    "wins": 4,
+    "losses": 1,
+    "win_rate_pct": 80.0,
+    "rules_followed_pct": 80,
+    "total_pnl_dollar": 33.46,
+    "best_trade": "QTTB Schwab +$25.20 (+22.2%)",
+    "worst_trade": "YMAT chase -$2.52 (-7.8%)",
+    "lesson_of_the_week": "The waiting game IS the game. 90% watching, 10% clicking. Never chase more than 3% above BUY signal. Position size UP when the setup fires clean from premarket — that's where the real money is made."
   }
 }
