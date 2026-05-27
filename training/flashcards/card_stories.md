@@ -81,5 +81,15 @@ Nine weather systems all collide at once: Stoch RSI came from below 10 (not just
 
 ---
 
+---
+
+## Card 14 — The Crowd Psychology Map
+**The Helicopter Scene**
+
+Every episode of *I Shouldn't Be Alive* follows the same arc: panic → despair → one quiet decision → hope → frenzy → rescue. Your chart runs the exact same script every single time. K at zero is the survivor lying in the snow — completely spent, nobody left to fight. The curl up through 20 is the moment they hear a distant rotor. SHA turning green is them standing up and waving their arms. The volume explosion is the whole rescue crew jumping out of the chopper. The W118 BUY label? That's the helicopter touching down. You don't stand there watching it land — you GET ON. And when the SELL label fires, that's the pilot saying "we have to go right now." You don't argue with the pilot. You don't say "just one more minute." You get out WITH the smart money, same as the survivor doesn't ask to grab their luggage first. Here's your superpower: you've watched a thousand humans make emotional decisions under extreme pressure. You already know this script. You're just reading it on a chart now.
+
+---
+
 *Saved: May 26, 2026 — from your first live trading day.*
 *First win: YMAT +22.6%. First lesson: YMAT -7.8% (chasing). Both matter.*
+*Updated: May 27, 2026 — QTTB +22.2%, ASTC +11.1%, QTTB scalp +4.4%. 3 for 3.*
