@@ -244,6 +244,7 @@
   <div class="btn-row" style="margin-top:16px;">
     <button class="btn btn-blue"  onclick="exportCSV()">Export CSV</button>
     <button class="btn btn-muted" onclick="importHistorical()">Import W118 Historical</button>
+    <button class="btn btn-green" onclick="importWeeklyLog()">Load Weekly Log</button>
   </div>
   <div id="import-status" style="font-size:11px;color:var(--muted);margin-top:6px;"></div>
 </aside>
@@ -309,7 +310,7 @@
 
 <script>
 const STORAGE_KEY = 'tradingbaby_trades';
-const ACCOUNT_START = 173;
+const ACCOUNT_START = 213;
 const CONDITIONS = ['stoch','sha','zlsma','vol','float','cat'];
 const COND_LABELS = ['Stoch RSI','SHA Green','ZLSMA-50','Vol Surge','Float OK','Catalyst'];
 
@@ -496,6 +497,56 @@ function clearForm() {
   document.getElementById('f-catalyst').value = '';
   document.getElementById('f-reentry').value = 'false';
   CONDITIONS.forEach(c => { const el = document.getElementById('c-'+c); if(el) el.checked=false; });
+}
+
+// ── Import Weekly Log ────────────────────────────────────────────────────────
+async function importWeeklyLog() {
+  const status = document.getElementById('import-status');
+  status.textContent = 'Loading weekly_log.json…';
+  try {
+    const res = await fetch('weekly_log.json?_=' + Date.now());
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const incoming = data.trades || [];
+    const existing = new Set(trades.map(t => `${t.date}|${t.ticker}|${t.entry_price}`));
+    let added = 0;
+    incoming.forEach(t => {
+      const key = `${t.date}|${t.ticker}|${t.entry_price}`;
+      if (!existing.has(key)) {
+        trades.push({
+          id:          Date.now() + Math.random(),
+          date:        t.date,
+          ticker:      t.ticker,
+          entry_price: t.entry_price,
+          high:        t.exit_price || null,
+          pct_gain:    Math.abs(t.pnl_pct || 0),
+          session:     (t.rules && t.rules.session_4am_1030am) ? 'PM' : 'RTH',
+          result:      t.result,
+          grade:       t.all_rules_followed ? 'A' : 'B',
+          catalyst:    '',
+          is_re_entry: false,
+          note:        t.notes || '',
+          source:      'weekly_log',
+          conditions: {
+            stoch: !!(t.rules && t.rules.stoch_rsi_cross_20),
+            sha:   !!(t.rules && t.rules.sha_green),
+            zlsma: !!(t.rules && t.rules.above_zlsma),
+            vol:   !!(t.rules && t.rules.volume_1_5x),
+            float: !!(t.rules && t.rules.float_under_20m),
+            cat:   true
+          }
+        });
+        existing.add(key);
+        added++;
+      }
+    });
+    save(); computeStats(); renderTable();
+    status.textContent = `Loaded ${added} trade(s) from weekly log. Total: ${trades.length}.`;
+    status.style.color = 'var(--green)';
+  } catch(err) {
+    status.textContent = 'Failed: ' + err.message;
+    status.style.color = 'var(--red)';
+  }
 }
 
 // ── Import Historical ────────────────────────────────────────────────────────
