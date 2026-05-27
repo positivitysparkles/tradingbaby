@@ -1,14 +1,24 @@
 {
   "week": "2026-05-26 to 2026-05-30",
+  "account_structure": {
+    "schwab_roth_ira": "~$4329.60 total — mostly long-term holdings + active W118 day trades (QTTB)",
+    "schwab_margin": "Active trading account — YMAT 87-share position held here",
+    "webull_margin": "$23 — small trades, subject to PDT (use sparingly)",
+    "webull_cash": "$31 — primary W118 day trading account (no PDT rule)"
+  },
   "account_start": {
-    "schwab": 113.00,
-    "webull": 21.00,
-    "total": 134.00
+    "schwab_roth": 4329.60,
+    "schwab_margin": 159.54,
+    "webull_margin": 24.34,
+    "webull_cash": 29.24,
+    "active_trading_total": 213.12
   },
   "account_end": {
-    "schwab": 138.20,
-    "webull": 26.20,
-    "total": 164.40
+    "schwab_roth": 4354.80,
+    "schwab_margin": 123.00,
+    "webull_margin": 23.00,
+    "webull_cash": 31.00,
+    "active_trading_total": 177.00
   },
   "goal_win_rate": 80,
   "trades": [
@@ -121,6 +131,28 @@
       "all_rules_followed": true,
       "exit_reason": "Sold on 1m chart climbing signal",
       "notes": "Went to $11 after exit — missed $8.48 on 4 shares. Not a mistake to sell, just small position size. A+ entry was $5.54 premarket. Entered late at $9.42 (+69% from signal) but still caught +11%. Position sizing lesson: when setup is this clean from premarket, go bigger at the original signal."
+    },
+    {
+      "date": "2026-05-26",
+      "ticker": "YMAT",
+      "account": "schwab_margin",
+      "entry_price": 1.49,
+      "exit_price": 1.07,
+      "shares": 87,
+      "pnl_pct": -28.2,
+      "pnl_dollar": -36.54,
+      "result": "loss",
+      "rules": {
+        "stoch_rsi_cross_20": true,
+        "sha_green": true,
+        "above_zlsma": true,
+        "volume_1_5x": true,
+        "float_under_20m": true,
+        "session_4am_1030am": true
+      },
+      "all_rules_followed": false,
+      "exit_reason": "Manual cut after overnight hold — Pattern A fade, ZLSMA breakdown",
+      "notes": "Entered $1.49 without setting -8% stop ($1.371). Held overnight while stock broke below ZLSMA (Pattern A fade). Cut at $1.07 on May 27. Stop would have saved $26.19 — total cost $36.54 vs $10.35 with stop. THE airbag lesson. Never hold below ZLSMA. Never skip stop loss."
     }
   ],
   "paper_trades": [
@@ -137,14 +169,14 @@
     }
   ],
   "summary": {
-    "total_real_trades": 5,
+    "total_real_trades": 6,
     "wins": 4,
-    "losses": 1,
-    "win_rate_pct": 80.0,
-    "rules_followed_pct": 80,
-    "total_pnl_dollar": 33.46,
+    "losses": 2,
+    "win_rate_pct": 66.7,
+    "rules_followed_pct": 67,
+    "total_pnl_dollar": -3.08,
     "best_trade": "QTTB Schwab +$25.20 (+22.2%)",
-    "worst_trade": "YMAT chase -$2.52 (-7.8%)",
-    "lesson_of_the_week": "The waiting game IS the game. 90% watching, 10% clicking. Never chase more than 3% above BUY signal. Position size UP when the setup fires clean from premarket — that's where the real money is made."
+    "worst_trade": "YMAT overnight hold -$36.54 (-28.2%) — missed stop loss",
+    "lesson_of_the_week": "The stop loss IS the trade. Never hold below ZLSMA overnight. Never skip the -8% stop. The airbag doesn't work if you unbuckle it. Also: the waiting game IS the game — 90% watching, 10% clicking. Never chase more than 3% above BUY signal."
   }
 }
