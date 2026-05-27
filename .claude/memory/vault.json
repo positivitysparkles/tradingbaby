@@ -1,0 +1,391 @@
+{
+  "project": "tradingbaby",
+  "system_name": "Curl if Flow",
+  "author": "Weatherman118",
+  "last_compact": "2026-05-27T21:08:29Z",
+  "last_manual_update": "2026-05-27T17:00:00Z",
+  "compact_count": 10,
+  "goal": "Reverse-engineer Weatherman118's exact entry + exit system. Paper trade until 80%+ consistent win rate, then go live. ONE Pine Script = his secret sauce. Perfect it over time.",
+  "confirmed_entry_conditions": {
+    "stoch_rsi": {
+      "trigger": "K crosses UP through 20 from below \u2014 ta.crossover(k, 20)",
+      "requirement": "K must be above D at trigger",
+      "pre_entry_state": "K typically at 0-10 before cross (near absolute zero)",
+      "settings": "RSI=14, Stoch=14, K_smooth=3, D_smooth=3, Source=Close"
+    },
+    "smoothed_ha": {
+      "trigger": "Current candle must be green (sha_close > sha_open)",
+      "calculation": "Double EMA(10,10) on Heikin Ashi values",
+      "note": "First green candle after red = curl forming"
+    },
+    "zlsma_50": {
+      "trigger": "Price (close) must be ABOVE ZLSMA-50",
+      "formula": "2 * EMA(close,50) - EMA(EMA(close,50),50)",
+      "rule": "NEVER enter if price is below ZLSMA-50 \u2014 trade is invalid"
+    },
+    "volume": {
+      "trigger": "Volume >= 1.5x the 20-bar average",
+      "weight": "confirming (not critical)"
+    },
+    "float": "< 20M shares, /home/user/tradingbaby/.claude/hooks/pre-compact-vault.sh.10-/home/user/tradingbaby/.claude/memory/vault.json5, NASDAQ only",
+    "catalyst": "Tier 1 (FDA/merger/earnings), Tier 2 (halt-resume/sympathy), Tier 3 (China momentum)"
+  },
+  "confirmed_exit_rules": {
+    "hard_stop": "-8% from entry \u2014 no exceptions",
+    "T1": "+15% \u2014 trim 1/3, move stop to breakeven",
+    "T2": "+30% \u2014 trim 1/3 of original, trail 10%",
+    "T3": "+60% \u2014 trail 10% on final 1/3",
+    "sha_exit": "SHA flips red for 2+ consecutive candles",
+    "zlsma_exit": "Price closes below ZLSMA-50",
+    "stoch_exit": "Stoch RSI K crosses back below 20"
+  },
+  "fast_exit_rules_3x": {
+    "description": "Data-derived from 101-trade analysis. All 3 toggled ON by default in Pine Script.",
+    "rule1_k_depth": {
+      "description": "K must have been below 10 within the 3 bars before the crossover",
+      "pine": "k_was_low = k[1] < 10 or k[2] < 10 or k[3] < 10"
+    },
+    "rule2_time_gate": {
+      "description": "Only enter 4:00am\u201310:30am New York time",
+      "pine": "in_fast_session = (bar_hour >= 4) and (bar_hour < 10 or (bar_hour == 10 and bar_minute <= 30))"
+    },
+    "rule3_hard_t2": {
+      "description": "Exit 100% at T2 (+30%). No trailing to T3.",
+      "pine": "strategy.exit('T2all', 'Long', limit=t2_level, qty_percent=100)"
+    }
+  },
+  "crowd_psychology_map": {
+    "K_0_10": "CAPITULATION \u2014 last sellers gave up. Nobody left to sell.",
+    "K_curls_up_through_20": "THE SHIFT \u2014 one quiet buyer stepped in. Crowd notices.",
+    "SHA_green": "HOPE \u2014 buyers winning the minute-to-minute battle.",
+    "volume_explodes_10x": "FRENZY \u2014 the whole city showed up. Fuel is here.",
+    "price_holds_above_ZLSMA": "BELIEF \u2014 rational buyers defending the floor.",
+    "W118_BUY_fires": "THE HELICOPTER \u2014 all systems green. Act NOW. No hesitation.",
+    "W118_SELL_fires": "PARTY IS OVER \u2014 smart money leaving. Get out WITH them.",
+    "user_superpower": "Cross-domain pattern recognition. Watches humans make emotional decisions under pressure (I Shouldn't Be Alive, podcasts). Trading IS that same show."
+  },
+  "account_status": {
+    "last_updated": "2026-05-27",
+    "schwab_roth": {
+      "start_of_week": 113.0,
+      "current": 138.2,
+      "notes": "QTTB trade +$25.20"
+    },
+    "webull_real": {
+      "start_of_week": 21.0,
+      "current": 26.2,
+      "notes": "QTTB scalp +$1, ASTC +$4.20"
+    },
+    "total": {
+      "start_of_week": 134.0,
+      "current": 164.4,
+      "gain_this_week": 30.4
+    },
+    "account_type_recommendation": "Use Webull CASH account (not margin) to avoid PDT rule. Cash account = unlimited day trades as long as you use settled funds."
+  },
+  "webull_rules": {
+    "pdt_rule": "Pattern Day Trader rule ONLY applies to margin accounts under $25,000. 4+ day trades in 5-day rolling window = PDT flagged = restricted to 3 day trades/week.",
+    "cash_account": {
+      "pdt_applies": false,
+      "day_trades_allowed": "unlimited",
+      "settlement": "T+2 (funds settle 2 business days after sale)",
+      "instant_buying_power": "Up to $1,000 Webull instant settlement buffer",
+      "good_faith_violation": "Buying with unsettled funds then selling same day = violation. 3 violations in 12 months = 90-day restriction to settled-cash-only."
+    },
+    "safe_cash_workflow": "Start with settled cash \u2192 buy \u2192 sell same day (OK) \u2192 wait T+2 before reusing proceeds, OR use Webull instant buying power buffer."
+  },
+  "live_trades_log": {
+    "2026-05-26": [
+      {
+        "ticker": "YMAT",
+        "account": "schwab",
+        "entry": 1.37,
+        "exit": 1.68,
+        "shares": 18,
+        "pnl_pct": 22.6,
+        "pnl_dollar": 5.58,
+        "result": "WIN",
+        "lesson": "Clean W118 entry. First real win."
+      },
+      {
+        "ticker": "YMAT",
+        "account": "schwab",
+        "entry": 1.79,
+        "exit": 1.65,
+        "shares": 18,
+        "pnl_pct": -7.8,
+        "pnl_dollar": -2.52,
+        "result": "LOSS",
+        "lesson": "Chased 30% above BUY signal ($1.37). 3% rule violated. Classic bus-chasing mistake."
+      }
+    ],
+    "2026-05-27": [
+      {
+        "ticker": "QTTB",
+        "account": "schwab",
+        "entry": 9.45,
+        "exit": 11.55,
+        "shares": 12,
+        "pnl_pct": 22.2,
+        "pnl_dollar": 25.2,
+        "result": "WIN",
+        "lesson": "Entry was 12.9% above BUY signal (chase) but held through halt-up and exited clean on SELL signal + K=100."
+      },
+      {
+        "ticker": "QTTB",
+        "account": "webull",
+        "entry": 11.25,
+        "exit": 11.75,
+        "shares": 2,
+        "pnl_pct": 4.4,
+        "pnl_dollar": 1.0,
+        "result": "WIN",
+        "lesson": "Quick 8-min scalp on re-entry. Clean."
+      },
+      {
+        "ticker": "ASTC",
+        "account": "webull",
+        "entry": 9.42,
+        "exit": 10.47,
+        "shares": 4,
+        "pnl_pct": 11.1,
+        "pnl_dollar": 4.2,
+        "result": "WIN",
+        "lesson": "Went to $11 after exit. Small position = small miss. A+ entry was $5.54 premarket. Position size up at the original signal next time."
+      }
+    ],
+    "running_totals": {
+      "real_trades": 5,
+      "wins": 4,
+      "losses": 1,
+      "win_rate": "80%",
+      "total_pnl": 33.46,
+      "best_trade": "QTTB Schwab +$25.20 (+22.2%)"
+    }
+  },
+  "user_profile": {
+    "name": "positivitysparkles",
+    "learning_style": "Cross-domain pattern recognition. Sees crowd psychology loops in survival shows (I Shouldn't Be Alive), podcasts, real life. Trading is reading human emotion, not math.",
+    "strengths": [
+      "Pattern recognition across domains",
+      "Emotional discipline improving fast",
+      "Knows when to stop for the day",
+      "Takes wins without greed",
+      "Patient on the wait game"
+    ],
+    "areas_to_improve": [
+      "3% rule \u2014 still chasing occasionally",
+      "Position sizing \u2014 going bigger at clean premarket setups",
+      "Entering at the BUY signal price, not 10-30% above it"
+    ],
+    "confidence_level": "Growing. Day 2 of live trading. 3 wins, 1 loss on real money. Feeling more chill on the wait game.",
+    "account_size_context": "Trading $20-40 per account right now \u2014 intentionally small. Building muscle memory. When skill is proven, scale up.",
+    "podcast_vision": "Building toward a trading podcast / teaching others using this system and psychological framework.",
+    "divine_inspo": "User has gut-feel pattern recognition that fires before the indicator confirms \u2014 treat this as edge, not noise."
+  },
+  "training_materials": {
+    "pattern_recognition_guide": "training/pattern_recognition_guide.png \u2014 18x22 infographic: 3 patterns (A/B/C), Stoch RSI at close guide, ZLSMA rules, entry mistakes, rel volume guide, 6 entry conditions",
+    "flashcards": {
+      "location": "training/flashcards/",
+      "count": 14,
+      "generator_main": "training/flashcards/make_cards.py (cards 01-13)",
+      "generator_card14": "training/flashcards/make_card14.py (crowd psychology map)",
+      "stories": "training/flashcards/card_stories.md \u2014 memory stories for all 14 cards",
+      "pending": "Card 14 memory story still needs to be added to card_stories.md"
+    }
+  },
+  "end_of_day_patterns": {
+    "pattern_A_fade": "First red day. Price below ZLSMA at close. Skip \u2014 don't show up for leftovers.",
+    "pattern_B_runner": "Multi-day runner. Still above ZLSMA, K resetting overnight. Watch for next day re-entry.",
+    "pattern_C_accumulation": "Sold off all day, K near zero at close. BEST setup. BUY fires by 4am next morning.",
+    "stoch_k_at_close_guide": {
+      "K_0_10": "Perfect reset \u2014 fires by 4am",
+      "K_10_25": "Nearly reset \u2014 fires early premarket",
+      "K_25_50": "Partial reset \u2014 may fire mid-morning",
+      "K_50_80": "Not reset \u2014 skip next day",
+      "K_80_100": "Overbought \u2014 avoid completely"
+    }
+  },
+  "pine_script_status": {
+    "file": "pine-script/weatherman118-curl-flow.pine",
+    "version": "v3 \u2014 3 fast-exit rules added 2026-05-02",
+    "branch": "claude/push-tradingbaby-ESEFn",
+    "features": [
+      "Green BUY label showing [PM] or [RTH] profile + K value at entry",
+      "Red EXIT label when position closes",
+      "Dashed lines at entry: red=stop(-8%), lime=T1(+15%), green=T2(+30%), teal=T3(+60%)",
+      "Orange warning: SHA turns red 2+ consecutive candles",
+      "Red warning: K drops below 20",
+      "Red warning: price breaks below ZLSMA-50",
+      "Gray SKIP label: base signal fires but blocked by fast-exit rules",
+      "Green/red background = above/below ZLSMA flow zone",
+      "7 alertconditions for mobile notifications"
+    ],
+    "known_limitation": "Strategy Tester is UNRELIABLE with SHA scripts. Non-standard chart warning = meaningless numbers. Use manual trade log.",
+    "remove_from_charts": "Remove Supertrend and MACD \u2014 not part of W118 system. Only need: W118 Pine Script + Stoch RSI pane + Volume."
+  },
+  "chart_data_extracted": {
+    "YAAS_1m": {
+      "K": 37.04,
+      "D": 24.35,
+      "context": "Curling through 20s at entry"
+    },
+    "YAAS_5m": {
+      "K": 93.42,
+      "D": 89.62,
+      "context": "Overbought during run"
+    },
+    "BIYA_5m": {
+      "K": 9.29,
+      "D": 7.11,
+      "context": "Near zero pre-spike"
+    },
+    "BIYA_1m": {
+      "K": 18.24,
+      "D": 7.78,
+      "context": "Sub-20 curling at entry"
+    },
+    "ATER_5m": {
+      "K": 0.69,
+      "D": 0.0,
+      "context": "Absolute zero pre-spike"
+    },
+    "ATER_1m": {
+      "K": 39.27,
+      "D": 19.49,
+      "context": "Curling through 20 at entry"
+    },
+    "AKAN_5m_reentry": {
+      "K": 14.41,
+      "D": 11.75,
+      "context": "Below 20 re-entry setup"
+    },
+    "SAGT_5m": {
+      "K": 1.7,
+      "D": 0.14,
+      "context": "Absolute zero pre-spike"
+    },
+    "SAGT_1m": {
+      "K": 41.21,
+      "D": 28.19,
+      "context": "Curling 20-40 at entry"
+    },
+    "SAFX_5m": {
+      "K": 17.53,
+      "D": 9.3,
+      "context": "Below 20 pre-spike"
+    },
+    "SAFX_1m": {
+      "K": 93.03,
+      "D": 81.91,
+      "context": "After move (overbought)"
+    },
+    "USEG_5m": {
+      "K": 16.38,
+      "D": 5.52,
+      "context": "Reset after PM spike"
+    },
+    "FATN_1m": {
+      "K": 58,
+      "D": 47,
+      "context": "Mid-range at entry \u2014 less ideal"
+    },
+    "FATN_5m": {
+      "K": 93,
+      "D": 81,
+      "context": "Overbought during run"
+    }
+  },
+  "key_insights": [
+    "Pre-entry Stoch RSI K is consistently 0-20 (usually 0-10) on 5m chart. ta.crossover(k,20) = start of spike, not chasing.",
+    "All 3 trade profiles (PM fresh, RTH fresh, re-entries) have 100% win rate \u2014 use all 3.",
+    "NEVER enter more than 3% above the BUY signal price. That's the bus-chasing rule.",
+    "K=100 + SELL label fired = exit immediately. Don't wait for more. Party is over.",
+    "K crossing below D at overbought levels (90+) = bearish rollover. Exit or skip.",
+    "Halt-up = hold through it if SELL hasn't fired. Resume = your exit window.",
+    "Position size UP at clean premarket setups. Small size = small profit even on big % moves.",
+    "Cash account = no PDT rule. Perfect for small accounts doing 1-3 trades/morning.",
+    "The waiting game IS the game. 90% watching, 10% clicking.",
+    "MNTS lesson: don't dismiss based on catalyst tier alone if float tiny and squeeze setup strong.",
+    "NEVER trust Strategy Tester with SHA scripts. Non-standard chart warning = meaningless."
+  ],
+  "trade_data_historical": {
+    "total_trades": 101,
+    "win_rate_pct": 98.0,
+    "wins": 99,
+    "losses": 2,
+    "avg_winner_pct": 53.7,
+    "avg_loser_pct": 13.5,
+    "best_trade": "UGRO +692.0%",
+    "pm_wins": 62,
+    "rth_wins": 37,
+    "date_range": "2026-03-23 to 2026-04-30"
+  },
+  "important_rules": {
+    "intraday_only": "NEVER hold overnight.",
+    "pdt_rule": "Use Webull CASH account \u2014 no PDT. Cash account = unlimited day trades with settled funds.",
+    "good_faith_violation": "Don't buy with unsettled funds then sell same day. 3 violations = 90-day restriction.",
+    "stop_discipline": "-8% stop is NON-NEGOTIABLE. No exceptions.",
+    "three_percent_rule": "Never enter more than 3% above the BUY signal price.",
+    "no_set_and_forget": "New stocks found each morning via scanner. Can't automate without daily scanner.",
+    "strategy_tester_warning": "UNRELIABLE with SHA scripts. Ignore those numbers.",
+    "one_pine_script": "ONE Pine Script: pine-script/weatherman118-curl-flow.pine. Perfect this over time.",
+    "one_branch": "ALWAYS use claude/push-tradingbaby-ESEFn. Never create new branches."
+  },
+  "github": {
+    "repo": "positivitysparkles/tradingbaby",
+    "branch": "claude/push-tradingbaby-ESEFn",
+    "google_drive_email": "iris.at.ps@positivitysparkles.com"
+  },
+  "roadmap": {
+    "now": "Real money, small size ($20-40/trade). Building muscle memory. 80% win rate target.",
+    "month_1_2": "Paper trade + small real money. 30+ trades minimum. Log every trade.",
+    "month_3": "Scale to $100-500/trade as win rate proves consistent.",
+    "month_4_6": "Reinvest profits, build toward $25k.",
+    "month_7_12": "At $25k: unlimited day trading unlocked. Compounding accelerates.",
+    "goal": "$25k account with 80%+ win rate = $40k-$60k by end of year 1",
+    "what_if_math": {
+      "500_account_QTTB_trade": "+$109 on same trade",
+      "1000_account_QTTB_trade": "+$220 on same trade",
+      "1000_account_3_trades_week_20pct_avg": "Compounds to ~$5,159 in 12 weeks"
+    }
+  },
+  "pending_tasks": [
+    "Run backtest_curl_if_flow.py against all 52 trades to measure signal capture %",
+    "Read March 23-28 PDF from Google Drive (Canva march 23-28 2026 day trades.pdf) \u2014 file was too large last attempt",
+    "Pine Script: optionally add pre-condition that K was below 10 before the crossover",
+    "Continue adding new Discord recaps to trades-parsed.json as user shares them",
+    "Paper trade system \u2014 use journal/index.html to log live trades",
+    "Build confidence to 843%+ win consistency before going live"
+  ],
+  "key_files": {
+    "trades": "/home/user/tradingbaby/data/trades-parsed.json",
+    "settings": "/home/user/tradingbaby/data/settings.json",
+    "pine_script": "/home/user/tradingbaby/pine-script/weatherman118-curl-flow.pine",
+    "journal": "/home/user/tradingbaby/journal/index.html",
+    "parser": "/home/user/tradingbaby/parser/discord_parser.py",
+    "backtest": "/home/user/tradingbaby/backtest/backtest_curl_if_flow.py",
+    "vault": "/home/user/tradingbaby/.claude/memory/vault.json"
+  },
+  "confirmed_reentry_rule": "Stoch RSI must RESET BELOW 20 and curl UP again \u2014 not just mid-range pullback",
+  "key_insight": "Pre-entry Stoch RSI K is consistently 0-20 (usually 0-10) on the 5m chart. Entry fires at the moment K crosses above 20. The Pine Script ta.crossover(k, 20) is correct. This IS the beginning of the spike \u2014 not chasing.",
+  "trade_data": {
+    "total_trades": 101,
+    "win_rate_pct": 98.0,
+    "wins": 99,
+    "losses": 2,
+    "avg_winner_pct": 53.7,
+    "avg_loser_pct": 13.5,
+    "best_trade": "UGRO +692.0%",
+    "pm_wins": 62,
+    "rth_wins": 37,
+    "date_range": "2026-03-23 to 2026-04-30"
+  },
+  "open_questions": [
+    "Exact Stoch RSI K value at entry \u2014 confirmed as 'crossing above 20' but is there a min pre-entry depth?",
+    "Does SHA need 2+ consecutive green candles or just the current one?",
+    "On re-entries: full reset below 20 confirmed \u2014 but does price need to touch ZLSMA-50?",
+    "Volume multiplier: 1.5x confirmed in settings \u2014 is it ever eyeballed higher?",
+    "Session timing: PM entries have higher win rate (56%) \u2014 is midday always avoided?"
+  ]
+}

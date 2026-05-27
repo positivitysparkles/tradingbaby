@@ -1,0 +1,182 @@
+{
+  "week": "2026-05-26 to 2026-05-30",
+  "account_structure": {
+    "schwab_roth_ira": "~$4329.60 total — mostly long-term holdings + active W118 day trades (QTTB)",
+    "schwab_margin": "Active trading account — YMAT 87-share position held here",
+    "webull_margin": "$23 — small trades, subject to PDT (use sparingly)",
+    "webull_cash": "$31 — primary W118 day trading account (no PDT rule)"
+  },
+  "account_start": {
+    "schwab_roth": 4329.60,
+    "schwab_margin": 159.54,
+    "webull_margin": 24.34,
+    "webull_cash": 29.24,
+    "active_trading_total": 213.12
+  },
+  "account_end": {
+    "schwab_roth": 4354.80,
+    "schwab_margin": 123.00,
+    "webull_margin": 23.00,
+    "webull_cash": 31.00,
+    "active_trading_total": 177.00
+  },
+  "goal_win_rate": 80,
+  "trades": [
+    {
+      "date": "2026-05-26",
+      "ticker": "YMAT",
+      "account": "schwab",
+      "entry_price": 1.37,
+      "exit_price": 1.68,
+      "shares": 18,
+      "pnl_pct": 22.6,
+      "pnl_dollar": 5.58,
+      "result": "win",
+      "rules": {
+        "stoch_rsi_cross_20": true,
+        "sha_green": true,
+        "above_zlsma": true,
+        "volume_1_5x": true,
+        "float_under_20m": true,
+        "session_4am_1030am": true
+      },
+      "all_rules_followed": true,
+      "exit_reason": "T1 target hit",
+      "notes": "Clean W118 entry. Held well. First real win."
+    },
+    {
+      "date": "2026-05-26",
+      "ticker": "YMAT",
+      "account": "schwab",
+      "entry_price": 1.79,
+      "exit_price": 1.65,
+      "shares": 18,
+      "pnl_pct": -7.8,
+      "pnl_dollar": -2.52,
+      "result": "loss",
+      "rules": {
+        "stoch_rsi_cross_20": false,
+        "sha_green": false,
+        "above_zlsma": true,
+        "volume_1_5x": true,
+        "float_under_20m": true,
+        "session_4am_1030am": true
+      },
+      "all_rules_followed": false,
+      "exit_reason": "Stop loss -8% area",
+      "notes": "CHASED 30% above BUY signal. W118 BUY fired at $1.37, entered at $1.79. Classic bus-chasing mistake. Lesson: 3% rule — never enter more than 3% above signal."
+    },
+    {
+      "date": "2026-05-27",
+      "ticker": "QTTB",
+      "account": "schwab",
+      "entry_price": 9.45,
+      "exit_price": 11.55,
+      "shares": 12,
+      "pnl_pct": 22.2,
+      "pnl_dollar": 25.20,
+      "result": "win",
+      "rules": {
+        "stoch_rsi_cross_20": true,
+        "sha_green": true,
+        "above_zlsma": true,
+        "volume_1_5x": true,
+        "float_under_20m": true,
+        "session_4am_1030am": true
+      },
+      "all_rules_followed": false,
+      "exit_reason": "W118 SELL fired + K=100 overbought + halt resume",
+      "notes": "Entry was 12.9% above BUY signal ($8.37) — technically a chase but worked. Held through halt-up. Sold right when SELL fired. Textbook exit. Should have entered at $8.37 for +37% instead of +22%."
+    },
+    {
+      "date": "2026-05-27",
+      "ticker": "QTTB",
+      "account": "webull",
+      "entry_price": 11.25,
+      "exit_price": 11.75,
+      "shares": 2,
+      "pnl_pct": 4.4,
+      "pnl_dollar": 1.00,
+      "result": "win",
+      "rules": {
+        "stoch_rsi_cross_20": true,
+        "sha_green": true,
+        "above_zlsma": true,
+        "volume_1_5x": true,
+        "float_under_20m": true,
+        "session_4am_1030am": true
+      },
+      "all_rules_followed": true,
+      "exit_reason": "Re-entry scalp, quick exit +4.4%",
+      "notes": "Quick scalp on QTTB re-entry. Clean in and out. 8 minutes."
+    },
+    {
+      "date": "2026-05-27",
+      "ticker": "ASTC",
+      "account": "webull",
+      "entry_price": 9.42,
+      "exit_price": 10.47,
+      "shares": 4,
+      "pnl_pct": 11.1,
+      "pnl_dollar": 4.20,
+      "result": "win",
+      "rules": {
+        "stoch_rsi_cross_20": true,
+        "sha_green": true,
+        "above_zlsma": true,
+        "volume_1_5x": true,
+        "float_under_20m": true,
+        "session_4am_1030am": true
+      },
+      "all_rules_followed": true,
+      "exit_reason": "Sold on 1m chart climbing signal",
+      "notes": "Went to $11 after exit — missed $8.48 on 4 shares. Not a mistake to sell, just small position size. A+ entry was $5.54 premarket. Entered late at $9.42 (+69% from signal) but still caught +11%. Position sizing lesson: when setup is this clean from premarket, go bigger at the original signal."
+    },
+    {
+      "date": "2026-05-26",
+      "ticker": "YMAT",
+      "account": "schwab_margin",
+      "entry_price": 1.49,
+      "exit_price": 1.07,
+      "shares": 87,
+      "pnl_pct": -28.2,
+      "pnl_dollar": -36.54,
+      "result": "loss",
+      "rules": {
+        "stoch_rsi_cross_20": true,
+        "sha_green": true,
+        "above_zlsma": true,
+        "volume_1_5x": true,
+        "float_under_20m": true,
+        "session_4am_1030am": true
+      },
+      "all_rules_followed": false,
+      "exit_reason": "Manual cut after overnight hold — Pattern A fade, ZLSMA breakdown",
+      "notes": "Entered $1.49 without setting -8% stop ($1.371). Held overnight while stock broke below ZLSMA (Pattern A fade). Cut at $1.07 on May 27. Stop would have saved $26.19 — total cost $36.54 vs $10.35 with stop. THE airbag lesson. Never hold below ZLSMA. Never skip stop loss."
+    }
+  ],
+  "paper_trades": [
+    {
+      "date": "2026-05-27",
+      "ticker": "BRTX",
+      "platform": "tradingview_paper",
+      "entry_price": 0.41,
+      "exit_price": 0.44,
+      "shares": 1000,
+      "pnl_dollar": 30.00,
+      "pnl_pct": 7.3,
+      "notes": "Paper trade. Stock ran +72% on day. Exited early at $0.44 — could have held to $0.47+. Good practice run on re-entry setup."
+    }
+  ],
+  "summary": {
+    "total_real_trades": 6,
+    "wins": 4,
+    "losses": 2,
+    "win_rate_pct": 66.7,
+    "rules_followed_pct": 67,
+    "total_pnl_dollar": -3.08,
+    "best_trade": "QTTB Schwab +$25.20 (+22.2%)",
+    "worst_trade": "YMAT overnight hold -$36.54 (-28.2%) — missed stop loss",
+    "lesson_of_the_week": "The stop loss IS the trade. Never hold below ZLSMA overnight. Never skip the -8% stop. The airbag doesn't work if you unbuckle it. Also: the waiting game IS the game — 90% watching, 10% clicking. Never chase more than 3% above BUY signal."
+  }
+}

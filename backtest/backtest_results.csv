@@ -1,0 +1,16 @@
+ticker,date,session,entry_price,day_high,reported_pct,signal_found,signal_time,signal_price,signal_k,signal_d,signal_to_high_pct,entry_vs_signal_pct,capture_pct,verdict,error
+AHMA,2026-03-23,RTH,6.5,8.39,30.0,False,,,,,,,,NO_DATA,No data from yfinance
+AIFF,2026-03-23,RTH,2.15,2.4,11.0,False,,,,,,,,NO_DATA,No data from yfinance
+BCG,2026-03-23,PM,2.95,3.83,30.0,False,,,,,,,,NO_DATA,No data from yfinance
+BIAF,2026-03-23,RTH,3.75,5.38,150.0,False,,,,,,,,NO_DATA,No data from yfinance
+CYCN,2026-03-23,PM,2.1,8.48,304.0,False,,,,,,,,NO_DATA,No data from yfinance
+GMEX,2026-03-23,PM,1.31,1.47,12.0,False,,,,,,,,NO_DATA,No data from yfinance
+MGRX,2026-03-23,PM,0.28,0.43,55.0,False,,,,,,,,NO_DATA,No data from yfinance
+RENX,2026-03-23,RTH,2.6,3.48,35.0,False,,,,,,,,NO_DATA,No data from yfinance
+TOVX,2026-03-23,PM,0.25,0.288,16.0,False,,,,,,,,NO_DATA,No data from yfinance
+UCAR,2026-03-23,RTH,0.65,0.88,35.0,False,,,,,,,,NO_DATA,No data from yfinance
+UGRO,2026-03-23,PM,3.15,4.33,37.0,False,,,,,,,,NO_DATA,No data from yfinance
+UGRO,2026-03-23,RTH,3.45,4.33,25.0,False,,,,,,,,NO_DATA,No data from yfinance
+ANNA,2026-03-24,PM,5.45,7.34,35.0,False,,,,,,,,NO_DATA,No data from yfinance
+ANNA,2026-03-24,RTH,7.25,8.61,19.0,False,,,,,,,,NO_DATA,No data from yfinance
+BFRG,2026-03-24,PM,1.26,1.96,55.0,False,,,,,,,,NO_DATA,No data from yfinance

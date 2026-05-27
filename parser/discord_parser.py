@@ -65,6 +65,7 @@ HISTORICAL_TRADES = [
     {"date":"2026-03-24","ticker":"ELAB","entry_price":2.90,"session":"PM","high":8.57,"pct_gain":195.0,"result":"win","is_re_entry":True,"multi_entry":True,"source":"recap","note":"initial 2.90, adds at 4.00"},
 ]
 
+# Pattern: $TICKER on its own line, then entry line with price, session, high, gain
 TICKER_RE   = re.compile(r'^\$([A-Z]{1,6})\s*$', re.MULTILINE)
 ENTRY_RE    = re.compile(
     r'[Ee]ntr(?:y|ies)\s+([\d.]+)\s+'
@@ -102,6 +103,7 @@ def parse_date(text: str) -> str:
 def parse_text(text: str, trade_date: str | None = None) -> list[dict]:
     trades = []
     blocks = re.split(r'\n{2,}', text.strip())
+
     for block in blocks:
         ticker_m = TICKER_RE.search(block)
         if not ticker_m:
@@ -109,6 +111,7 @@ def parse_text(text: str, trade_date: str | None = None) -> list[dict]:
         ticker = ticker_m.group(1)
         block_date = trade_date or parse_date(block)
         is_re = bool(REENTRY_RE.search(block))
+
         for entry_m in ENTRY_RE.finditer(block):
             trade = {
                 "date":        block_date,
@@ -123,6 +126,7 @@ def parse_text(text: str, trade_date: str | None = None) -> list[dict]:
                 "source":      "recap",
             }
             trades.append(trade)
+
     return trades
 
 

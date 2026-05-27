@@ -1,0 +1,32 @@
+{
+  "_comment": "Curl if Flow — scanner config. Edit this file with your keys and settings.",
+
+  "discord_webhook_url": "",
+  "telegram_bot_token": "",
+  "telegram_chat_id": "",
+
+  "paper_account_size": 5000,
+  "risk_per_trade_pct": 2.0,
+  "stop_loss_pct": 8.0,
+  "t1_pct": 15.0,
+  "t2_pct": 30.0,
+  "t3_pct": 60.0,
+  "trail_pct": 10.0,
+
+  "vol_mult": 1.5,
+  "vol_lookback": 20,
+  "stoch_rsi_len": 14,
+  "stoch_len": 14,
+  "k_smooth": 3,
+  "d_smooth": 3,
+  "sha_len1": 10,
+  "sha_len2": 10,
+  "zlsma_len": 50,
+
+  "_notes": {
+    "discord_webhook_url": "Create a webhook in Discord: Server Settings → Integrations → Webhooks → Copy URL",
+    "telegram": "Create a bot via @BotFather, get token. For chat_id: message your bot, then visit https://api.telegram.org/bot<TOKEN>/getUpdates",
+    "data_source": "yfinance has ~15min delay for free. For real-time, use Alpaca: https://alpaca.markets (free paper trading account)",
+    "float_data": "Finviz has float data: pip install finviz. Free tier works for scanning."
+  }
+}

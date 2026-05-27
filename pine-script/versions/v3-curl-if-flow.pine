@@ -1,0 +1,211 @@
+// Weatherman118 "Curl if Flow" — NASDAQ Small-Cap Momentum System
+// Reverse-engineered by positivitysparkles
+// 5m chart | SHA + ZLSMA-50 + Stoch RSI (80/50/20)
+// INTRADAY ONLY — close same day, never hold overnight
+//
+// DATA-DERIVED FAST-EXIT RULES (from 101-trade analysis):
+//   Profile A: PM fresh entry  — 44 trades, 100% win, avg +41%
+//   Profile B: RTH fresh entry — 19 trades, 100% win, avg +27%
+//   Profile C: Re-entries      — 23 trades, 100% win, avg +75%
+//   Rule: exit at T2 (+30%) on ALL profiles = under 2 hours, 100% win
+//@version=5
+strategy("W118 Curl if Flow", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=25)
+
+// ─── INPUTS ───────────────────────────────────────────────────────────────────
+sha_len1     = input.int(10,   "SHA Smooth 1",      group="Smoothed Heikin Ashi")
+sha_len2     = input.int(10,   "SHA Smooth 2",      group="Smoothed Heikin Ashi")
+zlsma_len    = input.int(50,   "ZLSMA Length",      group="ZLSMA-50")
+rsi_len      = input.int(14,   "RSI Length",        group="Stoch RSI")
+stoch_len    = input.int(14,   "Stoch Length",      group="Stoch RSI")
+k_smooth     = input.int(3,    "K Smooth",          group="Stoch RSI")
+d_smooth     = input.int(3,    "D Smooth",          group="Stoch RSI")
+vol_mult     = input.float(1.5,"Volume Multiplier", group="Volume Filter")
+vol_lookback = input.int(20,   "Volume Lookback",   group="Volume Filter")
+stop_pct     = input.float(8.0,  "Stop Loss %",     group="Exits")
+t1_pct       = input.float(15.0, "T1 Target %",     group="Exits")
+t2_pct       = input.float(30.0, "T2 Target %",     group="Exits")
+
+// ─── FAST-EXIT FILTER RULES (data-derived — toggle on/off) ───────────────────
+// Rule 1: K depth pre-filter — K must have been < 10 before the curl
+//   Why: 101 trades show K near 0-10 before every entry. K<10 = sharper spike.
+use_k_depth  = input.bool(true,  "Rule 1: K depth filter (K was <10 before curl)", group="Fast-Exit Rules")
+k_depth_max  = input.int(10,     "  Max K value 1-3 bars before cross",             group="Fast-Exit Rules")
+
+// Rule 2: Session time gate — only enter 4:00am–10:30am ET
+//   Why: 82% of wins happen in PM or RTH open. Midday signals take hours or fail.
+use_time_gate = input.bool(true, "Rule 2: Session gate (4am–10:30am ET only)",     group="Fast-Exit Rules")
+
+// Rule 3: Hard T2 exit — close 100% at +30%, no trailing to T3
+//   Why: 82% of all wins exit at ≤60%. Forcing T2 = clean 1-2hr exit every time.
+use_hard_t2  = input.bool(true,  "Rule 3: Hard T2 exit (100% at +30%, no T3)",    group="Fast-Exit Rules")
+t3_pct       = input.float(60.0, "T3 Target %",     group="Exits")
+trail_pct    = input.float(10.0, "Trail Stop %",    group="Exits")
+
+// ─── SMOOTHED HEIKIN ASHI ─────────────────────────────────────────────────────
+ha_close = (open + high + low + close) / 4
+ha_open  = float(na)
+ha_open  := na(ha_open[1]) ? (open + close) / 2 : (nz(ha_open[1]) + nz(ha_close[1])) / 2
+ha_high  = math.max(high, math.max(ha_open, ha_close))
+ha_low   = math.min(low,  math.min(ha_open, ha_close))
+
+sha_close = ta.ema(ta.ema(ha_close, sha_len1), sha_len2)
+sha_open  = ta.ema(ta.ema(ha_open,  sha_len1), sha_len2)
+sha_high  = ta.ema(ta.ema(ha_high,  sha_len1), sha_len2)
+sha_low   = ta.ema(ta.ema(ha_low,   sha_len1), sha_len2)
+
+sha_green = sha_close > sha_open
+sha_red   = sha_close < sha_open
+
+sha_bull_col = color.new(color.green, 15)
+sha_bear_col = color.new(color.red,   15)
+plotcandle(sha_open, sha_high, sha_low, sha_close, "Smoothed HA",
+     color=sha_green ? sha_bull_col : sha_bear_col,
+     wickcolor=sha_green ? sha_bull_col : sha_bear_col,
+     bordercolor=sha_green ? sha_bull_col : sha_bear_col)
+
+// ─── ZLSMA-50 ─────────────────────────────────────────────────────────────────
+ema1  = ta.ema(close, zlsma_len)
+ema2  = ta.ema(ema1,  zlsma_len)
+zlsma = 2 * ema1 - ema2
+plot(zlsma, "ZLSMA-50", color=color.yellow, linewidth=2)
+
+above_zlsma = close > zlsma
+bgcolor(above_zlsma ? color.new(color.green, 93) : color.new(color.red, 93), title="Flow Zone")
+
+// ─── STOCHASTIC RSI ───────────────────────────────────────────────────────────
+rsi_val     = ta.rsi(close, rsi_len)
+stoch_k_raw = ta.stoch(rsi_val, rsi_val, rsi_val, stoch_len)
+k = ta.sma(stoch_k_raw, k_smooth)
+d = ta.sma(k, d_smooth)
+
+// ─── VOLUME FILTER ────────────────────────────────────────────────────────────
+avg_vol   = ta.sma(volume, vol_lookback)
+vol_surge = volume >= avg_vol * vol_mult
+
+// ─── FAST-EXIT RULE CALCULATIONS ─────────────────────────────────────────────
+// Rule 1: K depth — was K below threshold within last 3 bars?
+k_was_low = k[1] < k_depth_max or k[2] < k_depth_max or k[3] < k_depth_max
+k_depth_ok = not use_k_depth or k_was_low
+
+// Rule 2: Session time gate — 4:00am to 10:30am New York time
+bar_hour   = hour(time, "America/New_York")
+bar_minute = minute(time, "America/New_York")
+in_fast_session = (bar_hour >= 4) and (bar_hour < 10 or (bar_hour == 10 and bar_minute <= 30))
+time_gate_ok = not use_time_gate or in_fast_session
+
+// ─── ENTRY CONDITIONS ─────────────────────────────────────────────────────────
+k_curl_up     = ta.crossover(k, 20)
+k_above_d     = k > d
+sha_is_green  = sha_green
+price_in_flow = above_zlsma
+
+// Base signal (all 6 conditions)
+base_signal  = k_curl_up and k_above_d and sha_is_green and price_in_flow and vol_surge
+// Fast-exit filtered signal (adds Rules 1 + 2)
+entry_signal = base_signal and k_depth_ok and time_gate_ok
+
+// ─── STRATEGY EXECUTION ───────────────────────────────────────────────────────
+if entry_signal and strategy.position_size == 0
+    strategy.entry("Long", strategy.long)
+
+var float entry_ref   = na
+var line   stop_line  = na
+var line   t1_line    = na
+var line   t2_line    = na
+var line   t3_line    = na
+
+if strategy.position_size > 0 and strategy.position_size[1] == 0
+    entry_ref = strategy.position_avg_price
+
+if strategy.position_size > 0
+    stop_level = entry_ref * (1 - stop_pct  / 100)
+    t1_level   = entry_ref * (1 + t1_pct   / 100)
+    t2_level   = entry_ref * (1 + t2_pct   / 100)
+    t3_level   = entry_ref * (1 + t3_pct   / 100)
+
+    // Draw exit lines on chart so you can see targets at a glance
+    if na(stop_line) or line.get_x2(stop_line) < bar_index
+        stop_line := line.new(bar_index, stop_level, bar_index + 50, stop_level,
+             color=color.red,    width=1, style=line.style_dashed)
+        t1_line   := line.new(bar_index, t1_level,   bar_index + 50, t1_level,
+             color=color.lime,   width=1, style=line.style_dashed)
+        t2_line   := line.new(bar_index, t2_level,   bar_index + 50, t2_level,
+             color=color.green,  width=2, style=line.style_dashed)
+        t3_line   := line.new(bar_index, t3_level,   bar_index + 50, t3_level,
+             color=color.teal,   width=2, style=line.style_dashed)
+
+    strategy.exit("Stop", "Long", stop=stop_level)
+    if use_hard_t2
+        // Rule 3: exit 100% at T2 (+30%) — clean 1-2hr exit, no trailing
+        strategy.exit("T1",   "Long", limit=t1_level, qty_percent=34)
+        strategy.exit("T2all","Long", limit=t2_level, qty_percent=100)
+    else
+        // Standard W118 scaling: T1 trim 1/3, T2 trim 1/3, trail final 1/3
+        strategy.exit("T1",    "Long", limit=t1_level, qty_percent=34)
+        strategy.exit("T2",    "Long", limit=t2_level, qty_percent=50)
+        strategy.exit("Trail", "Long", trail_price=t2_level,
+             trail_offset=trail_pct / 100 * entry_ref / syminfo.mintick)
+
+// Delete lines when out of position
+if strategy.position_size == 0 and strategy.position_size[1] > 0
+    line.delete(stop_line)
+    line.delete(t1_line)
+    line.delete(t2_line)
+    line.delete(t3_line)
+    stop_line := na
+    t1_line   := na
+    t2_line   := na
+    t3_line   := na
+
+// ─── SELL WARNING: SHA turns red while in trade ───────────────────────────────
+sha_exit_warning = strategy.position_size > 0 and sha_red and sha_red[1]
+if sha_exit_warning
+    label.new(bar_index, high, "⚠ SHA RED\nCONSIDER EXIT",
+         color=color.new(color.orange, 10), textcolor=color.white,
+         style=label.style_label_down, size=size.tiny)
+
+// ─── SELL WARNING: K drops back below 20 ─────────────────────────────────────
+k_exit_warning = strategy.position_size > 0 and ta.crossunder(k, 20)
+if k_exit_warning
+    label.new(bar_index, high, "⚠ K<20\nEXIT",
+         color=color.new(color.red, 20), textcolor=color.white,
+         style=label.style_label_down, size=size.tiny)
+
+// ─── SELL WARNING: price drops below ZLSMA ───────────────────────────────────
+zlsma_exit = strategy.position_size > 0 and ta.crossunder(close, zlsma)
+if zlsma_exit
+    label.new(bar_index, low, "⚠ BELOW ZLSMA\nEXIT NOW",
+         color=color.new(color.red, 0), textcolor=color.white,
+         style=label.style_label_up, size=size.small)
+
+// ─── BUY LABEL ────────────────────────────────────────────────────────────────
+if entry_signal
+    profile = in_fast_session ? (bar_hour < 10 ? "PM" : "RTH") : "?"
+    label.new(bar_index, low,
+         "BUY [" + profile + "]\n$" + str.tostring(close, "#.##") +
+         "\nK=" + str.tostring(math.round(k, 1)),
+         color=color.new(color.green, 10), textcolor=color.white,
+         style=label.style_label_up, size=size.normal)
+
+// Show when base signal fires but is blocked by fast-exit filters (so you know it happened)
+if base_signal and not entry_signal
+    block_reason = not k_depth_ok ? "K not deep\nenough" : "After\n10:30am"
+    label.new(bar_index, low, "SKIP\n" + block_reason,
+         color=color.new(color.gray, 30), textcolor=color.white,
+         style=label.style_label_up, size=size.tiny)
+
+// ─── EXIT LABEL (position closed by strategy) ────────────────────────────────
+exit_signal = strategy.position_size[1] > 0 and strategy.position_size == 0
+if exit_signal
+    label.new(bar_index, high, "EXIT\n$" + str.tostring(close, "#.##"),
+         color=color.new(color.red, 10), textcolor=color.white,
+         style=label.style_label_down, size=size.normal)
+
+// ─── ALERTS ───────────────────────────────────────────────────────────────────
+alertcondition(entry_signal,                    "Curl if Flow Entry",   "W118 BUY: {{ticker}} @ ${{close}} — all 6 conditions + fast-exit rules")
+alertcondition(base_signal and not entry_signal,"Signal Filtered Out",  "W118 SKIP: {{ticker}} base signal fired but blocked by fast-exit filter")
+alertcondition(sha_exit_warning,                "SHA Exit Warning",     "W118 WARNING: {{ticker}} SHA turning red — consider exit")
+alertcondition(k_exit_warning,                  "K Crossed Below 20",   "W118 EXIT: {{ticker}} K dropped below 20")
+alertcondition(zlsma_exit,                      "Below ZLSMA Exit",     "W118 EXIT: {{ticker}} price broke below ZLSMA-50")
+alertcondition(k_curl_up and not price_in_flow, "Curl but NO Flow",     "W118 SKIP: {{ticker}} curl but BELOW ZLSMA-50")
+alertcondition(exit_signal,                     "Position Exited",      "W118 CLOSED: {{ticker}} @ ${{close}}")
