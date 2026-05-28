@@ -1,347 +1,313 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" width="1200" height="900">
   <defs>
-    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#0d1117;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#161b22;stop-opacity:1" />
-    </linearGradient>
     <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" style="stop-color:#1a2744;stop-opacity:1" />
-      <stop offset="50%" style="stop-color:#0d2137;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#1a2744;stop-opacity:1" />
+      <stop offset="0%" style="stop-color:#1a3a6b;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0f2a50;stop-opacity:1" />
     </linearGradient>
-    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" style="stop-color:#f5c518;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#e8a000;stop-opacity:1" />
+    <linearGradient id="goldBar" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#e8a000;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#f5c518;stop-opacity:1" />
     </linearGradient>
-    <linearGradient id="greenGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#1a3a2a;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#0d2018;stop-opacity:1" />
-    </linearGradient>
-    <linearGradient id="cardGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#1c2128;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#161b22;stop-opacity:1" />
-    </linearGradient>
-    <filter id="glow">
-      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-      <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-    <filter id="softGlow">
-      <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
-      <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
   </defs>
 
   <!-- Background -->
-  <rect width="1200" height="900" fill="url(#bgGrad)"/>
+  <rect width="1200" height="900" fill="#f4f6f8"/>
 
-  <!-- Subtle grid lines -->
-  <g stroke="#1c2128" stroke-width="1" opacity="0.5">
-    <line x1="0" y1="150" x2="1200" y2="150"/>
-    <line x1="0" y1="450" x2="1200" y2="450"/>
-    <line x1="0" y1="700" x2="1200" y2="700"/>
-    <line x1="400" y1="150" x2="400" y2="700"/>
-    <line x1="800" y1="150" x2="800" y2="700"/>
+  <!-- Header -->
+  <rect x="0" y="0" width="1200" height="120" fill="url(#headerGrad)"/>
+  <rect x="0" y="117" width="1200" height="5" fill="url(#goldBar)"/>
+
+  <!-- Candlestick icon -->
+  <g transform="translate(52, 28)">
+    <rect x="0" y="18" width="13" height="32" rx="2" fill="#4ade80"/>
+    <line x1="6.5" y1="8" x2="6.5" y2="18" stroke="#4ade80" stroke-width="2"/>
+    <line x1="6.5" y1="50" x2="6.5" y2="60" stroke="#4ade80" stroke-width="2"/>
+    <rect x="22" y="28" width="13" height="18" rx="2" fill="#f87171"/>
+    <line x1="28.5" y1="16" x2="28.5" y2="28" stroke="#f87171" stroke-width="2"/>
+    <line x1="28.5" y1="46" x2="28.5" y2="58" stroke="#f87171" stroke-width="2"/>
+    <rect x="44" y="12" width="13" height="42" rx="2" fill="#4ade80"/>
+    <line x1="50.5" y1="2" x2="50.5" y2="12" stroke="#4ade80" stroke-width="2"/>
+    <line x1="50.5" y1="54" x2="50.5" y2="64" stroke="#4ade80" stroke-width="2"/>
   </g>
 
-  <!-- Header bar -->
-  <rect x="0" y="0" width="1200" height="130" fill="url(#headerGrad)"/>
-  <rect x="0" y="126" width="1200" height="4" fill="url(#goldGrad)" filter="url(#glow)"/>
+  <!-- Header text -->
+  <text x="140" y="48" font-family="Georgia, serif" font-size="34" font-weight="bold" fill="#f5c518">W118 "Curl if Flow"</text>
+  <text x="140" y="76" font-family="Arial, sans-serif" font-size="16" fill="#c8d8f0">NASDAQ Small-Cap Momentum System — Reverse-Engineered from Weatherman118</text>
+  <text x="140" y="100" font-family="Arial, sans-serif" font-size="13" fill="#8aadd4">$0.10–$15  ·  Float &lt;20M  ·  Stoch RSI 14/14/3/3  ·  SHA EMA(10)  ·  ZLSMA-50</text>
 
-  <!-- Header: candlestick icon -->
-  <g transform="translate(60, 35)" opacity="0.9">
-    <rect x="0" y="20" width="14" height="35" rx="2" fill="#26a641"/>
-    <line x1="7" y1="10" x2="7" y2="20" stroke="#26a641" stroke-width="2"/>
-    <line x1="7" y1="55" x2="7" y2="65" stroke="#26a641" stroke-width="2"/>
-    <rect x="24" y="30" width="14" height="20" rx="2" fill="#f85149"/>
-    <line x1="31" y1="18" x2="31" y2="30" stroke="#f85149" stroke-width="2"/>
-    <line x1="31" y1="50" x2="31" y2="62" stroke="#f85149" stroke-width="2"/>
-    <rect x="48" y="15" width="14" height="45" rx="2" fill="#26a641"/>
-    <line x1="55" y1="5" x2="55" y2="15" stroke="#26a641" stroke-width="2"/>
-    <line x1="55" y1="60" x2="55" y2="70" stroke="#26a641" stroke-width="2"/>
-  </g>
+  <!-- Win rate badge -->
+  <rect x="1010" y="14" width="170" height="92" rx="8" fill="white" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="1095" y="42" font-family="Arial, sans-serif" font-size="12" fill="#64748b" text-anchor="middle">Historical Win Rate</text>
+  <text x="1095" y="80" font-family="Georgia, serif" font-size="38" font-weight="bold" fill="#16a34a" text-anchor="middle">98%</text>
+  <text x="1095" y="98" font-family="Arial, sans-serif" font-size="11" fill="#64748b" text-anchor="middle">101 trades (2026)</text>
 
-  <!-- Header title -->
-  <text x="155" y="52" font-family="'Courier New', monospace" font-size="36" font-weight="bold" fill="#f5c518" filter="url(#glow)">W118 "Curl if Flow"</text>
-  <text x="155" y="85" font-family="'Courier New', monospace" font-size="18" fill="#8b949e">NASDAQ Small-Cap Momentum System — Reverse-Engineered</text>
-  <text x="155" y="110" font-family="'Courier New', monospace" font-size="13" fill="#484f58">by Weatherman118 · $0.10–$15 · Float &lt;20M · 98% historical win rate (101 trades)</text>
+  <!-- ═══ COL 1: ENTRY CONDITIONS ═══ -->
+  <rect x="20" y="135" width="370" height="290" rx="8" fill="white" stroke="#e2e8f0" stroke-width="1.5"/>
+  <rect x="20" y="135" width="370" height="38" rx="8" fill="#1a3a6b"/>
+  <rect x="20" y="163" width="370" height="10" fill="#1a3a6b"/>
+  <text x="205" y="160" font-family="Arial, sans-serif" font-size="13" font-weight="bold" fill="white" text-anchor="middle">6 ENTRY CONDITIONS  (ALL required)</text>
 
-  <!-- Badge top right -->
-  <rect x="1010" y="20" width="170" height="90" rx="8" fill="#1a2744" stroke="#f5c518" stroke-width="1.5"/>
-  <text x="1095" y="48" font-family="'Courier New', monospace" font-size="13" fill="#8b949e" text-anchor="middle">Historical</text>
-  <text x="1095" y="78" font-family="'Courier New', monospace" font-size="34" font-weight="bold" fill="#26a641" text-anchor="middle" filter="url(#glow)">98%</text>
-  <text x="1095" y="100" font-family="'Courier New', monospace" font-size="12" fill="#8b949e" text-anchor="middle">Win Rate</text>
-
-  <!-- ═══ SECTION 1: 6 ENTRY CONDITIONS ═══ -->
-  <rect x="20" y="158" width="370" height="280" rx="8" fill="url(#cardGrad)" stroke="#30363d" stroke-width="1"/>
-  <rect x="20" y="158" width="370" height="36" rx="8" fill="#1a2744"/>
-  <rect x="20" y="186" width="370" height="8" fill="#1a2744"/>
-  <text x="205" y="182" font-family="'Courier New', monospace" font-size="14" font-weight="bold" fill="#f5c518" text-anchor="middle">6 ENTRY CONDITIONS (ALL required)</text>
-
-  <!-- Conditions -->
-  <g font-family="'Courier New', monospace" font-size="13.5">
+  <g font-family="Arial, sans-serif" font-size="13">
     <!-- 1 -->
-    <circle cx="50" cy="221" r="10" fill="#26a641" opacity="0.2"/>
-    <text x="50" y="226" fill="#26a641" text-anchor="middle" font-size="13" font-weight="bold">1</text>
-    <text x="70" y="218" fill="#26a641" font-weight="bold">Stoch RSI K</text>
-    <text x="70" y="234" fill="#8b949e">K crosses UP thru 20, K &gt; D</text>
-    <rect x="310" y="210" width="68" height="18" rx="3" fill="#1a3a1a"/>
-    <text x="344" y="223" fill="#26a641" text-anchor="middle" font-size="11">CRITICAL</text>
+    <rect x="30" y="182" width="350" height="34" rx="4" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1"/>
+    <text x="46" y="204" font-size="18" fill="#16a34a">①</text>
+    <text x="72" y="200" font-weight="bold" fill="#15803d">Stoch RSI K curl ↑ through 20, K &gt; D</text>
+    <text x="72" y="212" font-size="11" fill="#64748b">K crosses up from below 20 · strongest when K was at 0–10</text>
 
     <!-- 2 -->
-    <circle cx="50" cy="265" r="10" fill="#26a641" opacity="0.2"/>
-    <text x="50" y="270" fill="#26a641" text-anchor="middle" font-size="13" font-weight="bold">2</text>
-    <text x="70" y="262" fill="#26a641" font-weight="bold">SHA Candle Green</text>
-    <text x="70" y="278" fill="#8b949e">Smoothed Heikin Ashi = bullish</text>
-    <rect x="310" y="254" width="68" height="18" rx="3" fill="#1a3a1a"/>
-    <text x="344" y="267" fill="#26a641" text-anchor="middle" font-size="11">CRITICAL</text>
+    <rect x="30" y="222" width="350" height="34" rx="4" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1"/>
+    <text x="46" y="244" font-size="18" fill="#16a34a">②</text>
+    <text x="72" y="240" font-weight="bold" fill="#15803d">SHA Candle is Green</text>
+    <text x="72" y="252" font-size="11" fill="#64748b">Smoothed Heikin Ashi close &gt; open · bullish bias confirmed</text>
 
     <!-- 3 -->
-    <circle cx="50" cy="309" r="10" fill="#f5c518" opacity="0.2"/>
-    <text x="50" y="314" fill="#f5c518" text-anchor="middle" font-size="13" font-weight="bold">3</text>
-    <text x="70" y="306" fill="#f5c518" font-weight="bold">Above ZLSMA-50</text>
-    <text x="70" y="322" fill="#8b949e">Price &gt; 2×EMA(50) − EMA(EMA(50))</text>
-    <rect x="310" y="298" width="68" height="18" rx="3" fill="#1a3a1a"/>
-    <text x="344" y="311" fill="#26a641" text-anchor="middle" font-size="11">CRITICAL</text>
+    <rect x="30" y="262" width="350" height="38" rx="4" fill="#fffbeb" stroke="#fde68a" stroke-width="1.5"/>
+    <text x="46" y="286" font-size="18" fill="#d97706">③</text>
+    <text x="72" y="280" font-weight="bold" fill="#b45309">Price ABOVE ZLSMA-50  ★ NEVER trade below</text>
+    <text x="72" y="292" font-size="11" fill="#64748b">2×EMA(50) − EMA(EMA(50)) · yellow line on chart</text>
 
     <!-- 4 -->
-    <circle cx="50" cy="353" r="10" fill="#58a6ff" opacity="0.2"/>
-    <text x="50" y="358" fill="#58a6ff" text-anchor="middle" font-size="13" font-weight="bold">4</text>
-    <text x="70" y="350" fill="#58a6ff" font-weight="bold">Volume ≥ 1.5×</text>
-    <text x="70" y="366" fill="#8b949e">Vs 20-bar average</text>
-    <rect x="295" y="342" width="83" height="18" rx="3" fill="#1a2744"/>
-    <text x="336" y="355" fill="#58a6ff" text-anchor="middle" font-size="11">CONFIRMING</text>
+    <rect x="30" y="306" width="350" height="34" rx="4" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1"/>
+    <text x="46" y="328" font-size="18" fill="#2563eb">④</text>
+    <text x="72" y="324" font-weight="bold" fill="#1d4ed8">Volume ≥ 1.5× the 20-bar average</text>
+    <text x="72" y="336" font-size="11" fill="#64748b">Relative volume confirms institutional interest</text>
 
     <!-- 5 -->
-    <circle cx="50" cy="397" r="10" fill="#8b949e" opacity="0.3"/>
-    <text x="50" y="402" fill="#8b949e" text-anchor="middle" font-size="13" font-weight="bold">5</text>
-    <text x="70" y="394" fill="#8b949e" font-weight="bold">Float Filter</text>
-    <text x="70" y="410" fill="#8b949e">NASDAQ · $0.10–$15 · Float &lt;20M</text>
-    <rect x="310" y="386" width="68" height="18" rx="3" fill="#201a1a"/>
-    <text x="344" y="399" fill="#8b949e" text-anchor="middle" font-size="11">FILTER</text>
+    <rect x="30" y="346" width="350" height="34" rx="4" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+    <text x="46" y="368" font-size="18" fill="#64748b">⑤</text>
+    <text x="72" y="364" font-weight="bold" fill="#475569">Float Filter — NASDAQ · $0.10–$15 · &lt;20M float</text>
+    <text x="72" y="376" font-size="11" fill="#64748b">Small float = explosive moves when volume hits</text>
 
     <!-- 6 -->
-    <circle cx="50" cy="418" r="10" fill="#d29922" opacity="0.2"/>
-    <text x="50" y="423" fill="#d29922" text-anchor="middle" font-size="13" font-weight="bold" dy="7">6</text>
-    <text x="70" y="426" fill="#d29922" font-weight="bold">Catalyst</text>
-    <text x="70" y="421" fill="#8b949e" dy="21">FDA/merger &gt; halt-resume &gt; momentum</text>
-    <rect x="295" y="417" width="83" height="18" rx="3" fill="#1a2744"/>
-    <text x="336" y="430" fill="#d29922" text-anchor="middle" font-size="11">CONFIRMING</text>
+    <rect x="30" y="386" width="350" height="34" rx="4" fill="#fdf4ff" stroke="#e9d5ff" stroke-width="1"/>
+    <text x="46" y="408" font-size="18" fill="#9333ea">⑥</text>
+    <text x="72" y="404" font-weight="bold" fill="#7c3aed">Catalyst present</text>
+    <text x="72" y="416" font-size="11" fill="#64748b">FDA/merger &gt; halt-resume &gt; China momentum</text>
   </g>
 
-  <!-- ═══ SECTION 2: INDICATOR SETTINGS ═══ -->
-  <rect x="410" y="158" width="370" height="280" rx="8" fill="url(#cardGrad)" stroke="#30363d" stroke-width="1"/>
-  <rect x="410" y="158" width="370" height="36" rx="8" fill="#1a2744"/>
-  <rect x="410" y="186" width="370" height="8" fill="#1a2744"/>
-  <text x="595" y="182" font-family="'Courier New', monospace" font-size="14" font-weight="bold" fill="#f5c518" text-anchor="middle">INDICATOR SETTINGS</text>
+  <!-- ═══ COL 2: INDICATOR SETTINGS ═══ -->
+  <rect x="410" y="135" width="370" height="290" rx="8" fill="white" stroke="#e2e8f0" stroke-width="1.5"/>
+  <rect x="410" y="135" width="370" height="38" rx="8" fill="#1a3a6b"/>
+  <rect x="410" y="163" width="370" height="10" fill="#1a3a6b"/>
+  <text x="595" y="160" font-family="Arial, sans-serif" font-size="13" font-weight="bold" fill="white" text-anchor="middle">INDICATOR SETTINGS</text>
 
-  <g font-family="'Courier New', monospace">
-    <!-- Stoch RSI -->
-    <rect x="425" y="205" width="340" height="65" rx="5" fill="#1c2128" stroke="#30363d" stroke-width="1"/>
-    <text x="441" y="223" font-size="13" font-weight="bold" fill="#26a641">Stochastic RSI</text>
-    <text x="441" y="241" font-size="12" fill="#8b949e">RSI Length: 14  ·  Stoch Length: 14</text>
-    <text x="441" y="258" font-size="12" fill="#8b949e">K Smooth: 3  ·  D Smooth: 3  ·  Source: Close</text>
+  <g font-family="Arial, sans-serif">
+    <rect x="420" y="182" width="350" height="70" rx="5" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+    <text x="436" y="202" font-size="13" font-weight="bold" fill="#1a3a6b">Stochastic RSI</text>
+    <text x="436" y="220" font-size="12" fill="#475569">RSI Length: 14   Stoch Length: 14</text>
+    <text x="436" y="237" font-size="12" fill="#475569">K Smooth: 3   D Smooth: 3   Source: Close</text>
+    <text x="436" y="246" font-size="10" fill="#94a3b8">Pine: ta.stoch(rsi, rsi, 14) → smooth</text>
 
-    <!-- SHA -->
-    <rect x="425" y="280" width="340" height="50" rx="5" fill="#1c2128" stroke="#30363d" stroke-width="1"/>
-    <text x="441" y="298" font-size="13" font-weight="bold" fill="#26a641">Smoothed Heikin Ashi (SHA)</text>
-    <text x="441" y="316" font-size="12" fill="#8b949e">Double EMA(10) on Heikin Ashi values</text>
+    <rect x="420" y="260" width="350" height="55" rx="5" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+    <text x="436" y="280" font-size="13" font-weight="bold" fill="#1a3a6b">Smoothed Heikin Ashi (SHA)</text>
+    <text x="436" y="298" font-size="12" fill="#475569">EMA(10) applied to Heikin Ashi candles</text>
+    <text x="436" y="308" font-size="10" fill="#94a3b8">Green = SHA_close &gt; SHA_open</text>
 
-    <!-- ZLSMA -->
-    <rect x="425" y="340" width="340" height="50" rx="5" fill="#1c2128" stroke="#30363d" stroke-width="1"/>
-    <text x="441" y="358" font-size="13" font-weight="bold" fill="#f5c518">ZLSMA-50  (yellow line)</text>
-    <text x="441" y="376" font-size="12" fill="#8b949e">2 × EMA(close,50) − EMA(EMA(close,50),50)</text>
+    <rect x="420" y="323" width="350" height="55" rx="5" fill="#fffbeb" stroke="#fde68a" stroke-width="1.5"/>
+    <text x="436" y="343" font-size="13" font-weight="bold" fill="#b45309">ZLSMA-50  (yellow line)</text>
+    <text x="436" y="361" font-size="12" fill="#475569">2 × EMA(close, 50) − EMA(EMA(close, 50), 50)</text>
+    <text x="436" y="371" font-size="10" fill="#94a3b8">Zero Lag SMA — reduces lag vs regular MA</text>
 
-    <!-- KEY INSIGHT box -->
-    <rect x="425" y="400" width="340" height="28" rx="5" fill="#1a2744" stroke="#f5c518" stroke-width="1"/>
-    <text x="595" y="419" font-size="12" font-weight="bold" fill="#f5c518" text-anchor="middle">★  K crosses 20 from 0–10 = strongest signal</text>
+    <rect x="420" y="386" width="350" height="30" rx="5" fill="#1a3a6b"/>
+    <text x="595" y="406" font-size="13" font-weight="bold" fill="#f5c518" text-anchor="middle">★  Ideal entry: K crosses 20 from 0–10 range</text>
   </g>
 
-  <!-- ═══ SECTION 3: EXIT RULES ═══ -->
-  <rect x="800" y="158" width="380" height="280" rx="8" fill="url(#cardGrad)" stroke="#30363d" stroke-width="1"/>
-  <rect x="800" y="158" width="380" height="36" rx="8" fill="#1a2744"/>
-  <rect x="800" y="186" width="380" height="8" fill="#1a2744"/>
-  <text x="990" y="182" font-family="'Courier New', monospace" font-size="14" font-weight="bold" fill="#f5c518" text-anchor="middle">EXIT RULES</text>
+  <!-- ═══ COL 3: EXIT RULES ═══ -->
+  <rect x="800" y="135" width="380" height="290" rx="8" fill="white" stroke="#e2e8f0" stroke-width="1.5"/>
+  <rect x="800" y="135" width="380" height="38" rx="8" fill="#1a3a6b"/>
+  <rect x="800" y="163" width="380" height="10" fill="#1a3a6b"/>
+  <text x="990" y="160" font-family="Arial, sans-serif" font-size="13" font-weight="bold" fill="white" text-anchor="middle">EXIT RULES</text>
 
-  <g font-family="'Courier New', monospace" font-size="13.5">
-    <!-- Stop -->
-    <rect x="815" y="205" width="350" height="30" rx="4" fill="#2d1a1a"/>
-    <text x="825" y="225" fill="#f85149" font-weight="bold">🛑  Stop Loss</text>
-    <text x="1010" y="225" fill="#f85149" text-anchor="end">−8% from entry · hard stop, no exceptions</text>
+  <g font-family="Arial, sans-serif" font-size="13">
+    <rect x="812" y="182" width="356" height="36" rx="4" fill="#fef2f2" stroke="#fecaca" stroke-width="1.5"/>
+    <text x="828" y="200" font-weight="bold" fill="#dc2626">🛑  Stop Loss  −8%</text>
+    <text x="828" y="213" font-size="11" fill="#64748b">Hard stop · set IMMEDIATELY after fill · no exceptions</text>
 
-    <!-- T1 -->
-    <rect x="815" y="243" width="350" height="30" rx="4" fill="#1a2d1a"/>
-    <text x="825" y="263" fill="#26a641" font-weight="bold">🎯  T1  +15%</text>
-    <text x="1155" y="263" fill="#26a641" text-anchor="end">Trim ⅓ · move stop to breakeven</text>
+    <rect x="812" y="224" width="356" height="36" rx="4" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1"/>
+    <text x="828" y="242" font-weight="bold" fill="#16a34a">🎯  T1  +15%</text>
+    <text x="828" y="255" font-size="11" fill="#64748b">Trim ⅓ position · move stop to breakeven</text>
 
-    <!-- T2 -->
-    <rect x="815" y="281" width="350" height="30" rx="4" fill="#1a2d1a"/>
-    <text x="825" y="301" fill="#26a641" font-weight="bold">🎯  T2  +30%</text>
-    <text x="1155" y="301" fill="#26a641" text-anchor="end">Trim ⅓ · trail stop 10%</text>
+    <rect x="812" y="266" width="356" height="36" rx="4" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1"/>
+    <text x="828" y="284" font-weight="bold" fill="#16a34a">🎯  T2  +30%</text>
+    <text x="828" y="297" font-size="11" fill="#64748b">Trim ⅓ position · trail stop 10%</text>
 
-    <!-- T3 -->
-    <rect x="815" y="319" width="350" height="30" rx="4" fill="#1a2d1a"/>
-    <text x="825" y="339" fill="#26a641" font-weight="bold">🎯  T3  +60%</text>
-    <text x="1155" y="339" fill="#26a641" text-anchor="end">Trail final ⅓ · let it run</text>
+    <rect x="812" y="308" width="356" height="36" rx="4" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1"/>
+    <text x="828" y="326" font-weight="bold" fill="#16a34a">🎯  T3  +60%</text>
+    <text x="828" y="339" font-size="11" fill="#64748b">Trail final ⅓ at 10% · let it run</text>
 
-    <!-- Signal exits -->
-    <text x="990" y="375" font-size="12" fill="#8b949e" text-anchor="middle">— Signal Exits —</text>
-    <text x="825" y="395" font-size="12" fill="#f85149">SHA turns red 2+ candles  ·  K crosses back below 20  ·  Price closes below ZLSMA</text>
+    <text x="990" y="362" font-size="11" fill="#94a3b8" text-anchor="middle">— Signal Exits (any one triggers) —</text>
+    <text x="820" y="378" font-size="11" fill="#64748b">• SHA turns red 2+ consecutive candles</text>
+    <text x="820" y="393" font-size="11" fill="#64748b">• Price closes below ZLSMA-50</text>
+    <text x="820" y="408" font-size="11" fill="#64748b">• Stoch RSI K crosses back below 20</text>
 
-    <!-- Chase rule -->
-    <rect x="815" y="407" width="350" height="22" rx="4" fill="#2d2200"/>
-    <text x="990" y="422" font-size="12" font-weight="bold" fill="#d29922" text-anchor="middle">Chase rule: &lt;3% = OK  ·  3–8% = caution  ·  &gt;8% = wait</text>
+    <rect x="812" y="413" width="356" height="24" rx="4" fill="#fffbeb" stroke="#fde68a" stroke-width="1"/>
+    <text x="990" y="429" font-size="11" font-weight="bold" fill="#b45309" text-anchor="middle">Chase: &lt;3% OK · 3–8% caution · &gt;8% wait for re-entry</text>
   </g>
 
-  <!-- ═══ SECTION 4: MORNING TOOLKIT ═══ -->
-  <rect x="20" y="458" width="555" height="225" rx="8" fill="url(#cardGrad)" stroke="#30363d" stroke-width="1"/>
-  <rect x="20" y="458" width="555" height="36" rx="8" fill="#1a2744"/>
-  <rect x="20" y="486" width="555" height="8" fill="#1a2744"/>
-  <text x="297" y="482" font-family="'Courier New', monospace" font-size="14" font-weight="bold" fill="#f5c518" text-anchor="middle">W118 MORNING TOOLKIT  (Google Colab)</text>
+  <!-- ═══ ROW 2 LEFT: MORNING TOOLKIT ═══ -->
+  <rect x="20" y="440" width="555" height="240" rx="8" fill="white" stroke="#e2e8f0" stroke-width="1.5"/>
+  <rect x="20" y="440" width="555" height="38" rx="8" fill="#1a3a6b"/>
+  <rect x="20" y="468" width="555" height="10" fill="#1a3a6b"/>
+  <text x="297" y="464" font-family="Arial, sans-serif" font-size="13" font-weight="bold" fill="white" text-anchor="middle">W118 MORNING TOOLKIT  (Google Colab — w118_toolkit.py)</text>
 
-  <g font-family="'Courier New', monospace">
+  <g font-family="Arial, sans-serif">
     <!-- Tool 1 -->
-    <rect x="35" y="503" width="165" height="165" rx="6" fill="#1c2128" stroke="#30363d" stroke-width="1"/>
-    <text x="117" y="523" font-size="12" font-weight="bold" fill="#58a6ff" text-anchor="middle">TOOL 1</text>
-    <text x="117" y="540" font-size="11" fill="#f5c518" text-anchor="middle" font-weight="bold">Morning Scanner</text>
-    <line x1="50" y1="547" x2="185" y2="547" stroke="#30363d" stroke-width="1"/>
-    <text x="117" y="565" font-size="11" fill="#8b949e" text-anchor="middle">morning_scan()</text>
-    <text x="45" y="584" font-size="10.5" fill="#8b949e">• Pulls NASDAQ movers</text>
-    <text x="45" y="599" font-size="10.5" fill="#8b949e">• Filters &gt;10% gain, &lt;$15</text>
-    <text x="45" y="614" font-size="10.5" fill="#8b949e">• Auto-grades top 5</text>
-    <text x="45" y="629" font-size="10.5" fill="#8b949e">• Ranks by W118 score</text>
-    <text x="45" y="651" font-size="10" fill="#484f58">via finvizfinance</text>
+    <rect x="33" y="488" width="165" height="178" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+    <rect x="33" y="488" width="165" height="28" rx="6" fill="#0f2a50"/>
+    <rect x="33" y="506" width="165" height="10" fill="#0f2a50"/>
+    <text x="115" y="507" font-size="12" font-weight="bold" fill="#f5c518" text-anchor="middle">TOOL 1 — Scanner</text>
+    <text x="115" y="532" font-size="12" font-weight="bold" fill="#1a3a6b" text-anchor="middle">morning_scan()</text>
+    <line x1="43" y1="540" x2="188" y2="540" stroke="#e2e8f0" stroke-width="1"/>
+    <text x="43" y="558" font-size="11" fill="#475569">• Searches all NASDAQ</text>
+    <text x="43" y="574" font-size="11" fill="#475569">• Filters &gt;10% / &lt;$15</text>
+    <text x="43" y="590" font-size="11" fill="#475569">• Auto-grades top 5</text>
+    <text x="43" y="606" font-size="11" fill="#475569">• Ranks by W118 score</text>
+    <text x="43" y="630" font-size="10" fill="#94a3b8">via finvizfinance</text>
+    <text x="43" y="644" font-size="10" fill="#94a3b8">re-run each morning</text>
+    <text x="43" y="658" font-size="10" fill="#94a3b8">4am–9:30am best</text>
 
     <!-- Tool 2 -->
-    <rect x="215" y="503" width="165" height="165" rx="6" fill="#1c2128" stroke="#30363d" stroke-width="1"/>
-    <text x="297" y="523" font-size="12" font-weight="bold" fill="#58a6ff" text-anchor="middle">TOOL 2</text>
-    <text x="297" y="540" font-size="11" fill="#f5c518" text-anchor="middle" font-weight="bold">Chart Grader</text>
-    <line x1="230" y1="547" x2="365" y2="547" stroke="#30363d" stroke-width="1"/>
-    <text x="297" y="565" font-size="11" fill="#8b949e" text-anchor="middle">grade_ticker('AAPL')</text>
-    <text x="225" y="584" font-size="10.5" fill="#8b949e">• Downloads live chart</text>
-    <text x="225" y="599" font-size="10.5" fill="#8b949e">• Checks all 6 conditions</text>
-    <text x="225" y="614" font-size="10.5" fill="#8b949e">• Scores 0–5 / grades A+→F</text>
-    <text x="225" y="629" font-size="10.5" fill="#8b949e">• Flags ZLSMA violations</text>
-    <text x="225" y="651" font-size="10" fill="#484f58">via yfinance (5m bars)</text>
+    <rect x="212" y="488" width="165" height="178" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+    <rect x="212" y="488" width="165" height="28" rx="6" fill="#0f2a50"/>
+    <rect x="212" y="506" width="165" height="10" fill="#0f2a50"/>
+    <text x="294" y="507" font-size="12" font-weight="bold" fill="#f5c518" text-anchor="middle">TOOL 2 — Grader</text>
+    <text x="294" y="532" font-size="12" font-weight="bold" fill="#1a3a6b" text-anchor="middle">grade_ticker('XYZ')</text>
+    <line x1="222" y1="540" x2="367" y2="540" stroke="#e2e8f0" stroke-width="1"/>
+    <text x="222" y="558" font-size="11" fill="#475569">• Downloads live chart</text>
+    <text x="222" y="574" font-size="11" fill="#475569">• Checks all 6 conditions</text>
+    <text x="222" y="590" font-size="11" fill="#475569">• Grades A+ / A / B / F</text>
+    <text x="222" y="606" font-size="11" fill="#475569">• Flags ZLSMA breaks</text>
+    <text x="222" y="630" font-size="10" fill="#94a3b8">via yfinance 5m bars</text>
+    <text x="222" y="644" font-size="10" fill="#94a3b8">use on scan results</text>
+    <text x="222" y="658" font-size="10" fill="#94a3b8">or any ticker</text>
 
     <!-- Tool 3 -->
-    <rect x="395" y="503" width="165" height="165" rx="6" fill="#1c2128" stroke="#30363d" stroke-width="1"/>
-    <text x="477" y="523" font-size="12" font-weight="bold" fill="#58a6ff" text-anchor="middle">TOOL 3</text>
-    <text x="477" y="540" font-size="11" fill="#f5c518" text-anchor="middle" font-weight="bold">Position Sizer</text>
-    <line x1="410" y1="547" x2="545" y2="547" stroke="#30363d" stroke-width="1"/>
-    <text x="477" y="565" font-size="11" fill="#8b949e" text-anchor="middle">pos_size(31, 2.45)</text>
-    <text x="405" y="584" font-size="10.5" fill="#8b949e">• Stop / T1 / T2 / T3 prices</text>
-    <text x="405" y="599" font-size="10.5" fill="#8b949e">• 5% / 10% risk sizing</text>
-    <text x="405" y="614" font-size="10.5" fill="#8b949e">• Chase % warning</text>
-    <text x="405" y="629" font-size="10.5" fill="#8b949e">• Max loss in dollars</text>
-    <text x="405" y="651" font-size="10" fill="#484f58">pure math, no internet</text>
+    <rect x="391" y="488" width="172" height="178" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+    <rect x="391" y="488" width="172" height="28" rx="6" fill="#0f2a50"/>
+    <rect x="391" y="506" width="172" height="10" fill="#0f2a50"/>
+    <text x="477" y="507" font-size="12" font-weight="bold" fill="#f5c518" text-anchor="middle">TOOL 3 — Sizer</text>
+    <text x="477" y="532" font-size="12" font-weight="bold" fill="#1a3a6b" text-anchor="middle">pos_size(31, 2.45)</text>
+    <line x1="401" y1="540" x2="553" y2="540" stroke="#e2e8f0" stroke-width="1"/>
+    <text x="401" y="558" font-size="11" fill="#475569">• Stop / T1 / T2 / T3</text>
+    <text x="401" y="574" font-size="11" fill="#475569">• 5% and 10% risk size</text>
+    <text x="401" y="590" font-size="11" fill="#475569">• Chase % warning</text>
+    <text x="401" y="606" font-size="11" fill="#475569">• Max loss in dollars</text>
+    <text x="401" y="630" font-size="10" fill="#94a3b8">pure math, no internet</text>
+    <text x="401" y="644" font-size="10" fill="#94a3b8">1st arg = cash balance</text>
+    <text x="401" y="658" font-size="10" fill="#94a3b8">2nd = entry price</text>
   </g>
 
-  <!-- ═══ SECTION 5: GRADING SCALE ═══ -->
-  <rect x="595" y="458" width="585" height="225" rx="8" fill="url(#cardGrad)" stroke="#30363d" stroke-width="1"/>
-  <rect x="595" y="458" width="585" height="36" rx="8" fill="#1a2744"/>
-  <rect x="595" y="486" width="585" height="8" fill="#1a2744"/>
-  <text x="887" y="482" font-family="'Courier New', monospace" font-size="14" font-weight="bold" fill="#f5c518" text-anchor="middle">GRADING SCALE &amp; SESSION TIMING</text>
+  <!-- ═══ ROW 2 RIGHT: GRADING + TIMING ═══ -->
+  <rect x="595" y="440" width="585" height="240" rx="8" fill="white" stroke="#e2e8f0" stroke-width="1.5"/>
+  <rect x="595" y="440" width="585" height="38" rx="8" fill="#1a3a6b"/>
+  <rect x="595" y="468" width="585" height="10" fill="#1a3a6b"/>
+  <text x="887" y="464" font-family="Arial, sans-serif" font-size="13" font-weight="bold" fill="white" text-anchor="middle">GRADING SCALE &amp; SESSION TIMING</text>
 
-  <g font-family="'Courier New', monospace" font-size="13">
-    <!-- Grades -->
-    <rect x="610" y="502" width="270" height="30" rx="4" fill="#1a3a1a"/>
-    <text x="625" y="522" fill="#f5c518" font-weight="bold">🏆 A+  5/5</text>
-    <text x="875" y="522" fill="#26a641" text-anchor="end">ALL green — FIRE. Enter now.</text>
+  <g font-family="Arial, sans-serif" font-size="13">
+    <!-- Grades left column -->
+    <rect x="608" y="488" width="275" height="36" rx="4" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1.5"/>
+    <text x="622" y="510" font-weight="bold" fill="#15803d">🏆  A+   5 / 5</text>
+    <text x="875" y="510" fill="#15803d" text-anchor="end">ALL green — FIRE. Enter now.</text>
 
-    <rect x="610" y="539" width="270" height="30" rx="4" fill="#162a16"/>
-    <text x="625" y="559" fill="#26a641" font-weight="bold">✅  A   4/5</text>
-    <text x="875" y="559" fill="#26a641" text-anchor="end">Strong — one condition missing</text>
+    <rect x="608" y="530" width="275" height="36" rx="4" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1"/>
+    <text x="622" y="552" font-weight="bold" fill="#16a34a">✅   A    4 / 5</text>
+    <text x="875" y="552" fill="#16a34a" text-anchor="end">Strong — check which is missing</text>
 
-    <rect x="610" y="576" width="270" height="30" rx="4" fill="#2a2a10"/>
-    <text x="625" y="596" fill="#d29922" font-weight="bold">🟡  B   3/5</text>
-    <text x="875" y="596" fill="#d29922" text-anchor="end">Wait for more confirmation</text>
+    <rect x="608" y="572" width="275" height="36" rx="4" fill="#fffbeb" stroke="#fde68a" stroke-width="1"/>
+    <text x="622" y="594" font-weight="bold" fill="#b45309">🟡  B    3 / 5</text>
+    <text x="875" y="594" fill="#b45309" text-anchor="end">Wait · watch for confirmation</text>
 
-    <rect x="610" y="613" width="270" height="30" rx="4" fill="#2d1a1a"/>
-    <text x="625" y="633" fill="#f85149" font-weight="bold">🚫  F   &lt;3/5</text>
-    <text x="875" y="633" fill="#f85149" text-anchor="end">Below ZLSMA — DO NOT TRADE</text>
+    <rect x="608" y="614" width="275" height="34" rx="4" fill="#fef2f2" stroke="#fecaca" stroke-width="1.5"/>
+    <text x="622" y="634" font-weight="bold" fill="#dc2626">🚫  F    &lt;3 / 5</text>
+    <text x="875" y="634" fill="#dc2626" text-anchor="end">Below ZLSMA — do NOT trade</text>
 
-    <!-- Session timing -->
-    <text x="910" y="522" font-size="12" fill="#f5c518" font-weight="bold">Session Priority</text>
-    <rect x="900" y="530" width="265" height="22" rx="3" fill="#1a3a1a"/>
-    <text x="1032" y="546" font-size="12" fill="#26a641" text-anchor="middle">🌅 4am–9:30am  PREMARKET  (best)</text>
-    <rect x="900" y="558" width="265" height="22" rx="3" fill="#162a16"/>
-    <text x="1032" y="574" font-size="12" fill="#26a641" text-anchor="middle">📈 9:30–10:30am  RTH Open  (good)</text>
-    <rect x="900" y="586" width="265" height="22" rx="3" fill="#2a2a10"/>
-    <text x="1032" y="602" font-size="12" fill="#d29922" text-anchor="middle">😴 10:30am–3pm  Midday  (avoid)</text>
-    <rect x="900" y="614" width="265" height="22" rx="3" fill="#201a1a"/>
-    <text x="1032" y="630" font-size="12" fill="#8b949e" text-anchor="middle">⚡ 3–4pm  Power hour  (small size)</text>
+    <!-- Timing right column -->
+    <text x="910" y="506" font-size="12" font-weight="bold" fill="#1a3a6b">Session Priority</text>
+    <rect x="900" y="514" width="268" height="30" rx="4" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1.5"/>
+    <text x="1034" y="534" font-size="12" font-weight="bold" fill="#15803d" text-anchor="middle">🌅  4am–9:30am  Premarket  ★★★</text>
+    <rect x="900" y="550" width="268" height="30" rx="4" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1"/>
+    <text x="1034" y="570" font-size="12" fill="#16a34a" text-anchor="middle">📈  9:30–10:30am  RTH Open  ★★</text>
+    <rect x="900" y="586" width="268" height="30" rx="4" fill="#fffbeb" stroke="#fde68a" stroke-width="1"/>
+    <text x="1034" y="606" font-size="12" fill="#b45309" text-anchor="middle">😴  10:30am–3pm  Midday  avoid</text>
+    <rect x="900" y="622" width="268" height="26" rx="4" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+    <text x="1034" y="640" font-size="12" fill="#64748b" text-anchor="middle">⚡  3–4pm  Power hour  small size</text>
   </g>
 
   <!-- ═══ BOTTOM: DAILY WORKFLOW ═══ -->
-  <rect x="20" y="700" width="1160" height="175" rx="8" fill="url(#cardGrad)" stroke="#30363d" stroke-width="1"/>
-  <rect x="20" y="700" width="1160" height="36" rx="8" fill="#1a2744"/>
-  <rect x="20" y="728" width="1160" height="8" fill="#1a2744"/>
-  <text x="600" y="724" font-family="'Courier New', monospace" font-size="14" font-weight="bold" fill="#f5c518" text-anchor="middle">DAILY WORKFLOW</text>
+  <rect x="20" y="695" width="1160" height="185" rx="8" fill="white" stroke="#e2e8f0" stroke-width="1.5"/>
+  <rect x="20" y="695" width="1160" height="38" rx="8" fill="#1a3a6b"/>
+  <rect x="20" y="723" width="1160" height="10" fill="#1a3a6b"/>
+  <text x="600" y="719" font-family="Arial, sans-serif" font-size="13" font-weight="bold" fill="white" text-anchor="middle">DAILY WORKFLOW</text>
 
-  <!-- Flow steps -->
-  <g font-family="'Courier New', monospace">
+  <g font-family="Arial, sans-serif">
     <!-- Step 1 -->
-    <rect x="40" y="745" width="195" height="115" rx="6" fill="#1c2128" stroke="#30363d" stroke-width="1"/>
-    <circle cx="137" cy="762" r="14" fill="#1a2744" stroke="#58a6ff" stroke-width="1.5"/>
-    <text x="137" y="767" font-size="13" font-weight="bold" fill="#58a6ff" text-anchor="middle">1</text>
-    <text x="137" y="790" font-size="12" font-weight="bold" fill="#f5c518" text-anchor="middle">morning_scan()</text>
-    <text x="137" y="808" font-size="11" fill="#8b949e" text-anchor="middle">4am–9:30am premarket</text>
-    <text x="137" y="824" font-size="11" fill="#8b949e" text-anchor="middle">Find today's movers</text>
-    <text x="137" y="840" font-size="11" fill="#8b949e" text-anchor="middle">Top 5 auto-graded</text>
+    <rect x="35" y="742" width="190" height="125" rx="6" fill="#f8fafc" stroke="#bfdbfe" stroke-width="1.5"/>
+    <circle cx="130" cy="759" r="14" fill="#1a3a6b"/>
+    <text x="130" y="764" font-size="13" font-weight="bold" fill="white" text-anchor="middle">1</text>
+    <text x="130" y="785" font-size="12" font-weight="bold" fill="#1a3a6b" text-anchor="middle">morning_scan()</text>
+    <text x="130" y="803" font-size="11" fill="#64748b" text-anchor="middle">Run 4am–9:30am</text>
+    <text x="130" y="818" font-size="11" fill="#64748b" text-anchor="middle">Find movers &gt;10%</text>
+    <text x="130" y="833" font-size="11" fill="#64748b" text-anchor="middle">Read the ranked list</text>
+    <text x="130" y="854" font-size="10" fill="#94a3b8" text-anchor="middle">Cell 3 in Colab</text>
 
-    <!-- Arrow 1→2 -->
-    <line x1="238" y1="802" x2="268" y2="802" stroke="#f5c518" stroke-width="2"/>
-    <polygon points="268,796 280,802 268,808" fill="#f5c518"/>
+    <!-- Arrow -->
+    <line x1="228" y1="804" x2="254" y2="804" stroke="#1a3a6b" stroke-width="2"/>
+    <polygon points="254,798 266,804 254,810" fill="#1a3a6b"/>
 
     <!-- Step 2 -->
-    <rect x="283" y="745" width="195" height="115" rx="6" fill="#1c2128" stroke="#30363d" stroke-width="1"/>
-    <circle cx="380" cy="762" r="14" fill="#1a2744" stroke="#58a6ff" stroke-width="1.5"/>
-    <text x="380" y="767" font-size="13" font-weight="bold" fill="#58a6ff" text-anchor="middle">2</text>
-    <text x="380" y="790" font-size="12" font-weight="bold" fill="#f5c518" text-anchor="middle">grade_ticker('XYZ')</text>
-    <text x="380" y="808" font-size="11" fill="#8b949e" text-anchor="middle">Check each candidate</text>
-    <text x="380" y="824" font-size="11" fill="#8b949e" text-anchor="middle">Look for A+ or A grade</text>
-    <text x="380" y="840" font-size="11" fill="#8b949e" text-anchor="middle">K must be 20–40 range</text>
+    <rect x="269" y="742" width="190" height="125" rx="6" fill="#f8fafc" stroke="#bfdbfe" stroke-width="1.5"/>
+    <circle cx="364" cy="759" r="14" fill="#1a3a6b"/>
+    <text x="364" y="764" font-size="13" font-weight="bold" fill="white" text-anchor="middle">2</text>
+    <text x="364" y="785" font-size="12" font-weight="bold" fill="#1a3a6b" text-anchor="middle">grade_ticker('XYZ')</text>
+    <text x="364" y="803" font-size="11" fill="#64748b" text-anchor="middle">Grade each candidate</text>
+    <text x="364" y="818" font-size="11" fill="#64748b" text-anchor="middle">Need A+ or A grade</text>
+    <text x="364" y="833" font-size="11" fill="#64748b" text-anchor="middle">K must be 20–40</text>
+    <text x="364" y="854" font-size="10" fill="#94a3b8" text-anchor="middle">Cell 4 in Colab</text>
 
-    <!-- Arrow 2→3 -->
-    <line x1="481" y1="802" x2="511" y2="802" stroke="#f5c518" stroke-width="2"/>
-    <polygon points="511,796 523,802 511,808" fill="#f5c518"/>
+    <!-- Arrow -->
+    <line x1="462" y1="804" x2="488" y2="804" stroke="#1a3a6b" stroke-width="2"/>
+    <polygon points="488,798 500,804 488,810" fill="#1a3a6b"/>
 
     <!-- Step 3 -->
-    <rect x="526" y="745" width="195" height="115" rx="6" fill="#1c2128" stroke="#30363d" stroke-width="1"/>
-    <circle cx="623" cy="762" r="14" fill="#1a2744" stroke="#58a6ff" stroke-width="1.5"/>
-    <text x="623" y="767" font-size="13" font-weight="bold" fill="#58a6ff" text-anchor="middle">3</text>
-    <text x="623" y="790" font-size="12" font-weight="bold" fill="#f5c518" text-anchor="middle">pos_size(cash, entry)</text>
-    <text x="623" y="808" font-size="11" fill="#8b949e" text-anchor="middle">Calculate shares to buy</text>
-    <text x="623" y="824" font-size="11" fill="#8b949e" text-anchor="middle">Get stop / T1 / T2 / T3</text>
-    <text x="623" y="840" font-size="11" fill="#8b949e" text-anchor="middle">Check chase % first</text>
+    <rect x="503" y="742" width="190" height="125" rx="6" fill="#f8fafc" stroke="#bfdbfe" stroke-width="1.5"/>
+    <circle cx="598" cy="759" r="14" fill="#1a3a6b"/>
+    <text x="598" y="764" font-size="13" font-weight="bold" fill="white" text-anchor="middle">3</text>
+    <text x="598" y="785" font-size="12" font-weight="bold" fill="#1a3a6b" text-anchor="middle">pos_size(cash, entry)</text>
+    <text x="598" y="803" font-size="11" fill="#64748b" text-anchor="middle">Get stop + targets</text>
+    <text x="598" y="818" font-size="11" fill="#64748b" text-anchor="middle">Choose share count</text>
+    <text x="598" y="833" font-size="11" fill="#64748b" text-anchor="middle">Check chase %</text>
+    <text x="598" y="854" font-size="10" fill="#94a3b8" text-anchor="middle">Cell 5 in Colab</text>
 
-    <!-- Arrow 3→4 -->
-    <line x1="724" y1="802" x2="754" y2="802" stroke="#f5c518" stroke-width="2"/>
-    <polygon points="754,796 766,802 754,808" fill="#f5c518"/>
+    <!-- Arrow -->
+    <line x1="696" y1="804" x2="722" y2="804" stroke="#1a3a6b" stroke-width="2"/>
+    <polygon points="722,798 734,804 722,810" fill="#1a3a6b"/>
 
     <!-- Step 4 -->
-    <rect x="769" y="745" width="195" height="115" rx="6" fill="#1a3a1a" stroke="#26a641" stroke-width="1.5"/>
-    <circle cx="866" cy="762" r="14" fill="#1a3a1a" stroke="#26a641" stroke-width="1.5"/>
-    <text x="866" y="767" font-size="13" font-weight="bold" fill="#26a641" text-anchor="middle">4</text>
-    <text x="866" y="790" font-size="12" font-weight="bold" fill="#26a641" text-anchor="middle">ENTER TRADE</text>
-    <text x="866" y="808" font-size="11" fill="#8b949e" text-anchor="middle">Set stop IMMEDIATELY</text>
-    <text x="866" y="824" font-size="11" fill="#8b949e" text-anchor="middle">Trim at T1, trail T2/T3</text>
-    <text x="866" y="840" font-size="11" fill="#8b949e" text-anchor="middle">90% watching, 10% clicking</text>
+    <rect x="737" y="742" width="190" height="125" rx="6" fill="#f0fdf4" stroke="#86efac" stroke-width="2"/>
+    <circle cx="832" cy="759" r="14" fill="#16a34a"/>
+    <text x="832" y="764" font-size="13" font-weight="bold" fill="white" text-anchor="middle">4</text>
+    <text x="832" y="785" font-size="12" font-weight="bold" fill="#15803d" text-anchor="middle">ENTER TRADE</text>
+    <text x="832" y="803" font-size="11" fill="#64748b" text-anchor="middle">Set stop immediately</text>
+    <text x="832" y="818" font-size="11" fill="#64748b" text-anchor="middle">Trim ⅓ at T1</text>
+    <text x="832" y="833" font-size="11" fill="#64748b" text-anchor="middle">Trail T2 and T3</text>
+    <text x="832" y="854" font-size="10" fill="#94a3b8" text-anchor="middle">90% watch · 10% click</text>
 
-    <!-- Arrow 4→5 -->
-    <line x1="967" y1="802" x2="997" y2="802" stroke="#f5c518" stroke-width="2"/>
-    <polygon points="997,796 1009,802 997,808" fill="#f5c518"/>
+    <!-- Arrow -->
+    <line x1="930" y1="804" x2="956" y2="804" stroke="#1a3a6b" stroke-width="2"/>
+    <polygon points="956,798 968,804 956,810" fill="#1a3a6b"/>
 
     <!-- Step 5 -->
-    <rect x="1012" y="745" width="148" height="115" rx="6" fill="#1c2128" stroke="#30363d" stroke-width="1"/>
-    <circle cx="1086" cy="762" r="14" fill="#1a2744" stroke="#58a6ff" stroke-width="1.5"/>
-    <text x="1086" y="767" font-size="13" font-weight="bold" fill="#58a6ff" text-anchor="middle">5</text>
-    <text x="1086" y="790" font-size="12" font-weight="bold" fill="#f5c518" text-anchor="middle">LOG &amp; REVIEW</text>
-    <text x="1086" y="808" font-size="11" fill="#8b949e" text-anchor="middle">copilot.html EOD</text>
-    <text x="1086" y="824" font-size="11" fill="#8b949e" text-anchor="middle">coach grades you</text>
-    <text x="1086" y="840" font-size="11" fill="#8b949e" text-anchor="middle">track win rate</text>
+    <rect x="971" y="742" width="190" height="125" rx="6" fill="#f8fafc" stroke="#bfdbfe" stroke-width="1.5"/>
+    <circle cx="1066" cy="759" r="14" fill="#1a3a6b"/>
+    <text x="1066" y="764" font-size="13" font-weight="bold" fill="white" text-anchor="middle">5</text>
+    <text x="1066" y="785" font-size="12" font-weight="bold" fill="#1a3a6b" text-anchor="middle">LOG &amp; REVIEW</text>
+    <text x="1066" y="803" font-size="11" fill="#64748b" text-anchor="middle">copilot.html EOD tab</text>
+    <text x="1066" y="818" font-size="11" fill="#64748b" text-anchor="middle">Auto-grades A+→D</text>
+    <text x="1066" y="833" font-size="11" fill="#64748b" text-anchor="middle">Track win rate</text>
+    <text x="1066" y="854" font-size="10" fill="#94a3b8" text-anchor="middle">Goal: 80% win rate</text>
   </g>
 
   <!-- Footer -->
-  <text x="600" y="888" font-family="'Courier New', monospace" font-size="11" fill="#484f58" text-anchor="middle">positivitysparkles/tradingbaby · W118 System Infographic · The stop loss IS the trade · Never hold below ZLSMA</text>
+  <rect x="0" y="882" width="1200" height="18" fill="#1a3a6b"/>
+  <text x="600" y="894" font-family="Arial, sans-serif" font-size="11" fill="#8aadd4" text-anchor="middle">positivitysparkles/tradingbaby  ·  The stop loss IS the trade  ·  Never hold below ZLSMA  ·  90% watching, 10% clicking</text>
 </svg>
