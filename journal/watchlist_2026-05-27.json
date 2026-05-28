@@ -1,0 +1,203 @@
+{
+  "date": "2026-05-27",
+  "saved_at": "21:50 EST",
+  "note": "End-of-day snapshot. Compare tomorrow morning to see follow-through.",
+
+  "scanner_run": {
+    "time": "21:21 EST",
+    "filter": "NASDAQ | >10% gain today | <$15",
+    "total_candidates": 96,
+    "top_15": [
+      { "rank": 1,  "ticker": "ASTC", "price": 13.81, "change_pct": 4.6,  "volume": 145069894, "company": "Astrotech Corp" },
+      { "rank": 2,  "ticker": "NTCL", "price": 0.56,  "change_pct": 1.1,  "volume": 70515821,  "company": "NetClass Technology" },
+      { "rank": 3,  "ticker": "HOTH", "price": 1.36,  "change_pct": 0.9,  "volume": 146358573, "company": "Rocket One Inc" },
+      { "rank": 4,  "ticker": "QTTB", "price": 12.85, "change_pct": 0.8,  "volume": 21076064,  "company": "Q32 Bio Inc" },
+      { "rank": 5,  "ticker": "BRTX", "price": 0.43,  "change_pct": 0.7,  "volume": 510977036, "company": "BioRestorative Therapies" },
+      { "rank": 6,  "ticker": "SNGX", "price": 0.87,  "change_pct": 0.7,  "volume": 241793383, "company": "Soligenix Inc" },
+      { "rank": 7,  "ticker": "VCIG", "price": 4.78,  "change_pct": 0.6,  "volume": 22594746,  "company": "VCI Global Ltd" },
+      { "rank": 8,  "ticker": "AMSS", "price": 5.70,  "change_pct": 0.6,  "volume": 17232564,  "company": "AMASS Brands Inc" },
+      { "rank": 9,  "ticker": "NCPL", "price": 1.58,  "change_pct": 0.5,  "volume": 28142097,  "company": "Netcapital Inc" },
+      { "rank": 10, "ticker": "VTIX", "price": 4.39,  "change_pct": 0.5,  "volume": 6948134,   "company": "Virtuix Holdings Inc" },
+      { "rank": 11, "ticker": "OTLK", "price": 0.59,  "change_pct": 0.5,  "volume": 80556222,  "company": "Outlook Therapeutics" },
+      { "rank": 12, "ticker": "FGL",  "price": 2.64,  "change_pct": 0.4,  "volume": 35437120,  "company": "Founder Group Ltd" },
+      { "rank": 13, "ticker": "APPS", "price": 6.68,  "change_pct": 0.4,  "volume": 54617981,  "company": "Digital Turbine Inc" },
+      { "rank": 14, "ticker": "QTEX", "price": 2.10,  "change_pct": 0.4,  "volume": 76229518,  "company": "QTREX Quantum Ltd" },
+      { "rank": 15, "ticker": "GNTA", "price": 0.82,  "change_pct": 0.4,  "volume": 0,         "company": "" }
+    ],
+    "auto_graded_top5": [
+      {
+        "ticker": "ASTC",
+        "grade": "F",
+        "score": "1/5",
+        "reason": "BELOW ZLSMA — do not trade",
+        "k": 56.4, "d": 40.5, "prev_k": 46.7,
+        "rv": 0.6,
+        "price": 13.79,
+        "zlsma": 16.3273,
+        "above_zlsma": false
+      },
+      {
+        "ticker": "NTCL",
+        "grade": "B",
+        "score": "3/5",
+        "reason": "Wait for more confirmation",
+        "k": 11.5, "d": 14.3, "prev_k": 18.1,
+        "rv": 0.5,
+        "price": 0.55,
+        "zlsma": 0.5377,
+        "above_zlsma": true,
+        "note": "K=11 — deep curl zone, watch if volume picks up"
+      },
+      {
+        "ticker": "HOTH",
+        "grade": "B",
+        "score": "3/5",
+        "reason": "Wait for more confirmation",
+        "k": 52.3, "d": 68.8, "prev_k": 70.2,
+        "rv": 1.1,
+        "price": 1.37,
+        "zlsma": 1.3554,
+        "above_zlsma": true
+      },
+      {
+        "ticker": "QTTB",
+        "grade": "A",
+        "score": "4/5",
+        "reason": "Strong — one condition missing (stoch already overbought)",
+        "k": 90.7, "d": 88.7, "prev_k": 90.7,
+        "rv": 5.4,
+        "price": 12.98,
+        "zlsma": 12.8860,
+        "above_zlsma": true
+      },
+      {
+        "ticker": "BRTX",
+        "grade": "A",
+        "score": "4/5",
+        "reason": "Strong — one condition missing (stoch already overbought)",
+        "k": 98.1, "d": 98.5, "prev_k": 100.0,
+        "rv": 1.8,
+        "price": 0.43,
+        "zlsma": 0.4194,
+        "above_zlsma": true
+      }
+    ]
+  },
+
+  "eod_chart_review": {
+    "note": "Charts reviewed at 21:49–21:50 EST on TradingView (5m, W118 Curl if Flow v4)",
+    "tickers": [
+      {
+        "ticker": "QTTB",
+        "company": "Q32 Bio Inc",
+        "day_change_pct": 81.24,
+        "eod_price": 12.33,
+        "stoch_rsi_eod": { "k": 20.63, "d": 15.23 },
+        "w118_signals_today": "Buy fired ~7:30am, ran to $14, Sell fired, re-entry Buy ~14:00, Sell ~16:55",
+        "zlsma_color": "green",
+        "above_zlsma": true,
+        "tomorrow_watch": "K=20.63 just crossed 20, D=15.23 — re-entry curl forming. Watch if K resets overnight and curls again at open.",
+        "priority": "medium — already had its big move today"
+      },
+      {
+        "ticker": "HOTH",
+        "company": "Hoth Therapeutics",
+        "day_change_pct": 92.01,
+        "eod_price": 1.74,
+        "stoch_rsi_eod": { "k": 8.40, "d": 7.64 },
+        "w118_signals_today": "Multiple Buy/Sell cycles, ran from ~$0.82 to $1.80. Clean W118 entries at each curl.",
+        "zlsma_color": "green",
+        "above_zlsma": true,
+        "tomorrow_watch": "K=8.40 is deep in zero zone RIGHT NOW. If K curls up through 20 at premarket/open with volume — textbook re-entry setup. WATCH AT 4AM.",
+        "priority": "HIGH — best setup for tomorrow morning"
+      },
+      {
+        "ticker": "BRTX",
+        "company": "BioRestorative Therapies",
+        "day_change_pct": 73.30,
+        "eod_price": 0.4188,
+        "stoch_rsi_eod": { "k": 19.43, "d": 0.00 },
+        "w118_signals_today": "Big spike ~6am premarket. Sell fired at top ~$0.60. Price settled back to $0.42.",
+        "zlsma_color": "green",
+        "above_zlsma": true,
+        "tomorrow_watch": "K=19.43 — ONE candle away from crossing 20. D=0.00 means curl would be very deep and strong. If volume hits at open this fires immediately.",
+        "priority": "HIGH — watch at 4am, could trigger within first candle"
+      }
+    ]
+  },
+
+  "tomorrow_watchlist": [
+    {
+      "ticker": "HOTH",
+      "why": "K=8.40, deep curl zone, above ZLSMA, +92% today means momentum is there",
+      "entry_trigger": "K crosses up through 20 with SHA green and volume ≥1.5x",
+      "account": "webull_cash",
+      "max_size": "pos_size(31, entry_price)"
+    },
+    {
+      "ticker": "BRTX",
+      "why": "K=19.43, one candle from signal, D=0.00 = very deep curl",
+      "entry_trigger": "K crosses up through 20 with SHA green and volume ≥1.5x",
+      "account": "webull_cash",
+      "max_size": "pos_size(31, entry_price)"
+    },
+    {
+      "ticker": "NTCL",
+      "why": "K=11 from scanner, above ZLSMA, watch if volume comes in",
+      "entry_trigger": "Full grade_ticker() check first — needs volume to improve",
+      "account": "watch only unless A grade",
+      "max_size": "pos_size(31, entry_price)"
+    }
+  ],
+
+  "tradingview_screener": {
+    "name": "Yassss",
+    "time": "22:05 EST",
+    "filters": {
+      "exchange": "NASDAQ Composite",
+      "price_max": 15,
+      "change_min_pct": 10,
+      "rel_vol_min": 4,
+      "float_max": "20M"
+    },
+    "total_results": 22,
+    "note": "TV screener is BETTER pre-filtered than finviz — already applies float<20M and RV>4x. Use TV screener to find candidates, then run grade_ticker() in Colab.",
+    "results": [
+      { "ticker": "GLE",  "price": 0.5007, "change_pct": 16.99, "rel_vol": 4.92,   "float": "9.16M",   "sector": "Technology services" },
+      { "ticker": "WFF",  "price": 2.01,   "change_pct": 17.54, "rel_vol": 46.63,  "float": "10.13M",  "sector": "Process industries" },
+      { "ticker": "YAAS", "price": 0.914,  "change_pct": 13.91, "rel_vol": 9.28,   "float": "10.3M",   "sector": "Technology services" },
+      { "ticker": "SNGX", "price": 0.8657, "change_pct": 68.75, "rel_vol": 23.16,  "float": "12.83M",  "sector": "Health technology" },
+      { "ticker": "HOTH", "price": 1.36,   "change_pct": 92.01, "rel_vol": 119.94, "float": "13.55M",  "sector": "Health technology", "note": "WATCHLIST — K=8.40 EOD" },
+      { "ticker": "BLIN", "price": 1.19,   "change_pct": 26.23, "rel_vol": 6.87,   "float": "14.99M",  "sector": "Technology services" },
+      { "ticker": "GTEC", "price": 0.6534, "change_pct": 20.35, "rel_vol": 6.66,   "float": "17.34M",  "sector": "Producer manufacturing" },
+      { "ticker": "SCWO", "price": 2.80,   "change_pct": 21.74, "rel_vol": 5.04,   "float": "48.99M",  "sector": "Industrial services" },
+      { "ticker": "ASTI", "price": 6.77,   "change_pct": 20.04, "rel_vol": 4.20,   "float": "64.06M",  "sector": "Electronic technology" },
+      { "ticker": "LFVN", "price": 8.05,   "change_pct": 16.16, "rel_vol": 8.80,   "float": "101.56M", "sector": "Health technology" },
+      { "ticker": "IPWR", "price": 8.99,   "change_pct": 29.91, "rel_vol": 7.79,   "float": "109.28M", "sector": "Electronic technology" },
+      { "ticker": "GOAI", "price": 3.76,   "change_pct": 10.91, "rel_vol": 18.40,  "float": "137.37M", "sector": "Technology services" },
+      { "ticker": "VTIX", "price": 4.39,   "change_pct": 46.33, "rel_vol": 35.03,  "float": "139.82M", "sector": "Electronic technology", "note": "Missed — RV=35x is massive" },
+      { "ticker": "QTTB", "price": 12.85,  "change_pct": 81.24, "rel_vol": 69.57,  "float": "217.89M", "sector": "Health technology", "note": "WATCHLIST — K=20.63 EOD" }
+    ],
+    "missed_by_finviz": ["WFF", "SNGX", "VTIX"],
+    "workflow_upgrade": "Use TV Yassss screener (live, float-filtered) → grade_ticker() in Colab → pos_size() before entry. Skip morning_scan() on days TV screener is open."
+  },
+
+  "validation_check": {
+    "question": "Did scanner A/B grades predict actual price action?",
+    "scanner_said": {
+      "ASTC": "F — below ZLSMA, no trade",
+      "NTCL": "B — wait",
+      "HOTH": "B — wait (was already mid-run when scanned at 9pm)",
+      "QTTB": "A — strong but overbought K=91",
+      "BRTX": "A — strong but overbought K=98"
+    },
+    "actual_eod": {
+      "ASTC": "TBD — check tomorrow",
+      "NTCL": "TBD — check tomorrow",
+      "HOTH": "+92% — W118 signals fired perfectly all day",
+      "QTTB": "+81% — W118 signals fired perfectly all day",
+      "BRTX": "+73% — W118 signals fired perfectly all day"
+    },
+    "note": "Scanner ran at 9pm EOD — HOTH/QTTB/BRTX had already moved. Real test is running scanner at 4–9:30am PREMARKET when K is still 0–20 and the move hasn't happened yet."
+  }
+}
