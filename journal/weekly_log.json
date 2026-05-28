@@ -209,14 +209,23 @@
       "date": "2026-05-28",
       "ticker": "QTEX",
       "account": "webull_margin",
-      "entry_price": 2.56,
-      "exit_price": null,
+      "entry_price": 2.568,
+      "exit_price": 2.750,
       "shares": 9,
-      "pnl_dollar": null,
-      "pnl_pct": null,
-      "result": "open",
-      "stop_loss": 2.355,
-      "notes": "Still open. Rushed entry before market open. Watching for bounce or stop at $2.355."
+      "pnl_dollar": 1.64,
+      "pnl_pct": 7.1,
+      "result": "win",
+      "rules": {
+        "stoch_rsi_cross_20": false,
+        "sha_green": true,
+        "above_zlsma": false,
+        "volume_1_5x": true,
+        "float_under_20m": true,
+        "session_4am_1030am": true
+      },
+      "all_rules_followed": false,
+      "exit_reason": "TradingView price alert at $2.75 triggered — sold all 9 shares green",
+      "notes": "Rushed entry before open. Held through pullback to $2.37 (near $2.355 stop, -8%). Patient wait paid off — TradingView alert at $2.75 fired, sold immediately and still green. Small win on a very stressful hold. Lesson: set your alert BEFORE you buy, let it do the emotional work for you."
     }
   ],
   "paper_trades": [
@@ -233,15 +242,23 @@
     }
   ],
   "summary": {
-    "total_real_trades": 9,
-    "wins": 7,
+    "total_real_trades": 10,
+    "wins": 8,
     "losses": 2,
-    "win_rate_pct": 77.8,
+    "win_rate_pct": 80.0,
     "rules_followed_pct": 55,
-    "total_pnl_dollar": 15.48,
-    "best_trade": "MASK Schwab Roth +$16.36 today (stock halted at $4.25, T3 was $4.30 — missed $72 with T1/T2/T3)",
-    "worst_trade": "YMAT overnight hold -$36.54 (-28.2%) — missed stop loss",
-    "lesson_of_the_week": "The stop loss IS the trade. Never hold below ZLSMA overnight. Also: exits matter as much as entries. MASK hit T3 ($4.25 halt) — sold at $2.90 out of nerves. T1/T2/T3 trimming = 4x more profit on same trade. Intuition finds the stocks. The system handles the exits.",
-    "may_28_trades_note": "QTEX still open — 9 shares @ $2.56, Webull margin"
+    "total_pnl_dollar": 17.12,
+    "best_trade": "MASK Schwab Roth +$16.36 (stock halted at $4.25 halt, T3=$4.30 — missed $55 with T1/T2/T3 trimming)",
+    "worst_trade": "YMAT overnight hold -$36.54 (-28.2%) — missed stop loss, held below ZLSMA",
+    "lesson_of_the_week": "Three lessons burned in this week: (1) THE STOP LOSS IS THE AIRBAG — YMAT $36 loss vs $10 with stop. Never skip it, never hold below ZLSMA. (2) T1/T2/T3 EXITS — MASK ran to $5 after selling at $2.90. Trimming at targets = 4x more profit on same trade. Set targets BEFORE you buy. (3) WAIT FOR THE SIGNAL — NCT and QTEX both rushed before market open. Signal found the move; entering before it = gambling. Intuition finds the stock, the system fires the entry.",
+    "week_end_balances": {
+      "schwab_roth": 4354.80,
+      "schwab_margin": 123.00,
+      "webull_margin": 23.00,
+      "webull_cash": 31.00,
+      "active_trading_total": 177.00
+    },
+    "net_change_from_week_start": -36.12,
+    "note": "Net negative due to YMAT -$36.54 overnight loss. All May 28 trades closed green. Goal win rate 80% — HIT exactly at 80% (8/10)."
   }
 }
