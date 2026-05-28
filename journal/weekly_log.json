@@ -14,11 +14,12 @@
     "active_trading_total": 213.12
   },
   "account_end": {
-    "schwab_roth": 4354.80,
+    "schwab_roth": 4383.80,
     "schwab_margin": 123.00,
     "webull_margin": 23.00,
     "webull_cash": 31.00,
-    "active_trading_total": 177.00
+    "active_trading_total": 177.00,
+    "note_roth": "+$29 from FIDI (1 share, long-term hold sold 2026-05-28)"
   },
   "goal_win_rate": 80,
   "trades": [
