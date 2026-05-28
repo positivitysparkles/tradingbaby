@@ -250,9 +250,9 @@ def morning_scan(min_change_pct: float = 10.0, max_price: float = 15.0,
     try:
         fov = Overview()
         fov.set_filter(filters_dict={
-            'Exchange': 'NASDAQ',
-            'Price':    'Under $15',
-            'Change':   'Over 10%',
+            'Exchange':       'NASDAQ',
+            'Price':          'Under $15',
+            'Relative Volume': 'Over 1.5',
         })
         df = fov.screener_view()
     except Exception as e:
