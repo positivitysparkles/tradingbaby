@@ -150,6 +150,38 @@
     }
   ],
 
+  "tradingview_screener": {
+    "name": "Yassss",
+    "time": "22:05 EST",
+    "filters": {
+      "exchange": "NASDAQ Composite",
+      "price_max": 15,
+      "change_min_pct": 10,
+      "rel_vol_min": 4,
+      "float_max": "20M"
+    },
+    "total_results": 22,
+    "note": "TV screener is BETTER pre-filtered than finviz — already applies float<20M and RV>4x. Use TV screener to find candidates, then run grade_ticker() in Colab.",
+    "results": [
+      { "ticker": "GLE",  "price": 0.5007, "change_pct": 16.99, "rel_vol": 4.92,   "float": "9.16M",   "sector": "Technology services" },
+      { "ticker": "WFF",  "price": 2.01,   "change_pct": 17.54, "rel_vol": 46.63,  "float": "10.13M",  "sector": "Process industries" },
+      { "ticker": "YAAS", "price": 0.914,  "change_pct": 13.91, "rel_vol": 9.28,   "float": "10.3M",   "sector": "Technology services" },
+      { "ticker": "SNGX", "price": 0.8657, "change_pct": 68.75, "rel_vol": 23.16,  "float": "12.83M",  "sector": "Health technology" },
+      { "ticker": "HOTH", "price": 1.36,   "change_pct": 92.01, "rel_vol": 119.94, "float": "13.55M",  "sector": "Health technology", "note": "WATCHLIST — K=8.40 EOD" },
+      { "ticker": "BLIN", "price": 1.19,   "change_pct": 26.23, "rel_vol": 6.87,   "float": "14.99M",  "sector": "Technology services" },
+      { "ticker": "GTEC", "price": 0.6534, "change_pct": 20.35, "rel_vol": 6.66,   "float": "17.34M",  "sector": "Producer manufacturing" },
+      { "ticker": "SCWO", "price": 2.80,   "change_pct": 21.74, "rel_vol": 5.04,   "float": "48.99M",  "sector": "Industrial services" },
+      { "ticker": "ASTI", "price": 6.77,   "change_pct": 20.04, "rel_vol": 4.20,   "float": "64.06M",  "sector": "Electronic technology" },
+      { "ticker": "LFVN", "price": 8.05,   "change_pct": 16.16, "rel_vol": 8.80,   "float": "101.56M", "sector": "Health technology" },
+      { "ticker": "IPWR", "price": 8.99,   "change_pct": 29.91, "rel_vol": 7.79,   "float": "109.28M", "sector": "Electronic technology" },
+      { "ticker": "GOAI", "price": 3.76,   "change_pct": 10.91, "rel_vol": 18.40,  "float": "137.37M", "sector": "Technology services" },
+      { "ticker": "VTIX", "price": 4.39,   "change_pct": 46.33, "rel_vol": 35.03,  "float": "139.82M", "sector": "Electronic technology", "note": "Missed — RV=35x is massive" },
+      { "ticker": "QTTB", "price": 12.85,  "change_pct": 81.24, "rel_vol": 69.57,  "float": "217.89M", "sector": "Health technology", "note": "WATCHLIST — K=20.63 EOD" }
+    ],
+    "missed_by_finviz": ["WFF", "SNGX", "VTIX"],
+    "workflow_upgrade": "Use TV Yassss screener (live, float-filtered) → grade_ticker() in Colab → pos_size() before entry. Skip morning_scan() on days TV screener is open."
+  },
+
   "validation_check": {
     "question": "Did scanner A/B grades predict actual price action?",
     "scanner_said": {
