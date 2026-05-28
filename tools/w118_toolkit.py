@@ -149,7 +149,8 @@ def grade_ticker(ticker: str, timeframe: str = '5m', period: str = '5d',
     ]
     data = pd.DataFrame()
     for try_period, try_tf in attempts:
-        data = yf.download(ticker, period=try_period, interval=try_tf, progress=False)
+        data = yf.download(ticker, period=try_period, interval=try_tf,
+                           progress=False, prepost=True)
         if not data.empty and len(data) >= 30:
             if try_period != period or try_tf != timeframe:
                 print(f"  ℹ  Using period='{try_period}' tf='{try_tf}' (auto-fallback)")
@@ -246,7 +247,8 @@ def grade_ticker(ticker: str, timeframe: str = '5m', period: str = '5d',
 def _quick_k(ticker: str) -> float | None:
     """Fast K-value snapshot — used to pre-filter scanner candidates."""
     try:
-        data = yf.download(ticker, period='5d', interval='5m', progress=False)
+        data = yf.download(ticker, period='5d', interval='5m',
+                           progress=False, prepost=True)
         if data.empty or len(data) < 30:
             return None
         if isinstance(data.columns, pd.MultiIndex):
@@ -281,7 +283,7 @@ def morning_scan(min_change_pct: float = 10.0, max_price: float = 15.0,
 
     float_label = f" | Float {max_float}" if max_float else ""
     print(f"\n{'═'*42}")
-    print(f"  🔍 W118 MORNING SCANNER  (smart mode)")
+    print(f"  🔍 W118 SCANNER  (smart mode — live data any time)")
     print(f"  Filters: NASDAQ | >{min_change_pct}% today | <${max_price}{float_label}")
     print(f"  Grading only K<{k_max} (skips overbought)")
     print(f"{'═'*42}\n")
@@ -338,7 +340,7 @@ def morning_scan(min_change_pct: float = 10.0, max_price: float = 15.0,
 
     if not fresh:
         print(f"\n  ⚠  No candidates with K<{k_max} right now. Market may be mid-run.")
-        print(f"     Try again in 30 min, or use: morning_scan(k_max=60)")
+        print(f"     Try again in 30 min, or use: morning_scan(k_max=60) to loosen")
         return
 
     print(f"\n  {len(fresh)} candidates have K<{k_max} — grading top {min(grade_top, len(fresh))} (lowest K first)...\n")
