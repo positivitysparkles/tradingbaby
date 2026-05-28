@@ -122,7 +122,7 @@ def _sha_green(df: pd.DataFrame) -> pd.Series:
     sha_o = _ema(ha_open, 10)
     return sha_c > sha_o
 
-def grade_ticker(ticker: str, timeframe: str = '5m', period: str = '2d',
+def grade_ticker(ticker: str, timeframe: str = '5m', period: str = '5d',
                  signal_price: float = None) -> dict | None:
     """
     Download live chart data and check all W118 entry conditions.
@@ -130,7 +130,7 @@ def grade_ticker(ticker: str, timeframe: str = '5m', period: str = '2d',
     Args:
         ticker:       Stock symbol (e.g. 'QTTB')
         timeframe:    '1m' or '5m' (default '5m')
-        period:       yfinance period string (default '2d')
+        period:       yfinance period string (default '5d')
         signal_price: BUY signal price for chase check (optional)
 
     Returns: dict with score and values, or None on error
@@ -139,9 +139,26 @@ def grade_ticker(ticker: str, timeframe: str = '5m', period: str = '2d',
     print(f"  📊 CHART GRADER — {ticker} ({timeframe})")
     print(f"{'═'*42}")
 
-    data = yf.download(ticker, period=period, interval=timeframe, progress=False)
-    if data.empty or len(data) < 60:
-        print(f"  ⚠  Not enough data (need 60+ bars). Try period='5d'.")
+    # Auto-retry with progressively longer periods and fallback to 1m
+    attempts = [
+        (period, timeframe),
+        ('5d',  timeframe),
+        ('1mo', timeframe),
+        ('5d',  '1m'),
+        ('7d',  '1m'),
+    ]
+    data = pd.DataFrame()
+    for try_period, try_tf in attempts:
+        data = yf.download(ticker, period=try_period, interval=try_tf, progress=False)
+        if not data.empty and len(data) >= 30:
+            if try_period != period or try_tf != timeframe:
+                print(f"  ℹ  Using period='{try_period}' tf='{try_tf}' (auto-fallback)")
+            timeframe = try_tf
+            break
+
+    if data.empty or len(data) < 30:
+        print(f"  ⚠  No data found for {ticker}. Check the ticker symbol is correct.")
+        print(f"     (Some foreign/new listings aren't available in yfinance)")
         return None
 
     # Flatten MultiIndex columns (yfinance 0.2+)
