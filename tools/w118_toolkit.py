@@ -243,8 +243,24 @@ def grade_ticker(ticker: str, timeframe: str = '5m', period: str = '5d',
 
 # ══ TOOL 3: MORNING SCANNER ══════════════════════════════════════════════════
 
+def _quick_k(ticker: str) -> float | None:
+    """Fast K-value snapshot — used to pre-filter scanner candidates."""
+    try:
+        data = yf.download(ticker, period='5d', interval='5m', progress=False)
+        if data.empty or len(data) < 30:
+            return None
+        if isinstance(data.columns, pd.MultiIndex):
+            data.columns = data.columns.droplevel(1)
+        close = data['Close'].astype(float)
+        k, _ = _stoch_rsi(close)
+        return round(float(k.iloc[-1]), 1)
+    except Exception:
+        return None
+
+
 def morning_scan(min_change_pct: float = 10.0, max_price: float = 15.0,
-                 max_float: str = 'Under 20M', grade_top: int = 5):
+                 max_float: str = 'Under 20M', grade_top: int = 5,
+                 k_max: float = 40.0):
     """
     Scan NASDAQ for W118 candidates and grade the best ones.
 
@@ -253,7 +269,9 @@ def morning_scan(min_change_pct: float = 10.0, max_price: float = 15.0,
         max_price:      Max stock price (default $15)
         max_float:      Float filter (default 'Under 20M'). Set None to skip.
                         Options: 'Under 1M','Under 5M','Under 10M','Under 20M','Under 50M'
-        grade_top:      How many top candidates to auto-grade (default 5)
+        grade_top:      How many candidates to auto-grade (default 5)
+        k_max:          Only grade tickers where K < this value (default 40)
+                        Skips overbought stocks automatically. Set 100 to grade all.
     """
     try:
         from finvizfinance.screener.overview import Overview
@@ -263,8 +281,9 @@ def morning_scan(min_change_pct: float = 10.0, max_price: float = 15.0,
 
     float_label = f" | Float {max_float}" if max_float else ""
     print(f"\n{'═'*42}")
-    print(f"  🔍 W118 MORNING SCANNER")
+    print(f"  🔍 W118 MORNING SCANNER  (smart mode)")
     print(f"  Filters: NASDAQ | >{min_change_pct}% today | <${max_price}{float_label}")
+    print(f"  Grading only K<{k_max} (skips overbought)")
     print(f"{'═'*42}\n")
 
     try:
@@ -292,16 +311,39 @@ def morning_scan(min_change_pct: float = 10.0, max_price: float = 15.0,
     df['Volume'] = pd.to_numeric(df['Volume'].astype(str).str.replace(',',''), errors='coerce')
     df = df.dropna(subset=['Change']).sort_values('Change', ascending=False)
 
-    print(f"  Found {len(df)} candidates:\n")
-    print(f"  {'#':>2}  {'Ticker':<7}  {'Price':>6}  {'Change':>7}  {'Volume':>10}  Company")
-    print(f"  {'─'*65}")
-    for i, (_, row) in enumerate(df.head(15).iterrows(), 1):
-        print(f"  {i:>2}. {row['Ticker']:<7}  ${float(row['Price']):>5.2f}  {row['Change']:>+6.1f}%  {str(row['Volume']):>10}  {str(row.get('Company',''))[:20]}")
+    # Quick K pre-check on top 15 candidates
+    print(f"  Quick K-check on top 15 candidates (skipping K>{k_max})...\n")
+    tickers_top = list(df['Ticker'].head(15))
+    k_values = {}
+    for t in tickers_top:
+        k_val = _quick_k(t)
+        k_values[t] = k_val
+        bar = '🟢' if k_val is not None and k_val < 20 else '🟡' if k_val is not None and k_val < 40 else '🔴'
+        k_str = f"K={k_val}" if k_val is not None else "K=n/a"
+        print(f"    {bar} {t:<6}  {k_str}")
 
-    # Grade top N
-    print(f"\n  Grading top {grade_top} by % gain...\n")
+    print(f"\n  Found {len(df)} candidates:\n")
+    print(f"  {'#':>2}  {'Ticker':<7}  {'Price':>6}  {'Change':>7}  {'K':>6}  {'Volume':>10}  Company")
+    print(f"  {'─'*72}")
+    for i, (_, row) in enumerate(df.head(15).iterrows(), 1):
+        t = row['Ticker']
+        k_val = k_values.get(t)
+        k_str = f"{k_val:>5.1f}" if k_val is not None else "  n/a"
+        flag = ' 🎯' if k_val is not None and k_val < 20 else ''
+        print(f"  {i:>2}. {t:<7}  ${float(row['Price']):>5.2f}  {row['Change']:>+6.1f}%  {k_str}  {str(row['Volume']):>10}  {str(row.get('Company',''))[:18]}{flag}")
+
+    # Grade only candidates with K < k_max, up to grade_top
+    fresh = [t for t in tickers_top if k_values.get(t) is not None and k_values[t] < k_max]
+    fresh_sorted = sorted(fresh, key=lambda t: k_values[t])   # lowest K first
+
+    if not fresh:
+        print(f"\n  ⚠  No candidates with K<{k_max} right now. Market may be mid-run.")
+        print(f"     Try again in 30 min, or use: morning_scan(k_max=60)")
+        return
+
+    print(f"\n  {len(fresh)} candidates have K<{k_max} — grading top {min(grade_top, len(fresh))} (lowest K first)...\n")
     results = []
-    for ticker in df['Ticker'].head(grade_top):
+    for ticker in fresh_sorted[:grade_top]:
         r = grade_ticker(ticker)
         if r:
             results.append(r)
