@@ -155,6 +155,70 @@
       "notes": "Entered $1.49 without setting -8% stop ($1.371). Held overnight while stock broke below ZLSMA (Pattern A fade). Cut at $1.07 on May 27. Stop would have saved $26.19 — total cost $36.54 vs $10.35 with stop. THE airbag lesson. Never hold below ZLSMA. Never skip stop loss."
     }
   ],
+  "may_28_trades": [
+    {
+      "date": "2026-05-28",
+      "ticker": "MASK",
+      "account": "schwab_roth",
+      "entry_price": 2.69,
+      "exit_price": 2.90,
+      "shares": 78,
+      "pnl_dollar": 16.36,
+      "pnl_pct": 7.8,
+      "result": "win",
+      "rules": {
+        "stoch_rsi_cross_20": true,
+        "sha_green": true,
+        "above_zlsma": true,
+        "volume_1_5x": true,
+        "float_under_20m": true,
+        "session_4am_1030am": true
+      },
+      "all_rules_followed": false,
+      "exit_reason": "Sold too early out of nerves — full exit at $2.90",
+      "stock_halted_at": 4.25,
+      "t1_target": 3.09,
+      "t2_target": 3.50,
+      "t3_target": 4.30,
+      "missed_profit": 55.66,
+      "notes": "Intuitive entry, clean setup from scanner. Sold all at $2.90 instead of trimming. Stock ran to $4.25 halt — T3 was $4.30. With T1/T2/T3 would have made $72 instead of $16. THE exit lesson. Next time: set T1 alert before buying, trim at each target."
+    },
+    {
+      "date": "2026-05-28",
+      "ticker": "NCT",
+      "account": "webull_cash",
+      "entry_price": 5.33,
+      "exit_price": 5.65,
+      "shares": 5,
+      "pnl_dollar": 1.60,
+      "pnl_pct": 6.0,
+      "result": "win",
+      "rules": {
+        "stoch_rsi_cross_20": false,
+        "sha_green": false,
+        "above_zlsma": false,
+        "volume_1_5x": true,
+        "float_under_20m": true,
+        "session_4am_1030am": true
+      },
+      "all_rules_followed": false,
+      "exit_reason": "Quick exit, sold early before K hit 93",
+      "notes": "Rushed entry — grader said F (below ZLSMA at entry time). Entered on intuition, stock bounced back above ZLSMA and ran. Got lucky. Buy signal fired legitimately at ~$5.10 — entered before it at $5.33. Lesson: intuition finds the stock, wait for the actual signal."
+    },
+    {
+      "date": "2026-05-28",
+      "ticker": "QTEX",
+      "account": "webull_margin",
+      "entry_price": 2.56,
+      "exit_price": null,
+      "shares": 9,
+      "pnl_dollar": null,
+      "pnl_pct": null,
+      "result": "open",
+      "stop_loss": 2.355,
+      "notes": "Still open. Rushed entry before market open. Watching for bounce or stop at $2.355."
+    }
+  ],
   "paper_trades": [
     {
       "date": "2026-05-27",
@@ -169,14 +233,15 @@
     }
   ],
   "summary": {
-    "total_real_trades": 6,
-    "wins": 4,
+    "total_real_trades": 9,
+    "wins": 7,
     "losses": 2,
-    "win_rate_pct": 66.7,
-    "rules_followed_pct": 67,
-    "total_pnl_dollar": -3.08,
-    "best_trade": "QTTB Schwab +$25.20 (+22.2%)",
+    "win_rate_pct": 77.8,
+    "rules_followed_pct": 55,
+    "total_pnl_dollar": 15.48,
+    "best_trade": "MASK Schwab Roth +$16.36 today (stock halted at $4.25, T3 was $4.30 — missed $72 with T1/T2/T3)",
     "worst_trade": "YMAT overnight hold -$36.54 (-28.2%) — missed stop loss",
-    "lesson_of_the_week": "The stop loss IS the trade. Never hold below ZLSMA overnight. Never skip the -8% stop. The airbag doesn't work if you unbuckle it. Also: the waiting game IS the game — 90% watching, 10% clicking. Never chase more than 3% above BUY signal."
+    "lesson_of_the_week": "The stop loss IS the trade. Never hold below ZLSMA overnight. Also: exits matter as much as entries. MASK hit T3 ($4.25 halt) — sold at $2.90 out of nerves. T1/T2/T3 trimming = 4x more profit on same trade. Intuition finds the stocks. The system handles the exits.",
+    "may_28_trades_note": "QTEX still open — 9 shares @ $2.56, Webull margin"
   }
 }
