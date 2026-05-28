@@ -244,13 +244,15 @@ def grade_ticker(ticker: str, timeframe: str = '5m', period: str = '5d',
 # ══ TOOL 3: MORNING SCANNER ══════════════════════════════════════════════════
 
 def morning_scan(min_change_pct: float = 10.0, max_price: float = 15.0,
-                 grade_top: int = 5):
+                 max_float: str = 'Under 20M', grade_top: int = 5):
     """
     Scan NASDAQ for W118 candidates and grade the best ones.
 
     Args:
         min_change_pct: Minimum % gain today (default 10%)
         max_price:      Max stock price (default $15)
+        max_float:      Float filter (default 'Under 20M'). Set None to skip.
+                        Options: 'Under 1M','Under 5M','Under 10M','Under 20M','Under 50M'
         grade_top:      How many top candidates to auto-grade (default 5)
     """
     try:
@@ -259,18 +261,22 @@ def morning_scan(min_change_pct: float = 10.0, max_price: float = 15.0,
         print("Run: !pip install finvizfinance")
         return
 
+    float_label = f" | Float {max_float}" if max_float else ""
     print(f"\n{'═'*42}")
     print(f"  🔍 W118 MORNING SCANNER")
-    print(f"  Filters: NASDAQ | >${min_change_pct}% today | <${max_price}")
+    print(f"  Filters: NASDAQ | >{min_change_pct}% today | <${max_price}{float_label}")
     print(f"{'═'*42}\n")
 
     try:
         fov = Overview()
-        fov.set_filter(filters_dict={
+        filters = {
             'Exchange': 'NASDAQ',
             'Price':    'Under $15',
             'Change':   'Up 10%',
-        })
+        }
+        if max_float:
+            filters['Float'] = max_float
+        fov.set_filter(filters_dict=filters)
         df = fov.screener_view()
     except Exception as e:
         print(f"  Scanner error: {e}")
