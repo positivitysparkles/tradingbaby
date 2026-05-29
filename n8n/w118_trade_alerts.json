@@ -1,0 +1,56 @@
+{
+  "name": "W118 Trade Alerts",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [{"mode": "everyMinute"}]
+        },
+        "filters": {
+          "sender": "noreply@tradingview.com",
+          "readStatus": "unread"
+        }
+      },
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const subject = $input.item.json.subject || '';\nconst body = $input.item.json.snippet || '';\nconst text = subject + ' ' + body;\nconst ticker = text.match(/BUY\\s+([A-Z]+)/)?.[1] || 'UNKNOWN';\nconst price = parseFloat(text.match(/Price:\\s*([\\d.]+)/)?.[1] || 0);\nconst stop = (price * 0.92).toFixed(2);\nconst t1 = (price * 1.15).toFixed(2);\nconst t2 = (price * 1.30).toFixed(2);\nconst t3 = (price * 1.60).toFixed(2);\nreturn [{ json: { ticker, price, stop, t1, t2, t3 } }];"
+      },
+      "name": "Parse Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_CHAT_ID_HERE",
+        "text": "=🟢 BUY {{ $json.ticker }} | ${{ $json.price }}\n🛑 Stop: ${{ $json.stop }}\n🎯 T1: ${{ $json.t1 }} | T2: ${{ $json.t2 }} | T3: ${{ $json.t3 }}\n⏰ Check chart before entering!",
+        "additionalFields": {}
+      },
+      "name": "Telegram Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "credentials": {
+        "telegramApi": {
+          "name": "W118 Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Gmail Trigger": {
+      "main": [[{"node": "Parse Alert", "type": "main", "index": 0}]]
+    },
+    "Parse Alert": {
+      "main": [[{"node": "Telegram Alert", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
