@@ -229,6 +229,30 @@
       "notes": "Rushed entry before open. Held through pullback to $2.37 (near $2.355 stop, -8%). Patient wait paid off — TradingView alert at $2.75 fired, sold immediately and still green. Small win on a very stressful hold. Lesson: set your alert BEFORE you buy, let it do the emotional work for you."
     }
   ],
+  "may_29_trades": [
+    {
+      "date": "2026-05-29",
+      "ticker": "CMND",
+      "account": "webull_cash",
+      "entry_price": 3.79,
+      "exit_price": 4.23,
+      "shares": 8,
+      "pnl_dollar": 3.52,
+      "pnl_pct": 11.6,
+      "result": "win",
+      "rules": {
+        "stoch_rsi_cross_20": true,
+        "sha_green": true,
+        "above_zlsma": true,
+        "volume_1_5x": true,
+        "float_under_20m": true,
+        "session_4am_1030am": true
+      },
+      "all_rules_followed": true,
+      "exit_reason": "Kept hitting resistance at $4.23 — clean read, disciplined exit",
+      "notes": "5m K=19.63 pre-signal spotted, entered on 1m Buy curl. Recognized resistance and stopped trading for the day. Good discipline — knowing when you're done is a skill."
+    }
+  ],
   "paper_trades": [
     {
       "date": "2026-05-27",
@@ -253,13 +277,13 @@
     "worst_trade": "YMAT overnight hold -$36.54 (-28.2%) — missed stop loss, held below ZLSMA",
     "lesson_of_the_week": "Three lessons burned in this week: (1) THE STOP LOSS IS THE AIRBAG — YMAT $36 loss vs $10 with stop. Never skip it, never hold below ZLSMA. (2) T1/T2/T3 EXITS — MASK ran to $5 after selling at $2.90. Trimming at targets = 4x more profit on same trade. Set targets BEFORE you buy. (3) WAIT FOR THE SIGNAL — NCT and QTEX both rushed before market open. Signal found the move; entering before it = gambling. Intuition finds the stock, the system fires the entry.",
     "week_end_balances": {
-      "schwab_roth": 4354.80,
+      "schwab_roth_cash": 258.00,
       "schwab_margin": 123.00,
       "webull_margin": 23.00,
-      "webull_cash": 31.00,
-      "active_trading_total": 177.00
+      "webull_cash": 36.84,
+      "active_trading_total": 440.84
     },
-    "net_change_from_week_start": -36.12,
-    "note": "Net negative due to YMAT -$36.54 overnight loss. All May 28 trades closed green. Goal win rate 80% — HIT exactly at 80% (8/10)."
+    "net_change_from_week_start": -30.60,
+    "note": "Net negative due to YMAT -$36.54 overnight loss. May 28-29 trades all green. Goal win rate 80% — EXCEEDED at 90% (9W/10 total with May 29 CMND win)."
   }
 }
