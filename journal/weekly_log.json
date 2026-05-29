@@ -1,8 +1,8 @@
 {
   "week": "2026-05-26 to 2026-05-30",
   "account_structure": {
-    "schwab_roth_ira": "~$4329.60 total — mostly long-term holdings + active W118 day trades (QTTB)",
-    "schwab_margin": "Active trading account — YMAT 87-share position held here",
+    "schwab_roth_ira": "$258 cash available for trading — rest is long-term holdings (do not touch)",
+    "schwab_margin": "Active trading account — $123 available",
     "webull_margin": "$23 — small trades, subject to PDT (use sparingly)",
     "webull_cash": "$31 — primary W118 day trading account (no PDT rule)"
   },
@@ -14,11 +14,12 @@
     "active_trading_total": 213.12
   },
   "account_end": {
-    "schwab_roth": 4354.80,
+    "schwab_roth_cash": 258.00,
+    "schwab_roth_longterm": "do not touch — tracked separately",
     "schwab_margin": 123.00,
     "webull_margin": 23.00,
     "webull_cash": 31.00,
-    "active_trading_total": 177.00
+    "active_trading_total": 435.00
   },
   "goal_win_rate": 80,
   "trades": [

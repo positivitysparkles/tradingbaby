@@ -65,22 +65,25 @@
     "user_superpower": "Cross-domain pattern recognition. Watches humans make emotional decisions under pressure (I Shouldn't Be Alive, podcasts). Trading IS that same show."
   },
   "account_status": {
-    "last_updated": "2026-05-27",
-    "schwab_roth": {
-      "start_of_week": 113.0,
-      "current": 138.2,
-      "notes": "QTTB trade +$25.20"
+    "last_updated": "2026-05-28",
+    "schwab_roth_cash": {
+      "current": 258.00,
+      "notes": "Cash only — long-term holdings tracked separately, do not touch"
     },
-    "webull_real": {
-      "start_of_week": 21.0,
-      "current": 26.2,
-      "notes": "QTTB scalp +$1, ASTC +$4.20"
+    "schwab_margin": {
+      "current": 123.00,
+      "notes": "Active trading account — available Friday"
     },
-    "total": {
-      "start_of_week": 134.0,
-      "current": 164.4,
-      "gain_this_week": 30.4
+    "webull_cash": {
+      "current": 31.00,
+      "notes": "Primary day trading — no PDT rule"
     },
+    "webull_margin": {
+      "current": 23.00,
+      "notes": "Skip Friday — PDT risk, tiny balance"
+    },
+    "active_trading_total": 435.00,
+    "friday_accounts": ["schwab_margin", "webull_cash"],
     "account_type_recommendation": "Use Webull CASH account (not margin) to avoid PDT rule. Cash account = unlimited day trades as long as you use settled funds."
   },
   "webull_rules": {
@@ -95,72 +98,25 @@
     "safe_cash_workflow": "Start with settled cash \u2192 buy \u2192 sell same day (OK) \u2192 wait T+2 before reusing proceeds, OR use Webull instant buying power buffer."
   },
   "live_trades_log": {
-    "2026-05-26": [
-      {
-        "ticker": "YMAT",
-        "account": "schwab",
-        "entry": 1.37,
-        "exit": 1.68,
-        "shares": 18,
-        "pnl_pct": 22.6,
-        "pnl_dollar": 5.58,
-        "result": "WIN",
-        "lesson": "Clean W118 entry. First real win."
-      },
-      {
-        "ticker": "YMAT",
-        "account": "schwab",
-        "entry": 1.79,
-        "exit": 1.65,
-        "shares": 18,
-        "pnl_pct": -7.8,
-        "pnl_dollar": -2.52,
-        "result": "LOSS",
-        "lesson": "Chased 30% above BUY signal ($1.37). 3% rule violated. Classic bus-chasing mistake."
-      }
-    ],
-    "2026-05-27": [
-      {
-        "ticker": "QTTB",
-        "account": "schwab",
-        "entry": 9.45,
-        "exit": 11.55,
-        "shares": 12,
-        "pnl_pct": 22.2,
-        "pnl_dollar": 25.2,
-        "result": "WIN",
-        "lesson": "Entry was 12.9% above BUY signal (chase) but held through halt-up and exited clean on SELL signal + K=100."
-      },
-      {
-        "ticker": "QTTB",
-        "account": "webull",
-        "entry": 11.25,
-        "exit": 11.75,
-        "shares": 2,
-        "pnl_pct": 4.4,
-        "pnl_dollar": 1.0,
-        "result": "WIN",
-        "lesson": "Quick 8-min scalp on re-entry. Clean."
-      },
-      {
-        "ticker": "ASTC",
-        "account": "webull",
-        "entry": 9.42,
-        "exit": 10.47,
-        "shares": 4,
-        "pnl_pct": 11.1,
-        "pnl_dollar": 4.2,
-        "result": "WIN",
-        "lesson": "Went to $11 after exit. Small position = small miss. A+ entry was $5.54 premarket. Position size up at the original signal next time."
-      }
-    ],
-    "running_totals": {
-      "real_trades": 5,
-      "wins": 4,
-      "losses": 1,
-      "win_rate": "80%",
-      "total_pnl": 33.46,
-      "best_trade": "QTTB Schwab +$25.20 (+22.2%)"
+    "week_2026-05-26_to_05-28": {
+      "total_trades": 9,
+      "wins": 7,
+      "losses": 2,
+      "win_rate": "77.8%",
+      "net_pnl": 16.52,
+      "best_trade": "MASK +$16.36 (halted at $4.25 — sold too early at $2.90, missed $55 with T1/T2/T3)",
+      "worst_trade": "YMAT -$36.54 (no stop, overnight hold below ZLSMA)",
+      "trades": [
+        { "date": "05-26", "ticker": "YMAT", "account": "schwab_margin", "pnl": 5.58,   "result": "WIN",  "lesson": "Clean W118 entry. First real win." },
+        { "date": "05-26", "ticker": "YMAT", "account": "schwab_margin", "pnl": -2.52,  "result": "LOSS", "lesson": "Chased 30% above BUY signal. 3% rule violated." },
+        { "date": "05-26", "ticker": "YMAT", "account": "schwab_margin", "pnl": -36.54, "result": "LOSS", "lesson": "No stop set. Held overnight below ZLSMA. THE airbag lesson." },
+        { "date": "05-27", "ticker": "QTTB", "account": "schwab_roth",   "pnl": 25.20,  "result": "WIN",  "lesson": "Held through halt-up. Exited clean on SELL + K=100." },
+        { "date": "05-27", "ticker": "QTTB", "account": "webull_cash",   "pnl": 1.00,   "result": "WIN",  "lesson": "Quick 8-min scalp on re-entry." },
+        { "date": "05-27", "ticker": "ASTC", "account": "webull_cash",   "pnl": 4.20,   "result": "WIN",  "lesson": "Late entry but still +11%. Size up at original premarket signal." },
+        { "date": "05-28", "ticker": "MASK", "account": "schwab_roth",   "pnl": 16.36,  "result": "WIN",  "lesson": "Sold all at $2.90 out of nerves. Halted at $4.25. T1/T2/T3 = $72 instead of $16. THE exit lesson." },
+        { "date": "05-28", "ticker": "NCT",  "account": "webull_cash",   "pnl": 1.60,   "result": "WIN",  "lesson": "Entered before signal (grader said F). Got lucky — signal fired after entry. Wait for the signal." },
+        { "date": "05-28", "ticker": "QTEX", "account": "webull_margin", "pnl": 1.64,   "result": "WIN",  "lesson": "Rushed before open. Held through pullback to near stop. TradingView alert at $2.75 handled exit. Alerts remove emotion." }
+      ]
     }
   },
   "user_profile": {
@@ -307,7 +263,11 @@
     "Cash account = no PDT rule. Perfect for small accounts doing 1-3 trades/morning.",
     "The waiting game IS the game. 90% watching, 10% clicking.",
     "MNTS lesson: don't dismiss based on catalyst tier alone if float tiny and squeeze setup strong.",
-    "NEVER trust Strategy Tester with SHA scripts. Non-standard chart warning = meaningless."
+    "NEVER trust Strategy Tester with SHA scripts. Non-standard chart warning = meaningless.",
+    "AIRBAG LESSON (YMAT 05-26): Stop loss is NON-NEGOTIABLE. -8% stop = $10 loss. No stop = $36 loss. Never hold below ZLSMA overnight. Never.",
+    "T1/T2/T3 EXIT LESSON (MASK 05-28): Set targets BEFORE you enter. Trim 1/3 at each. MASK ran $2.69 to $5.30 \u2014 sold all at $2.90 = $16. T1/T2/T3 = $99+. Same trade, 6x more profit.",
+    "WAIT FOR THE SIGNAL (NCT/QTEX 05-28): Intuition finds the stock. The system fires the entry. Enter before the signal = gambling. Enter AT the signal = edge.",
+    "TradingView alerts remove emotion from exits. Set alert at T1/T2/T3 BEFORE you enter."
   ],
   "trade_data_historical": {
     "total_trades": 101,
