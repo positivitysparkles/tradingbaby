@@ -130,11 +130,18 @@ def grade_ticker(ticker: str, timeframe: str = '5m', period: str = '5d',
     Args:
         ticker:       Stock symbol (e.g. 'QTTB')
         timeframe:    '1m' or '5m' (default '5m')
-        period:       yfinance period string (default '5d')
+        period:       yfinance period string — must be '1d','5d','1mo','3mo','6mo','1y'
+                      (NOT '5m' or '1m' — those are intervals, not periods)
         signal_price: BUY signal price for chase check (optional)
 
     Returns: dict with score and values, or None on error
     """
+    # Guard against common mistake of passing interval as period
+    _invalid_periods = {'1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h'}
+    if period in _invalid_periods:
+        print(f"  ⚠  period='{period}' is an interval, not a period. Using '5d' instead.")
+        period = '5d'
+
     print(f"\n{'═'*42}")
     print(f"  📊 CHART GRADER — {ticker} ({timeframe})")
     print(f"{'═'*42}")
