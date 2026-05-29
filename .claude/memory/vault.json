@@ -2,9 +2,9 @@
   "project": "tradingbaby",
   "system_name": "Curl if Flow",
   "author": "Weatherman118",
-  "last_compact": "2026-05-28T15:55:34Z",
+  "last_compact": "2026-05-29T21:07:45Z",
   "last_manual_update": "2026-05-27T17:00:00Z",
-  "compact_count": 12,
+  "compact_count": 13,
   "goal": "Reverse-engineer Weatherman118's exact entry + exit system. Paper trade until 80%+ consistent win rate, then go live. ONE Pine Script = his secret sauce. Perfect it over time.",
   "confirmed_entry_conditions": {
     "stoch_rsi": {
@@ -67,23 +67,26 @@
   "account_status": {
     "last_updated": "2026-05-28",
     "schwab_roth_cash": {
-      "current": 258.00,
-      "notes": "Cash only — long-term holdings tracked separately, do not touch"
+      "current": 258.0,
+      "notes": "Cash only \u2014 long-term holdings tracked separately, do not touch"
     },
     "schwab_margin": {
-      "current": 123.00,
-      "notes": "Active trading account — available Friday"
+      "current": 123.0,
+      "notes": "Active trading account \u2014 available Friday"
     },
     "webull_cash": {
-      "current": 31.00,
-      "notes": "Primary day trading — no PDT rule"
+      "current": 31.0,
+      "notes": "Primary day trading \u2014 no PDT rule"
     },
     "webull_margin": {
-      "current": 23.00,
-      "notes": "Skip Friday — PDT risk, tiny balance"
+      "current": 23.0,
+      "notes": "Skip Friday \u2014 PDT risk, tiny balance"
     },
-    "active_trading_total": 435.00,
-    "friday_accounts": ["schwab_margin", "webull_cash"],
+    "active_trading_total": 435.0,
+    "friday_accounts": [
+      "schwab_margin",
+      "webull_cash"
+    ],
     "account_type_recommendation": "Use Webull CASH account (not margin) to avoid PDT rule. Cash account = unlimited day trades as long as you use settled funds."
   },
   "webull_rules": {
@@ -104,18 +107,81 @@
       "losses": 2,
       "win_rate": "77.8%",
       "net_pnl": 16.52,
-      "best_trade": "MASK +$16.36 (halted at $4.25 — sold too early at $2.90, missed $55 with T1/T2/T3)",
+      "best_trade": "MASK +$16.36 (halted at $4.25 \u2014 sold too early at $2.90, missed $55 with T1/T2/T3)",
       "worst_trade": "YMAT -$36.54 (no stop, overnight hold below ZLSMA)",
       "trades": [
-        { "date": "05-26", "ticker": "YMAT", "account": "schwab_margin", "pnl": 5.58,   "result": "WIN",  "lesson": "Clean W118 entry. First real win." },
-        { "date": "05-26", "ticker": "YMAT", "account": "schwab_margin", "pnl": -2.52,  "result": "LOSS", "lesson": "Chased 30% above BUY signal. 3% rule violated." },
-        { "date": "05-26", "ticker": "YMAT", "account": "schwab_margin", "pnl": -36.54, "result": "LOSS", "lesson": "No stop set. Held overnight below ZLSMA. THE airbag lesson." },
-        { "date": "05-27", "ticker": "QTTB", "account": "schwab_roth",   "pnl": 25.20,  "result": "WIN",  "lesson": "Held through halt-up. Exited clean on SELL + K=100." },
-        { "date": "05-27", "ticker": "QTTB", "account": "webull_cash",   "pnl": 1.00,   "result": "WIN",  "lesson": "Quick 8-min scalp on re-entry." },
-        { "date": "05-27", "ticker": "ASTC", "account": "webull_cash",   "pnl": 4.20,   "result": "WIN",  "lesson": "Late entry but still +11%. Size up at original premarket signal." },
-        { "date": "05-28", "ticker": "MASK", "account": "schwab_roth",   "pnl": 16.36,  "result": "WIN",  "lesson": "Sold all at $2.90 out of nerves. Halted at $4.25. T1/T2/T3 = $72 instead of $16. THE exit lesson." },
-        { "date": "05-28", "ticker": "NCT",  "account": "webull_cash",   "pnl": 1.60,   "result": "WIN",  "lesson": "Entered before signal (grader said F). Got lucky — signal fired after entry. Wait for the signal." },
-        { "date": "05-28", "ticker": "QTEX", "account": "webull_margin", "pnl": 1.64,   "result": "WIN",  "lesson": "Rushed before open. Held through pullback to near stop. TradingView alert at $2.75 handled exit. Alerts remove emotion." }
+        {
+          "date": "05-26",
+          "ticker": "YMAT",
+          "account": "schwab_margin",
+          "pnl": 5.58,
+          "result": "WIN",
+          "lesson": "Clean W118 entry. First real win."
+        },
+        {
+          "date": "05-26",
+          "ticker": "YMAT",
+          "account": "schwab_margin",
+          "pnl": -2.52,
+          "result": "LOSS",
+          "lesson": "Chased 30% above BUY signal. 3% rule violated."
+        },
+        {
+          "date": "05-26",
+          "ticker": "YMAT",
+          "account": "schwab_margin",
+          "pnl": -36.54,
+          "result": "LOSS",
+          "lesson": "No stop set. Held overnight below ZLSMA. THE airbag lesson."
+        },
+        {
+          "date": "05-27",
+          "ticker": "QTTB",
+          "account": "schwab_roth",
+          "pnl": 25.2,
+          "result": "WIN",
+          "lesson": "Held through halt-up. Exited clean on SELL + K=100."
+        },
+        {
+          "date": "05-27",
+          "ticker": "QTTB",
+          "account": "webull_cash",
+          "pnl": 1.0,
+          "result": "WIN",
+          "lesson": "Quick 8-min scalp on re-entry."
+        },
+        {
+          "date": "05-27",
+          "ticker": "ASTC",
+          "account": "webull_cash",
+          "pnl": 4.2,
+          "result": "WIN",
+          "lesson": "Late entry but still +11%. Size up at original premarket signal."
+        },
+        {
+          "date": "05-28",
+          "ticker": "MASK",
+          "account": "schwab_roth",
+          "pnl": 16.36,
+          "result": "WIN",
+          "lesson": "Sold all at $2.90 out of nerves. Halted at $4.25. T1/T2/T3 = $72 instead of $16. THE exit lesson."
+        },
+        {
+          "date": "05-28",
+          "ticker": "NCT",
+          "account": "webull_cash",
+          "pnl": 1.6,
+          "result": "WIN",
+          "lesson": "Entered before signal (grader said F). Got lucky \u2014 signal fired after entry. Wait for the signal."
+        },
+        {
+          "date": "05-28",
+          "ticker": "QTEX",
+          "account": "webull_margin",
+          "pnl": 1.64,
+          "result": "WIN",
+          "lesson": "Rushed before open. Held through pullback to near stop. TradingView alert at $2.75 handled exit. Alerts remove emotion."
+        }
       ]
     }
   },
