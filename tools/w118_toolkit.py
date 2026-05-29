@@ -26,6 +26,81 @@ try:
 except ImportError:
     print("Run: !pip install yfinance")
 
+try:
+    import requests as _requests
+except ImportError:
+    _requests = None
+
+
+# ══ MASSIVE API — real-time data layer ══════════════════════════════════════
+
+MASSIVE_API_KEY = None  # set with: set_massive_key('your_key_here')
+
+def set_massive_key(key: str):
+    """Set your Massive API key. Call this once at the start of each session."""
+    global MASSIVE_API_KEY
+    MASSIVE_API_KEY = key
+    # quick connection test
+    result = _massive_get("reference/tickers", {"ticker": "AAPL", "limit": 1})
+    if result and result.get("status") == "OK":
+        print(f"✅ Massive API connected — real-time data active")
+    else:
+        print(f"⚠️  Massive API key set but connection test failed. Check the key.")
+
+def _massive_get(endpoint: str, params: dict = None) -> dict | None:
+    """Make a GET request to the Massive API."""
+    if not MASSIVE_API_KEY or not _requests:
+        return None
+    base = "https://api.massive.com/v3"
+    p = {"apiKey": MASSIVE_API_KEY, **(params or {})}
+    try:
+        r = _requests.get(f"{base}/{endpoint}", params=p, timeout=5)
+        if r.status_code == 200:
+            return r.json()
+    except Exception:
+        pass
+    return None
+
+def _massive_bars(ticker: str, timeframe: str = '5m', days: int = 5) -> pd.DataFrame:
+    """Fetch OHLCV bars from Massive API. Returns DataFrame compatible with yfinance output."""
+    if not MASSIVE_API_KEY:
+        return pd.DataFrame()
+    from datetime import datetime, timedelta
+    multiplier, timespan = (5, "minute") if timeframe == "5m" else (1, "minute")
+    end   = datetime.now()
+    start = end - timedelta(days=days)
+    endpoint = f"stocks/{ticker}/aggregates/{multiplier}/{timespan}/{start.strftime('%Y-%m-%d')}/{end.strftime('%Y-%m-%d')}"
+    data = _massive_get(endpoint, {"adjusted": "true", "sort": "asc", "limit": 5000})
+    if not data or not data.get("results"):
+        return pd.DataFrame()
+    rows = data["results"]
+    df = pd.DataFrame(rows)
+    df.rename(columns={"o": "Open", "h": "High", "l": "Low",
+                        "c": "Close", "v": "Volume", "t": "Datetime"}, inplace=True)
+    df["Datetime"] = pd.to_datetime(df["Datetime"], unit="ms")
+    df.set_index("Datetime", inplace=True)
+    return df[["Open", "High", "Low", "Close", "Volume"]]
+
+def _massive_snapshot(ticker: str) -> dict | None:
+    """Get real-time snapshot for a ticker — price, volume, change%."""
+    data = _massive_get(f"stocks/{ticker}/snapshot")
+    if not data or not data.get("results"):
+        return None
+    r = data["results"]
+    if isinstance(r, list):
+        r = r[0]
+    return r
+
+def _massive_float(ticker: str) -> float | None:
+    """Get shares outstanding / float from Massive ticker details."""
+    data = _massive_get("reference/tickers", {"ticker": ticker, "limit": 1})
+    if not data or not data.get("results"):
+        return None
+    r = data["results"]
+    if isinstance(r, list) and r:
+        r = r[0]
+    return r.get("share_class_shares_outstanding") or r.get("weighted_shares_outstanding")
+
 
 # ══ TOOL 1: POSITION SIZE CALCULATOR ════════════════════════════════════════
 
