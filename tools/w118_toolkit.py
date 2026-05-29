@@ -26,6 +26,170 @@ try:
 except ImportError:
     print("Run: !pip install yfinance")
 
+try:
+    import requests as _requests
+except ImportError:
+    _requests = None
+
+
+# ══ ALPACA API — paper trading + real-time data ══════════════════════════════
+
+ALPACA_KEY_ID     = None
+ALPACA_SECRET_KEY = None
+_ALPACA_PAPER_URL = "https://paper-api.alpaca.markets/v2"
+_ALPACA_DATA_URL  = "https://data.alpaca.markets/v2"
+
+def set_alpaca_keys(key_id: str, secret_key: str):
+    """Set Alpaca paper trading keys. Call once per session."""
+    global ALPACA_KEY_ID, ALPACA_SECRET_KEY
+    ALPACA_KEY_ID     = key_id
+    ALPACA_SECRET_KEY = secret_key
+    result = _alpaca_get(_ALPACA_PAPER_URL, "account")
+    if result and result.get("status") == "ACTIVE":
+        equity = float(result.get("equity", 0))
+        bp     = float(result.get("buying_power", 0))
+        print(f"✅ Alpaca paper account connected")
+        print(f"   Equity: ${equity:,.2f}  |  Buying power: ${bp:,.2f}")
+    else:
+        print(f"⚠️  Alpaca keys set but connection test failed. Check key/secret.")
+
+def _alpaca_headers() -> dict:
+    return {
+        "APCA-API-KEY-ID":     ALPACA_KEY_ID     or "",
+        "APCA-API-SECRET-KEY": ALPACA_SECRET_KEY or "",
+    }
+
+def _alpaca_get(base: str, endpoint: str, params: dict = None) -> dict | None:
+    if not ALPACA_KEY_ID or not _requests:
+        return None
+    try:
+        r = _requests.get(f"{base}/{endpoint}", headers=_alpaca_headers(),
+                          params=params or {}, timeout=5)
+        if r.status_code == 200:
+            return r.json()
+    except Exception:
+        pass
+    return None
+
+def _alpaca_bars(ticker: str, timeframe: str = '5m', days: int = 5) -> pd.DataFrame:
+    """Fetch OHLCV bars from Alpaca data API. Falls back gracefully if unavailable."""
+    if not ALPACA_KEY_ID:
+        return pd.DataFrame()
+    from datetime import datetime, timedelta
+    tf_map = {'1m': '1Min', '5m': '5Min', '15m': '15Min', '1h': '1Hour'}
+    tf = tf_map.get(timeframe, '5Min')
+    start = (datetime.utcnow() - timedelta(days=days)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    end   = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+    params = {"timeframe": tf, "start": start, "end": end,
+              "limit": 5000, "feed": "iex", "sort": "asc"}
+    data = _alpaca_get(_ALPACA_DATA_URL, f"stocks/{ticker}/bars", params)
+    if not data or not data.get("bars"):
+        return pd.DataFrame()
+    rows = data["bars"]
+    df = pd.DataFrame(rows)
+    df.rename(columns={"o": "Open", "h": "High", "l": "Low",
+                        "c": "Close", "v": "Volume", "t": "Datetime"}, inplace=True)
+    df["Datetime"] = pd.to_datetime(df["Datetime"])
+    df.set_index("Datetime", inplace=True)
+    return df[["Open", "High", "Low", "Close", "Volume"]]
+
+def _alpaca_snapshot(ticker: str) -> dict | None:
+    """Latest price snapshot from Alpaca."""
+    data = _alpaca_get(_ALPACA_DATA_URL, f"stocks/{ticker}/snapshot", {"feed": "iex"})
+    return data  # returns latestTrade, latestQuote, minuteBar, etc.
+
+def alpaca_account():
+    """Print paper account summary — equity, buying power, P&L."""
+    result = _alpaca_get(_ALPACA_PAPER_URL, "account")
+    if not result:
+        print("⚠️  Not connected. Call set_alpaca_keys() first.")
+        return
+    equity    = float(result.get("equity", 0))
+    cash      = float(result.get("cash", 0))
+    bp        = float(result.get("buying_power", 0))
+    pl        = float(result.get("unrealized_pl", 0))
+    last_eq   = float(result.get("last_equity", equity))
+    day_pl    = equity - last_eq
+    print(f"\n{'═'*42}")
+    print(f"  📋 ALPACA PAPER ACCOUNT")
+    print(f"{'═'*42}")
+    print(f"  Equity:       ${equity:>10,.2f}")
+    print(f"  Cash:         ${cash:>10,.2f}")
+    print(f"  Buying power: ${bp:>10,.2f}")
+    print(f"  Day P&L:      ${day_pl:>+10,.2f}")
+    print(f"  Open P&L:     ${pl:>+10,.2f}")
+    print(f"{'═'*42}\n")
+
+
+# ══ MASSIVE API — real-time data layer ══════════════════════════════════════
+
+MASSIVE_API_KEY = None  # set with: set_massive_key('your_key_here')
+
+def set_massive_key(key: str):
+    """Set your Massive API key. Call this once at the start of each session."""
+    global MASSIVE_API_KEY
+    MASSIVE_API_KEY = key
+    # quick connection test
+    result = _massive_get("reference/tickers", {"ticker": "AAPL", "limit": 1})
+    if result and result.get("status") == "OK":
+        print(f"✅ Massive API connected — real-time data active")
+    else:
+        print(f"⚠️  Massive API key set but connection test failed. Check the key.")
+
+def _massive_get(endpoint: str, params: dict = None) -> dict | None:
+    """Make a GET request to the Massive API."""
+    if not MASSIVE_API_KEY or not _requests:
+        return None
+    base = "https://api.massive.com/v3"
+    p = {"apiKey": MASSIVE_API_KEY, **(params or {})}
+    try:
+        r = _requests.get(f"{base}/{endpoint}", params=p, timeout=5)
+        if r.status_code == 200:
+            return r.json()
+    except Exception:
+        pass
+    return None
+
+def _massive_bars(ticker: str, timeframe: str = '5m', days: int = 5) -> pd.DataFrame:
+    """Fetch OHLCV bars from Massive API. Returns DataFrame compatible with yfinance output."""
+    if not MASSIVE_API_KEY:
+        return pd.DataFrame()
+    from datetime import datetime, timedelta
+    multiplier, timespan = (5, "minute") if timeframe == "5m" else (1, "minute")
+    end   = datetime.now()
+    start = end - timedelta(days=days)
+    endpoint = f"stocks/{ticker}/aggregates/{multiplier}/{timespan}/{start.strftime('%Y-%m-%d')}/{end.strftime('%Y-%m-%d')}"
+    data = _massive_get(endpoint, {"adjusted": "true", "sort": "asc", "limit": 5000})
+    if not data or not data.get("results"):
+        return pd.DataFrame()
+    rows = data["results"]
+    df = pd.DataFrame(rows)
+    df.rename(columns={"o": "Open", "h": "High", "l": "Low",
+                        "c": "Close", "v": "Volume", "t": "Datetime"}, inplace=True)
+    df["Datetime"] = pd.to_datetime(df["Datetime"], unit="ms")
+    df.set_index("Datetime", inplace=True)
+    return df[["Open", "High", "Low", "Close", "Volume"]]
+
+def _massive_snapshot(ticker: str) -> dict | None:
+    """Get real-time snapshot for a ticker — price, volume, change%."""
+    data = _massive_get(f"stocks/{ticker}/snapshot")
+    if not data or not data.get("results"):
+        return None
+    r = data["results"]
+    if isinstance(r, list):
+        r = r[0]
+    return r
+
+def _massive_float(ticker: str) -> float | None:
+    """Get shares outstanding / float from Massive ticker details."""
+    data = _massive_get("reference/tickers", {"ticker": ticker, "limit": 1})
+    if not data or not data.get("results"):
+        return None
+    r = data["results"]
+    if isinstance(r, list) and r:
+        r = r[0]
+    return r.get("share_class_shares_outstanding") or r.get("weighted_shares_outstanding")
+
 
 # ══ TOOL 1: POSITION SIZE CALCULATOR ════════════════════════════════════════
 
@@ -146,32 +310,51 @@ def grade_ticker(ticker: str, timeframe: str = '5m', period: str = '5d',
     print(f"  📊 CHART GRADER — {ticker} ({timeframe})")
     print(f"{'═'*42}")
 
-    # Auto-retry with progressively longer periods and fallback to 1m
-    attempts = [
-        (period, timeframe),
-        ('5d',  timeframe),
-        ('1mo', timeframe),
-        ('5d',  '1m'),
-        ('7d',  '1m'),
-    ]
+    # Data source priority: Alpaca → Massive → yfinance
     data = pd.DataFrame()
-    for try_period, try_tf in attempts:
-        data = yf.download(ticker, period=try_period, interval=try_tf,
-                           progress=False, prepost=True)
+    source = "yfinance"
+
+    if ALPACA_KEY_ID:
+        data = _alpaca_bars(ticker, timeframe, days=5)
         if not data.empty and len(data) >= 30:
-            if try_period != period or try_tf != timeframe:
-                print(f"  ℹ  Using period='{try_period}' tf='{try_tf}' (auto-fallback)")
-            timeframe = try_tf
-            break
+            source = "Alpaca"
+        else:
+            data = pd.DataFrame()
+
+    if data.empty and MASSIVE_API_KEY:
+        data = _massive_bars(ticker, timeframe, days=5)
+        if not data.empty and len(data) >= 30:
+            source = "Massive"
+        else:
+            data = pd.DataFrame()
+
+    if data.empty:
+        attempts = [
+            (period, timeframe),
+            ('5d',  timeframe),
+            ('1mo', timeframe),
+            ('5d',  '1m'),
+            ('7d',  '1m'),
+        ]
+        for try_period, try_tf in attempts:
+            data = yf.download(ticker, period=try_period, interval=try_tf,
+                               progress=False, prepost=True)
+            if not data.empty and len(data) >= 30:
+                if try_period != period or try_tf != timeframe:
+                    print(f"  ℹ  Using period='{try_period}' tf='{try_tf}' (auto-fallback)")
+                timeframe = try_tf
+                break
+        if not data.empty:
+            # Flatten MultiIndex columns (yfinance 0.2+)
+            if isinstance(data.columns, pd.MultiIndex):
+                data.columns = data.columns.droplevel(1)
 
     if data.empty or len(data) < 30:
         print(f"  ⚠  No data found for {ticker}. Check the ticker symbol is correct.")
         print(f"     (Some foreign/new listings aren't available in yfinance)")
         return None
 
-    # Flatten MultiIndex columns (yfinance 0.2+)
-    if isinstance(data.columns, pd.MultiIndex):
-        data.columns = data.columns.droplevel(1)
+    print(f"  📡 Data: {source}")
 
     close  = data['Close'].astype(float)
     volume = data['Volume'].astype(float)
@@ -254,12 +437,18 @@ def grade_ticker(ticker: str, timeframe: str = '5m', period: str = '5d',
 def _quick_k(ticker: str) -> float | None:
     """Fast K-value snapshot — used to pre-filter scanner candidates."""
     try:
-        data = yf.download(ticker, period='5d', interval='5m',
-                           progress=False, prepost=True)
+        data = pd.DataFrame()
+        if ALPACA_KEY_ID:
+            data = _alpaca_bars(ticker, '5m', days=5)
+        if data.empty and MASSIVE_API_KEY:
+            data = _massive_bars(ticker, '5m', days=5)
+        if data.empty:
+            data = yf.download(ticker, period='5d', interval='5m',
+                               progress=False, prepost=True)
+            if not data.empty and isinstance(data.columns, pd.MultiIndex):
+                data.columns = data.columns.droplevel(1)
         if data.empty or len(data) < 30:
             return None
-        if isinstance(data.columns, pd.MultiIndex):
-            data.columns = data.columns.droplevel(1)
         close = data['Close'].astype(float)
         k, _ = _stoch_rsi(close)
         return round(float(k.iloc[-1]), 1)
