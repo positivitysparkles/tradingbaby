@@ -1,0 +1,163 @@
+{
+  "name": "W118 Full Auto Scanner",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{"field": "minutes", "minutesInterval": 1}]
+        }
+      },
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── CONFIGURE HERE ──────────────────────────────────\nconst ALPACA_KEY_ID     = 'PASTE_YOUR_KEY_ID_HERE';\nconst ALPACA_SECRET_KEY = 'PASTE_YOUR_SECRET_KEY_HERE';\nconst MASSIVE_API_KEY   = 'PASTE_YOUR_MASSIVE_KEY_HERE';\n// ────────────────────────────────────────────────────\n\n// Only run 4am–10:30am ET\nconst now = new Date();\nconst etHour = ((now.getUTCHours() - 5) + 24) % 24;\nconst etMin  = now.getUTCMinutes();\nconst etTime = etHour + etMin / 60;\nif (etTime < 4 || etTime > 16.0) return [];\n\nconst alpacaHeaders = {\n  'APCA-API-KEY-ID': ALPACA_KEY_ID,\n  'APCA-API-SECRET-KEY': ALPACA_SECRET_KEY\n};\n\n// ── Step 1: Get top premarket movers ────────────────\nlet candidates = [];\ntry {\n  const moversResp = await fetch(\n    'https://data.alpaca.markets/v1beta1/screener/stocks/movers?market_type=stocks&top=100',\n    { headers: alpacaHeaders }\n  );\n  const moversData = await moversResp.json();\n  const movers = moversData.gainers || [];\n  candidates = movers\n    .filter(m => m.price >= 0.10 && m.price <= 15.0)\n    .map(m => m.symbol)\n    .slice(0, 20);\n} catch(e) {\n  // Fallback: try Massive gainers\n  try {\n    const gainersResp = await fetch(\n      `https://api.massive.com/v2/snapshot/locale/us/markets/stocks/gainers?apiKey=${MASSIVE_API_KEY}`\n    );\n    const gainersData = await gainersResp.json();\n    const tickers = gainersData.tickers || [];\n    candidates = tickers\n      .filter(t => {\n        const p = t.day?.c || t.lastTrade?.p || 0;\n        return p >= 0.10 && p <= 15.0;\n      })\n      .sort((a,b) => (b.day?.v||0) - (a.day?.v||0))\n      .map(t => t.ticker)\n      .slice(0, 20);\n  } catch(e2) { return []; }\n}\n\nif (candidates.length === 0) return [];\n\n// ── Indicator helpers ────────────────────────────────\nfunction emaArr(vals, p) {\n  const k = 2 / (p + 1);\n  const r = [vals[0]];\n  for (let i = 1; i < vals.length; i++) r.push(vals[i]*k + r[i-1]*(1-k));\n  return r;\n}\n\nfunction calcRSI(closes, p=14) {\n  const ch = closes.map((c,i) => i===0?0:c-closes[i-1]).slice(1);\n  let ag=0, al=0;\n  for (let i=0;i<p;i++){ag+=Math.max(ch[i],0);al+=Math.max(-ch[i],0);}\n  ag/=p; al/=p;\n  const out=[];\n  for (let i=p;i<ch.length;i++) {\n    ag=(ag*(p-1)+Math.max(ch[i],0))/p;\n    al=(al*(p-1)+Math.max(-ch[i],0))/p;\n    out.push(al===0?100:100-100/(1+ag/al));\n  }\n  return out;\n}\n\nfunction calcStochRSI(closes, rp=14, sp=14, ks=3, ds=3) {\n  const rsi=calcRSI(closes,rp);\n  if (rsi.length < sp+ks+ds) return null;\n  const rawK=[];\n  for (let i=sp-1;i<rsi.length;i++) {\n    const sl=rsi.slice(i-sp+1,i+1);\n    const lo=Math.min(...sl), hi=Math.max(...sl);\n    rawK.push(hi===lo?0:(rsi[i]-lo)/(hi-lo)*100);\n  }\n  const sK=[];\n  for (let i=ks-1;i<rawK.length;i++) sK.push(rawK.slice(i-ks+1,i+1).reduce((a,b)=>a+b)/ks);\n  const sD=[];\n  for (let i=ds-1;i<sK.length;i++) sD.push(sK.slice(i-ds+1,i+1).reduce((a,b)=>a+b)/ds);\n  if (sK.length < 2 || sD.length < 1) return null;\n  return { k:sK[sK.length-1], kPrev:sK[sK.length-2], d:sD[sD.length-1] };\n}\n\nfunction calcZLSMA(closes, p=50) {\n  if (closes.length < p*2) return null;\n  const e1=emaArr(closes,p), e2=emaArr(e1,p);\n  return 2*e1[e1.length-1]-e2[e2.length-1];\n}\n\nfunction shaIsGreen(bars) {\n  const hc=bars.map(b=>(b.o+b.h+b.l+b.c)/4);\n  const ho=[(bars[0].o+bars[0].c)/2];\n  for (let i=1;i<bars.length;i++) ho.push((ho[i-1]+hc[i-1])/2);\n  const sc=emaArr(emaArr(hc,10),10);\n  const so=emaArr(emaArr(ho,10),10);\n  return sc[sc.length-1]>so[so.length-1];\n}\n\n// ── Step 2: Check W118 conditions on each candidate ──\nconst signals = [];\n\nfor (const ticker of candidates) {\n  try {\n    const url = `https://data.alpaca.markets/v2/stocks/${ticker}/bars?timeframe=5Min&limit=100&feed=iex&adjustment=raw`;\n    const resp = await fetch(url, { headers: alpacaHeaders });\n    const data = await resp.json();\n    const bars = data.bars;\n    if (!bars || bars.length < 60) continue;\n\n    const closes = bars.map(b=>b.c);\n    const price  = closes[closes.length-1];\n\n    // Guard: price still in range\n    if (price < 0.10 || price > 15.0) continue;\n\n    // 1. Stoch RSI K crosses above 20, K > D\n    const srsi = calcStochRSI(closes);\n    if (!srsi) continue;\n    if (!(srsi.kPrev < 20 && srsi.k >= 20)) continue;\n    if (srsi.k <= srsi.d) continue;\n\n    // 2. Price above ZLSMA-50\n    const zlsma = calcZLSMA(closes);\n    if (!zlsma || price <= zlsma) continue;\n\n    // 3. SHA green\n    if (!shaIsGreen(bars)) continue;\n\n    // 4. Volume >= 1.5x 20-bar avg\n    const vols   = bars.slice(-21,-1).map(b=>b.v);\n    const avgVol = vols.reduce((a,b)=>a+b)/vols.length;\n    const curVol = bars[bars.length-1].v;\n    if (curVol < avgVol*1.5) continue;\n\n    // 5. K was below 10 within last 3 bars (deep reset confirmation)\n    const closes3 = closes.slice(-4,-1);\n    const srsiDeep = calcStochRSI(closes.slice(0,-1));\n    const kWasLow = srsiDeep && srsiDeep.kPrev < 10;\n\n    signals.push({ json: {\n      ticker, price,\n      stop : parseFloat((price*0.92).toFixed(2)),\n      t1   : parseFloat((price*1.15).toFixed(2)),\n      t2   : parseFloat((price*1.30).toFixed(2)),\n      t3   : parseFloat((price*1.60).toFixed(2)),\n      qty:10, qty_t1:3, qty_t2:3, qty_t3:4,\n      k          : srsi.k.toFixed(1),\n      d          : srsi.d.toFixed(1),\n      vol_ratio  : (curVol/avgVol).toFixed(1),\n      deep_reset : kWasLow,\n      ALPACA_KEY_ID, ALPACA_SECRET_KEY\n    }});\n  } catch(e) { /* skip */ }\n}\n\nreturn signals;"
+      },
+      "name": "W118 Full Scanner",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 380]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://paper-api.alpaca.markets/v2/orders",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "APCA-API-KEY-ID",     "value": "={{ $json.ALPACA_KEY_ID }}"},
+            {"name": "APCA-API-SECRET-KEY", "value": "={{ $json.ALPACA_SECRET_KEY }}"}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"symbol\": \"{{ $json.ticker }}\", \"qty\": {{ $json.qty }}, \"side\": \"buy\", \"type\": \"market\", \"time_in_force\": \"day\" }"
+      },
+      "name": "Alpaca BUY",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [680, 380]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://paper-api.alpaca.markets/v2/orders",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "APCA-API-KEY-ID",     "value": "={{ $('W118 Full Scanner').item.json.ALPACA_KEY_ID }}"},
+            {"name": "APCA-API-SECRET-KEY", "value": "={{ $('W118 Full Scanner').item.json.ALPACA_SECRET_KEY }}"}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"symbol\": \"{{ $('W118 Full Scanner').item.json.ticker }}\", \"qty\": {{ $('W118 Full Scanner').item.json.qty }}, \"side\": \"sell\", \"type\": \"stop\", \"stop_price\": {{ $('W118 Full Scanner').item.json.stop }}, \"time_in_force\": \"gtc\" }"
+      },
+      "name": "Alpaca STOP LOSS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 240]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://paper-api.alpaca.markets/v2/orders",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "APCA-API-KEY-ID",     "value": "={{ $('W118 Full Scanner').item.json.ALPACA_KEY_ID }}"},
+            {"name": "APCA-API-SECRET-KEY", "value": "={{ $('W118 Full Scanner').item.json.ALPACA_SECRET_KEY }}"}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"symbol\": \"{{ $('W118 Full Scanner').item.json.ticker }}\", \"qty\": {{ $('W118 Full Scanner').item.json.qty_t1 }}, \"side\": \"sell\", \"type\": \"limit\", \"limit_price\": {{ $('W118 Full Scanner').item.json.t1 }}, \"time_in_force\": \"gtc\" }"
+      },
+      "name": "Alpaca T1 SELL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 360]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://paper-api.alpaca.markets/v2/orders",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "APCA-API-KEY-ID",     "value": "={{ $('W118 Full Scanner').item.json.ALPACA_KEY_ID }}"},
+            {"name": "APCA-API-SECRET-KEY", "value": "={{ $('W118 Full Scanner').item.json.ALPACA_SECRET_KEY }}"}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"symbol\": \"{{ $('W118 Full Scanner').item.json.ticker }}\", \"qty\": {{ $('W118 Full Scanner').item.json.qty_t2 }}, \"side\": \"sell\", \"type\": \"limit\", \"limit_price\": {{ $('W118 Full Scanner').item.json.t2 }}, \"time_in_force\": \"gtc\" }"
+      },
+      "name": "Alpaca T2 SELL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 480]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://paper-api.alpaca.markets/v2/orders",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "APCA-API-KEY-ID",     "value": "={{ $('W118 Full Scanner').item.json.ALPACA_KEY_ID }}"},
+            {"name": "APCA-API-SECRET-KEY", "value": "={{ $('W118 Full Scanner').item.json.ALPACA_SECRET_KEY }}"}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"symbol\": \"{{ $('W118 Full Scanner').item.json.ticker }}\", \"qty\": {{ $('W118 Full Scanner').item.json.qty_t3 }}, \"side\": \"sell\", \"type\": \"limit\", \"limit_price\": {{ $('W118 Full Scanner').item.json.t3 }}, \"time_in_force\": \"gtc\" }"
+      },
+      "name": "Alpaca T3 SELL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 600]
+    },
+    {
+      "parameters": {
+        "chatId": "8223032422",
+        "text": "=🤖 W118 AUTO SCANNER TRADE\n🟢 BUY {{ $('W118 Full Scanner').item.json.ticker }} — 10 shares @ ${{ $('W118 Full Scanner').item.json.price }}\n📊 K={{ $('W118 Full Scanner').item.json.k }} D={{ $('W118 Full Scanner').item.json.d }} Vol={{ $('W118 Full Scanner').item.json.vol_ratio }}x{{ $('W118 Full Scanner').item.json.deep_reset ? ' 🔥 Deep reset!' : '' }}\n🛑 Stop: ${{ $('W118 Full Scanner').item.json.stop }}\n🎯 T1: ${{ $('W118 Full Scanner').item.json.t1 }} | T2: ${{ $('W118 Full Scanner').item.json.t2 }} | T3: ${{ $('W118 Full Scanner').item.json.t3 }}",
+        "additionalFields": {}
+      },
+      "name": "Telegram Confirmation",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1120, 420],
+      "credentials": {
+        "telegramApi": {
+          "name": "W118 Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [[{"node": "W118 Full Scanner", "type": "main", "index": 0}]]
+    },
+    "W118 Full Scanner": {
+      "main": [[{"node": "Alpaca BUY", "type": "main", "index": 0}]]
+    },
+    "Alpaca BUY": {
+      "main": [[
+        {"node": "Alpaca STOP LOSS", "type": "main", "index": 0},
+        {"node": "Alpaca T1 SELL",   "type": "main", "index": 0},
+        {"node": "Alpaca T2 SELL",   "type": "main", "index": 0},
+        {"node": "Alpaca T3 SELL",   "type": "main", "index": 0}
+      ]]
+    },
+    "Alpaca T3 SELL": {
+      "main": [[{"node": "Telegram Confirmation", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
