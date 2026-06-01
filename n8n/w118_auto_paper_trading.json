@@ -1,0 +1,165 @@
+{
+  "name": "W118 Auto Paper Trading",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {"item": [{"mode": "everyMinute"}]},
+        "filters": {
+          "sender": "noreply@tradingview.com",
+          "readStatus": "unread"
+        }
+      },
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1,
+      "position": [240, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "const subject = $input.item.json.subject || '';\nconst body = $input.item.json.snippet || '';\nconst text = subject + ' ' + body;\nconst ticker = text.match(/BUY\\s+([A-Z]+)/)?.[1] || null;\nif (!ticker) return [];\nconst price = parseFloat(text.match(/Price:\\s*([\\d.]+)/)?.[1] || 0);\nif (!price || price <= 0) return [];\nconst qty = 10;\nconst stop  = parseFloat((price * 0.92).toFixed(2));\nconst t1    = parseFloat((price * 1.15).toFixed(2));\nconst t2    = parseFloat((price * 1.30).toFixed(2));\nconst t3    = parseFloat((price * 1.60).toFixed(2));\nconst qty_t1 = Math.floor(qty / 3);\nconst qty_t2 = Math.floor(qty / 3);\nconst qty_t3 = qty - qty_t1 - qty_t2;\nreturn [{ json: { ticker, price, stop, t1, t2, t3, qty, qty_t1, qty_t2, qty_t3 } }];"
+      },
+      "name": "Parse Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 380]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://paper-api.alpaca.markets/v2/orders",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "APCA-API-KEY-ID",     "value": "={{ $vars.ALPACA_KEY_ID }}"},
+            {"name": "APCA-API-SECRET-KEY", "value": "={{ $vars.ALPACA_SECRET_KEY }}"}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"symbol\": \"{{ $json.ticker }}\", \"qty\": {{ $json.qty }}, \"side\": \"buy\", \"type\": \"market\", \"time_in_force\": \"day\" }"
+      },
+      "name": "Alpaca BUY",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [680, 380]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://paper-api.alpaca.markets/v2/orders",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "APCA-API-KEY-ID",     "value": "={{ $vars.ALPACA_KEY_ID }}"},
+            {"name": "APCA-API-SECRET-KEY", "value": "={{ $vars.ALPACA_SECRET_KEY }}"}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"symbol\": \"{{ $('Parse Alert').item.json.ticker }}\", \"qty\": {{ $('Parse Alert').item.json.qty }}, \"side\": \"sell\", \"type\": \"stop\", \"stop_price\": \"{{ $('Parse Alert').item.json.stop }}\", \"time_in_force\": \"gtc\" }"
+      },
+      "name": "Alpaca STOP LOSS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 260]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://paper-api.alpaca.markets/v2/orders",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "APCA-API-KEY-ID",     "value": "={{ $vars.ALPACA_KEY_ID }}"},
+            {"name": "APCA-API-SECRET-KEY", "value": "={{ $vars.ALPACA_SECRET_KEY }}"}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"symbol\": \"{{ $('Parse Alert').item.json.ticker }}\", \"qty\": {{ $('Parse Alert').item.json.qty_t1 }}, \"side\": \"sell\", \"type\": \"limit\", \"limit_price\": \"{{ $('Parse Alert').item.json.t1 }}\", \"time_in_force\": \"gtc\" }"
+      },
+      "name": "Alpaca T1 SELL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 380]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://paper-api.alpaca.markets/v2/orders",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "APCA-API-KEY-ID",     "value": "={{ $vars.ALPACA_KEY_ID }}"},
+            {"name": "APCA-API-SECRET-KEY", "value": "={{ $vars.ALPACA_SECRET_KEY }}"}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"symbol\": \"{{ $('Parse Alert').item.json.ticker }}\", \"qty\": {{ $('Parse Alert').item.json.qty_t2 }}, \"side\": \"sell\", \"type\": \"limit\", \"limit_price\": \"{{ $('Parse Alert').item.json.t2 }}\", \"time_in_force\": \"gtc\" }"
+      },
+      "name": "Alpaca T2 SELL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 500]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://paper-api.alpaca.markets/v2/orders",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "APCA-API-KEY-ID",     "value": "={{ $vars.ALPACA_KEY_ID }}"},
+            {"name": "APCA-API-SECRET-KEY", "value": "={{ $vars.ALPACA_SECRET_KEY }}"}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"symbol\": \"{{ $('Parse Alert').item.json.ticker }}\", \"qty\": {{ $('Parse Alert').item.json.qty_t3 }}, \"side\": \"sell\", \"type\": \"limit\", \"limit_price\": \"{{ $('Parse Alert').item.json.t3 }}\", \"time_in_force\": \"gtc\" }"
+      },
+      "name": "Alpaca T3 SELL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 620]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_CHAT_ID_HERE",
+        "text": "=🤖 AUTO PAPER TRADE PLACED\n🟢 BUY {{ $('Parse Alert').item.json.ticker }} — 10 shares @ ${{ $('Parse Alert').item.json.price }}\n🛑 Stop:  ${{ $('Parse Alert').item.json.stop }}\n🎯 T1:    ${{ $('Parse Alert').item.json.t1 }} (3 shares)\n🎯 T2:    ${{ $('Parse Alert').item.json.t2 }} (3 shares)\n🎯 T3:    ${{ $('Parse Alert').item.json.t3 }} (4 shares)",
+        "additionalFields": {}
+      },
+      "name": "Telegram Confirmation",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1120, 440],
+      "credentials": {
+        "telegramApi": {
+          "name": "W118 Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Gmail Trigger": {
+      "main": [[{"node": "Parse Alert", "type": "main", "index": 0}]]
+    },
+    "Parse Alert": {
+      "main": [[{"node": "Alpaca BUY", "type": "main", "index": 0}]]
+    },
+    "Alpaca BUY": {
+      "main": [[
+        {"node": "Alpaca STOP LOSS", "type": "main", "index": 0},
+        {"node": "Alpaca T1 SELL",   "type": "main", "index": 0},
+        {"node": "Alpaca T2 SELL",   "type": "main", "index": 0},
+        {"node": "Alpaca T3 SELL",   "type": "main", "index": 0}
+      ]]
+    },
+    "Alpaca T3 SELL": {
+      "main": [[{"node": "Telegram Confirmation", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
