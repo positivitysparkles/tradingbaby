@@ -16,7 +16,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const subject = $input.item.json.subject || '';\nconst body = $input.item.json.snippet || '';\nconst text = subject + ' ' + body;\nconst ticker = text.match(/BUY\\s+([A-Z]+)/)?.[1] || null;\nif (!ticker) return [];\nconst price = parseFloat(text.match(/Price:\\s*([\\d.]+)/)?.[1] || 0);\nif (!price || price <= 0) return [];\nconst qty = 10;\nconst stop  = parseFloat((price * 0.92).toFixed(2));\nconst t1    = parseFloat((price * 1.15).toFixed(2));\nconst t2    = parseFloat((price * 1.30).toFixed(2));\nconst t3    = parseFloat((price * 1.60).toFixed(2));\nconst qty_t1 = Math.floor(qty / 3);\nconst qty_t2 = Math.floor(qty / 3);\nconst qty_t3 = qty - qty_t1 - qty_t2;\nreturn [{ json: { ticker, price, stop, t1, t2, t3, qty, qty_t1, qty_t2, qty_t3 } }];"
+        "jsCode": "const subject = $input.item.json.subject || '';\nconst body = $input.item.json.snippet || '';\nconst text = subject + ' ' + body;\nconst ticker = text.match(/BUY\\s+([A-Z]+)/)?.[1] || null;\nif (!ticker) return [];\nconst price = parseFloat(text.match(/Price:\\s*([\\d.]+)/)?.[1] || 0);\nif (!price || price <= 0) return [];\nconst qty = 10;\nconst stop  = parseFloat((price * 0.92).toFixed(2));\nconst t1    = parseFloat((price * 1.15).toFixed(2));\nconst t2    = parseFloat((price * 1.30).toFixed(2));\nconst t3    = parseFloat((price * 1.60).toFixed(2));\nconst qty_t1 = Math.floor(qty / 3);\nconst qty_t2 = Math.floor(qty / 3);\nconst qty_t3 = qty - qty_t1 - qty_t2;\n\n// ── ENTER YOUR ALPACA PAPER KEYS HERE ──\nconst ALPACA_KEY_ID     = 'PASTE_YOUR_KEY_ID_HERE';\nconst ALPACA_SECRET_KEY = 'PASTE_YOUR_SECRET_KEY_HERE';\n// ────────────────────────────────────────\n\nreturn [{ json: { ticker, price, stop, t1, t2, t3, qty, qty_t1, qty_t2, qty_t3, ALPACA_KEY_ID, ALPACA_SECRET_KEY } }];"
       },
       "name": "Parse Alert",
       "type": "n8n-nodes-base.code",
@@ -30,8 +30,8 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {"name": "APCA-API-KEY-ID",     "value": "={{ $vars.ALPACA_KEY_ID }}"},
-            {"name": "APCA-API-SECRET-KEY", "value": "={{ $vars.ALPACA_SECRET_KEY }}"}
+            {"name": "APCA-API-KEY-ID",     "value": "={{ $json.ALPACA_KEY_ID }}"},
+            {"name": "APCA-API-SECRET-KEY", "value": "={{ $json.ALPACA_SECRET_KEY }}"}
           ]
         },
         "sendBody": true,
@@ -50,8 +50,8 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {"name": "APCA-API-KEY-ID",     "value": "={{ $vars.ALPACA_KEY_ID }}"},
-            {"name": "APCA-API-SECRET-KEY", "value": "={{ $vars.ALPACA_SECRET_KEY }}"}
+            {"name": "APCA-API-KEY-ID",     "value": "={{ $('Parse Alert').item.json.ALPACA_KEY_ID }}"},
+            {"name": "APCA-API-SECRET-KEY", "value": "={{ $('Parse Alert').item.json.ALPACA_SECRET_KEY }}"}
           ]
         },
         "sendBody": true,
@@ -70,8 +70,8 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {"name": "APCA-API-KEY-ID",     "value": "={{ $vars.ALPACA_KEY_ID }}"},
-            {"name": "APCA-API-SECRET-KEY", "value": "={{ $vars.ALPACA_SECRET_KEY }}"}
+            {"name": "APCA-API-KEY-ID",     "value": "={{ $('Parse Alert').item.json.ALPACA_KEY_ID }}"},
+            {"name": "APCA-API-SECRET-KEY", "value": "={{ $('Parse Alert').item.json.ALPACA_SECRET_KEY }}"}
           ]
         },
         "sendBody": true,
@@ -90,8 +90,8 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {"name": "APCA-API-KEY-ID",     "value": "={{ $vars.ALPACA_KEY_ID }}"},
-            {"name": "APCA-API-SECRET-KEY", "value": "={{ $vars.ALPACA_SECRET_KEY }}"}
+            {"name": "APCA-API-KEY-ID",     "value": "={{ $('Parse Alert').item.json.ALPACA_KEY_ID }}"},
+            {"name": "APCA-API-SECRET-KEY", "value": "={{ $('Parse Alert').item.json.ALPACA_SECRET_KEY }}"}
           ]
         },
         "sendBody": true,
@@ -110,8 +110,8 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {"name": "APCA-API-KEY-ID",     "value": "={{ $vars.ALPACA_KEY_ID }}"},
-            {"name": "APCA-API-SECRET-KEY", "value": "={{ $vars.ALPACA_SECRET_KEY }}"}
+            {"name": "APCA-API-KEY-ID",     "value": "={{ $('Parse Alert').item.json.ALPACA_KEY_ID }}"},
+            {"name": "APCA-API-SECRET-KEY", "value": "={{ $('Parse Alert').item.json.ALPACA_SECRET_KEY }}"}
           ]
         },
         "sendBody": true,
@@ -125,7 +125,7 @@
     },
     {
       "parameters": {
-        "chatId": "YOUR_CHAT_ID_HERE",
+        "chatId": "8223032422",
         "text": "=🤖 AUTO PAPER TRADE PLACED\n🟢 BUY {{ $('Parse Alert').item.json.ticker }} — 10 shares @ ${{ $('Parse Alert').item.json.price }}\n🛑 Stop:  ${{ $('Parse Alert').item.json.stop }}\n🎯 T1:    ${{ $('Parse Alert').item.json.t1 }} (3 shares)\n🎯 T2:    ${{ $('Parse Alert').item.json.t2 }} (3 shares)\n🎯 T3:    ${{ $('Parse Alert').item.json.t3 }} (4 shares)",
         "additionalFields": {}
       },
