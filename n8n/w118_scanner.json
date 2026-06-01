@@ -4,7 +4,7 @@
     {
       "parameters": {
         "rule": {
-          "interval": [{"field": "minutes", "minutesInterval": 5}]
+          "interval": [{"field": "minutes", "minutesInterval": 1}]
         }
       },
       "name": "Schedule Trigger",
