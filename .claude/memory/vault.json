@@ -2,13 +2,13 @@
   "project": "tradingbaby",
   "system_name": "Curl if Flow",
   "author": "Weatherman118",
-  "last_compact": "2026-05-29T21:07:45Z",
-  "last_manual_update": "2026-05-27T17:00:00Z",
-  "compact_count": 13,
-  "goal": "Reverse-engineer Weatherman118's exact entry + exit system. Paper trade until 80%+ consistent win rate, then go live. ONE Pine Script = his secret sauce. Perfect it over time.",
+  "last_compact": "2026-06-02T22:00:00Z",
+  "last_manual_update": "2026-06-02",
+  "compact_count": 14,
+  "goal": "Reverse-engineer Weatherman118's exact entry + exit system. Paper trade on Alpaca until 80%+ consistent win rate, then go live. ONE Pine Script = his secret sauce. Perfect it over time.",
   "confirmed_entry_conditions": {
     "stoch_rsi": {
-      "trigger": "K crosses UP through 20 from below \u2014 ta.crossover(k, 20)",
+      "trigger": "K crosses UP through 20 from below — ta.crossover(k, 20)",
       "requirement": "K must be above D at trigger",
       "pre_entry_state": "K typically at 0-10 before cross (near absolute zero)",
       "settings": "RSI=14, Stoch=14, K_smooth=3, D_smooth=3, Source=Close"
@@ -21,20 +21,20 @@
     "zlsma_50": {
       "trigger": "Price (close) must be ABOVE ZLSMA-50",
       "formula": "2 * EMA(close,50) - EMA(EMA(close,50),50)",
-      "rule": "NEVER enter if price is below ZLSMA-50 \u2014 trade is invalid"
+      "rule": "NEVER enter if price is below ZLSMA-50 — trade is invalid"
     },
     "volume": {
       "trigger": "Volume >= 1.5x the 20-bar average",
       "weight": "confirming (not critical)"
     },
-    "float": "< 20M shares, /home/user/tradingbaby/.claude/hooks/pre-compact-vault.sh.10-/home/user/tradingbaby/.claude/memory/vault.json5, NASDAQ only",
+    "float": "< 20M shares, $0.10–$15, NASDAQ only",
     "catalyst": "Tier 1 (FDA/merger/earnings), Tier 2 (halt-resume/sympathy), Tier 3 (China momentum)"
   },
   "confirmed_exit_rules": {
-    "hard_stop": "-8% from entry \u2014 no exceptions",
-    "T1": "+15% \u2014 trim 1/3, move stop to breakeven",
-    "T2": "+30% \u2014 trim 1/3 of original, trail 10%",
-    "T3": "+60% \u2014 trail 10% on final 1/3",
+    "hard_stop": "-8% from entry — no exceptions",
+    "T1": "+15% — trim 1/3, move stop to breakeven",
+    "T2": "+30% — trim 1/3 of original, trail 10%",
+    "T3": "+60% — trail 10% on final 1/3",
     "sha_exit": "SHA flips red for 2+ consecutive candles",
     "zlsma_exit": "Price closes below ZLSMA-50",
     "stoch_exit": "Stoch RSI K crosses back below 20"
@@ -46,7 +46,7 @@
       "pine": "k_was_low = k[1] < 10 or k[2] < 10 or k[3] < 10"
     },
     "rule2_time_gate": {
-      "description": "Only enter 4:00am\u201310:30am New York time",
+      "description": "Only enter 4:00am–10:30am New York time",
       "pine": "in_fast_session = (bar_hour >= 4) and (bar_hour < 10 or (bar_hour == 10 and bar_minute <= 30))"
     },
     "rule3_hard_t2": {
@@ -54,39 +54,85 @@
       "pine": "strategy.exit('T2all', 'Long', limit=t2_level, qty_percent=100)"
     }
   },
+  "n8n_setup": {
+    "url": "https://n8n-scrz.srv1493928.hstgr.cloud",
+    "plan": "Free (no Variables node — keys must be hardcoded in code nodes)",
+    "active_workflows": {
+      "W118 Full Auto Scanner": {
+        "file": "n8n/w118_full_scanner.json",
+        "status": "Active — updated 2026-06-02",
+        "trigger": "Every 1 minute",
+        "time_gate": "4:00am–10:30am ET (EDT = UTC-4)",
+        "max_daily_trades": 3,
+        "candidate_source": "PRIMARY: Massive snapshot gainers (real-time) | FALLBACK: Alpaca snapshots on 40-ticker seed list",
+        "guard_rails": "Checks existing Alpaca positions (no double-buy) + counts today's buys (cap at 3)",
+        "flow": "Scanner → Alpaca BUY → [STOP LOSS + T1 + T2 + T3 sells] → Telegram"
+      },
+      "W118 Auto Paper Trading": {
+        "file": "n8n/w118_auto_paper_trading.json",
+        "status": "Gmail-triggered — fires on TradingView email alerts",
+        "trigger": "Gmail poll every 1 min for noreply@tradingview.com",
+        "note": "Secondary workflow — requires TradingView alert set up manually"
+      }
+    },
+    "telegram": {
+      "bot": "@RichAlertOls_bot",
+      "chat_id": "8223032422",
+      "credential_name": "W118 Telegram Bot"
+    },
+    "alpaca": {
+      "mode": "Paper trading only",
+      "paper_api": "paper-api.alpaca.markets",
+      "data_api": "data.alpaca.markets",
+      "data_feed": "IEX (free tier)",
+      "recommended_paper_balance": "$10,000 (realistic small account simulation)",
+      "note": "Real trades done manually on Webull/Schwab only"
+    },
+    "known_bugs_fixed": [
+      "2026-06-02: Massive grouped daily endpoint returned EOD data — switched to snapshot gainers (real-time)",
+      "2026-06-02: Timezone was UTC-5 (EST) instead of UTC-4 (EDT) — scanner started 1hr late",
+      "2026-06-02: Time gate was 4am-4pm instead of 4am-10:30am — could trade all day",
+      "2026-06-02: No duplicate-entry guard — scanner could re-buy same ticker next minute",
+      "2026-06-02: No daily trade cap — added MAX_DAILY_TRADES=3"
+    ]
+  },
+  "paper_trading": {
+    "platform": "Alpaca (paper)",
+    "recommended_starting_balance": "$10,000",
+    "why_not_1000": "10 shares × $15 max = $150/trade. $1k works but $10k simulates a real small account better and gives room for multiple simultaneous positions.",
+    "why_not_100000": "Alpaca default $100k is too big — masks whether the SYSTEM is profitable vs just lucky with size.",
+    "audit_cadence": "Weekly review: compare signals fired vs W118 criteria, win rate, avg %, drawdown",
+    "auditor": "Claude Code — review Alpaca order history each session and compare to trades-parsed.json patterns"
+  },
   "crowd_psychology_map": {
-    "K_0_10": "CAPITULATION \u2014 last sellers gave up. Nobody left to sell.",
-    "K_curls_up_through_20": "THE SHIFT \u2014 one quiet buyer stepped in. Crowd notices.",
-    "SHA_green": "HOPE \u2014 buyers winning the minute-to-minute battle.",
-    "volume_explodes_10x": "FRENZY \u2014 the whole city showed up. Fuel is here.",
-    "price_holds_above_ZLSMA": "BELIEF \u2014 rational buyers defending the floor.",
-    "W118_BUY_fires": "THE HELICOPTER \u2014 all systems green. Act NOW. No hesitation.",
-    "W118_SELL_fires": "PARTY IS OVER \u2014 smart money leaving. Get out WITH them.",
+    "K_0_10": "CAPITULATION — last sellers gave up. Nobody left to sell.",
+    "K_curls_up_through_20": "THE SHIFT — one quiet buyer stepped in. Crowd notices.",
+    "SHA_green": "HOPE — buyers winning the minute-to-minute battle.",
+    "volume_explodes_10x": "FRENZY — the whole city showed up. Fuel is here.",
+    "price_holds_above_ZLSMA": "BELIEF — rational buyers defending the floor.",
+    "W118_BUY_fires": "THE HELICOPTER — all systems green. Act NOW. No hesitation.",
+    "W118_SELL_fires": "PARTY IS OVER — smart money leaving. Get out WITH them.",
     "user_superpower": "Cross-domain pattern recognition. Watches humans make emotional decisions under pressure (I Shouldn't Be Alive, podcasts). Trading IS that same show."
   },
   "account_status": {
     "last_updated": "2026-05-28",
     "schwab_roth_cash": {
       "current": 258.0,
-      "notes": "Cash only \u2014 long-term holdings tracked separately, do not touch"
+      "notes": "Cash only — long-term holdings tracked separately, do not touch"
     },
     "schwab_margin": {
       "current": 123.0,
-      "notes": "Active trading account \u2014 available Friday"
+      "notes": "Active trading account"
     },
     "webull_cash": {
       "current": 31.0,
-      "notes": "Primary day trading \u2014 no PDT rule"
+      "notes": "Primary day trading — no PDT rule"
     },
     "webull_margin": {
       "current": 23.0,
-      "notes": "Skip Friday \u2014 PDT risk, tiny balance"
+      "notes": "Skip — PDT risk, tiny balance"
     },
     "active_trading_total": 435.0,
-    "friday_accounts": [
-      "schwab_margin",
-      "webull_cash"
-    ],
     "account_type_recommendation": "Use Webull CASH account (not margin) to avoid PDT rule. Cash account = unlimited day trades as long as you use settled funds."
   },
   "webull_rules": {
@@ -98,7 +144,7 @@
       "instant_buying_power": "Up to $1,000 Webull instant settlement buffer",
       "good_faith_violation": "Buying with unsettled funds then selling same day = violation. 3 violations in 12 months = 90-day restriction to settled-cash-only."
     },
-    "safe_cash_workflow": "Start with settled cash \u2192 buy \u2192 sell same day (OK) \u2192 wait T+2 before reusing proceeds, OR use Webull instant buying power buffer."
+    "safe_cash_workflow": "Start with settled cash → buy → sell same day (OK) → wait T+2 before reusing proceeds, OR use Webull instant buying power buffer."
   },
   "live_trades_log": {
     "week_2026-05-26_to_05-28": {
@@ -107,81 +153,18 @@
       "losses": 2,
       "win_rate": "77.8%",
       "net_pnl": 16.52,
-      "best_trade": "MASK +$16.36 (halted at $4.25 \u2014 sold too early at $2.90, missed $55 with T1/T2/T3)",
+      "best_trade": "MASK +$16.36 (halted at $4.25 — sold too early at $2.90, missed $55 with T1/T2/T3)",
       "worst_trade": "YMAT -$36.54 (no stop, overnight hold below ZLSMA)",
       "trades": [
-        {
-          "date": "05-26",
-          "ticker": "YMAT",
-          "account": "schwab_margin",
-          "pnl": 5.58,
-          "result": "WIN",
-          "lesson": "Clean W118 entry. First real win."
-        },
-        {
-          "date": "05-26",
-          "ticker": "YMAT",
-          "account": "schwab_margin",
-          "pnl": -2.52,
-          "result": "LOSS",
-          "lesson": "Chased 30% above BUY signal. 3% rule violated."
-        },
-        {
-          "date": "05-26",
-          "ticker": "YMAT",
-          "account": "schwab_margin",
-          "pnl": -36.54,
-          "result": "LOSS",
-          "lesson": "No stop set. Held overnight below ZLSMA. THE airbag lesson."
-        },
-        {
-          "date": "05-27",
-          "ticker": "QTTB",
-          "account": "schwab_roth",
-          "pnl": 25.2,
-          "result": "WIN",
-          "lesson": "Held through halt-up. Exited clean on SELL + K=100."
-        },
-        {
-          "date": "05-27",
-          "ticker": "QTTB",
-          "account": "webull_cash",
-          "pnl": 1.0,
-          "result": "WIN",
-          "lesson": "Quick 8-min scalp on re-entry."
-        },
-        {
-          "date": "05-27",
-          "ticker": "ASTC",
-          "account": "webull_cash",
-          "pnl": 4.2,
-          "result": "WIN",
-          "lesson": "Late entry but still +11%. Size up at original premarket signal."
-        },
-        {
-          "date": "05-28",
-          "ticker": "MASK",
-          "account": "schwab_roth",
-          "pnl": 16.36,
-          "result": "WIN",
-          "lesson": "Sold all at $2.90 out of nerves. Halted at $4.25. T1/T2/T3 = $72 instead of $16. THE exit lesson."
-        },
-        {
-          "date": "05-28",
-          "ticker": "NCT",
-          "account": "webull_cash",
-          "pnl": 1.6,
-          "result": "WIN",
-          "lesson": "Entered before signal (grader said F). Got lucky \u2014 signal fired after entry. Wait for the signal."
-        },
-        {
-          "date": "05-28",
-          "ticker": "QTEX",
-          "account": "webull_margin",
-          "pnl": 1.64,
-          "result": "WIN",
-          "lesson": "Rushed before open. Held through pullback to near stop. TradingView alert at $2.75 handled exit. Alerts remove emotion."
-        }
+        {"date": "05-26", "ticker": "YMAT", "account": "schwab_margin", "pnl": 5.58, "result": "WIN", "lesson": "Clean W118 entry. First real win."},
+        {"date": "05-26", "ticker": "YMAT", "account": "schwab_margin", "pnl": -2.52, "result": "LOSS", "lesson": "Chased 30% above BUY signal. 3% rule violated."},
+        {"date": "05-26", "ticker": "YMAT", "account": "schwab_margin", "pnl": -36.54, "result": "LOSS", "lesson": "No stop set. Held overnight below ZLSMA. THE airbag lesson."},
+        {"date": "05-27", "ticker": "QTTB", "account": "schwab_roth", "pnl": 25.2, "result": "WIN", "lesson": "Held through halt-up. Exited clean on SELL + K=100."},
+        {"date": "05-27", "ticker": "QTTB", "account": "webull_cash", "pnl": 1.0, "result": "WIN", "lesson": "Quick 8-min scalp on re-entry."},
+        {"date": "05-27", "ticker": "ASTC", "account": "webull_cash", "pnl": 4.2, "result": "WIN", "lesson": "Late entry but still +11%. Size up at original premarket signal."},
+        {"date": "05-28", "ticker": "MASK", "account": "schwab_roth", "pnl": 16.36, "result": "WIN", "lesson": "Sold all at $2.90 out of nerves. Halted at $4.25. T1/T2/T3 = $72 instead of $16. THE exit lesson."},
+        {"date": "05-28", "ticker": "NCT", "account": "webull_cash", "pnl": 1.6, "result": "WIN", "lesson": "Entered before signal (grader said F). Got lucky — signal fired after entry. Wait for the signal."},
+        {"date": "05-28", "ticker": "QTEX", "account": "webull_margin", "pnl": 1.64, "result": "WIN", "lesson": "Rushed before open. Held through pullback to near stop. TradingView alert at $2.75 handled exit. Alerts remove emotion."}
       ]
     }
   },
@@ -196,41 +179,39 @@
       "Patient on the wait game"
     ],
     "areas_to_improve": [
-      "3% rule \u2014 still chasing occasionally",
-      "Position sizing \u2014 going bigger at clean premarket setups",
+      "3% rule — still chasing occasionally",
+      "Position sizing — going bigger at clean premarket setups",
       "Entering at the BUY signal price, not 10-30% above it"
     ],
-    "confidence_level": "Growing. Day 2 of live trading. 3 wins, 1 loss on real money. Feeling more chill on the wait game.",
-    "account_size_context": "Trading $20-40 per account right now \u2014 intentionally small. Building muscle memory. When skill is proven, scale up.",
+    "account_size_context": "Trading $20-40 per account right now — intentionally small. Building muscle memory. When skill is proven, scale up.",
     "podcast_vision": "Building toward a trading podcast / teaching others using this system and psychological framework.",
-    "divine_inspo": "User has gut-feel pattern recognition that fires before the indicator confirms \u2014 treat this as edge, not noise."
+    "divine_inspo": "User has gut-feel pattern recognition that fires before the indicator confirms — treat this as edge, not noise."
   },
   "training_materials": {
-    "pattern_recognition_guide": "training/pattern_recognition_guide.png \u2014 18x22 infographic: 3 patterns (A/B/C), Stoch RSI at close guide, ZLSMA rules, entry mistakes, rel volume guide, 6 entry conditions",
+    "pattern_recognition_guide": "training/pattern_recognition_guide.png — 18x22 infographic: 3 patterns (A/B/C), Stoch RSI at close guide, ZLSMA rules, entry mistakes, rel volume guide, 6 entry conditions",
     "flashcards": {
       "location": "training/flashcards/",
       "count": 14,
       "generator_main": "training/flashcards/make_cards.py (cards 01-13)",
       "generator_card14": "training/flashcards/make_card14.py (crowd psychology map)",
-      "stories": "training/flashcards/card_stories.md \u2014 memory stories for all 14 cards",
-      "pending": "Card 14 memory story still needs to be added to card_stories.md"
+      "stories": "training/flashcards/card_stories.md — memory stories for all 14 cards"
     }
   },
   "end_of_day_patterns": {
-    "pattern_A_fade": "First red day. Price below ZLSMA at close. Skip \u2014 don't show up for leftovers.",
+    "pattern_A_fade": "First red day. Price below ZLSMA at close. Skip — don't show up for leftovers.",
     "pattern_B_runner": "Multi-day runner. Still above ZLSMA, K resetting overnight. Watch for next day re-entry.",
     "pattern_C_accumulation": "Sold off all day, K near zero at close. BEST setup. BUY fires by 4am next morning.",
     "stoch_k_at_close_guide": {
-      "K_0_10": "Perfect reset \u2014 fires by 4am",
-      "K_10_25": "Nearly reset \u2014 fires early premarket",
-      "K_25_50": "Partial reset \u2014 may fire mid-morning",
-      "K_50_80": "Not reset \u2014 skip next day",
-      "K_80_100": "Overbought \u2014 avoid completely"
+      "K_0_10": "Perfect reset — fires by 4am",
+      "K_10_25": "Nearly reset — fires early premarket",
+      "K_25_50": "Partial reset — may fire mid-morning",
+      "K_50_80": "Not reset — skip next day",
+      "K_80_100": "Overbought — avoid completely"
     }
   },
   "pine_script_status": {
     "file": "pine-script/weatherman118-curl-flow.pine",
-    "version": "v3 \u2014 3 fast-exit rules added 2026-05-02",
+    "version": "v3 — 3 fast-exit rules added 2026-05-02",
     "branch": "claude/push-tradingbaby-ESEFn",
     "features": [
       "Green BUY label showing [PM] or [RTH] profile + K value at entry",
@@ -244,83 +225,11 @@
       "7 alertconditions for mobile notifications"
     ],
     "known_limitation": "Strategy Tester is UNRELIABLE with SHA scripts. Non-standard chart warning = meaningless numbers. Use manual trade log.",
-    "remove_from_charts": "Remove Supertrend and MACD \u2014 not part of W118 system. Only need: W118 Pine Script + Stoch RSI pane + Volume."
-  },
-  "chart_data_extracted": {
-    "YAAS_1m": {
-      "K": 37.04,
-      "D": 24.35,
-      "context": "Curling through 20s at entry"
-    },
-    "YAAS_5m": {
-      "K": 93.42,
-      "D": 89.62,
-      "context": "Overbought during run"
-    },
-    "BIYA_5m": {
-      "K": 9.29,
-      "D": 7.11,
-      "context": "Near zero pre-spike"
-    },
-    "BIYA_1m": {
-      "K": 18.24,
-      "D": 7.78,
-      "context": "Sub-20 curling at entry"
-    },
-    "ATER_5m": {
-      "K": 0.69,
-      "D": 0.0,
-      "context": "Absolute zero pre-spike"
-    },
-    "ATER_1m": {
-      "K": 39.27,
-      "D": 19.49,
-      "context": "Curling through 20 at entry"
-    },
-    "AKAN_5m_reentry": {
-      "K": 14.41,
-      "D": 11.75,
-      "context": "Below 20 re-entry setup"
-    },
-    "SAGT_5m": {
-      "K": 1.7,
-      "D": 0.14,
-      "context": "Absolute zero pre-spike"
-    },
-    "SAGT_1m": {
-      "K": 41.21,
-      "D": 28.19,
-      "context": "Curling 20-40 at entry"
-    },
-    "SAFX_5m": {
-      "K": 17.53,
-      "D": 9.3,
-      "context": "Below 20 pre-spike"
-    },
-    "SAFX_1m": {
-      "K": 93.03,
-      "D": 81.91,
-      "context": "After move (overbought)"
-    },
-    "USEG_5m": {
-      "K": 16.38,
-      "D": 5.52,
-      "context": "Reset after PM spike"
-    },
-    "FATN_1m": {
-      "K": 58,
-      "D": 47,
-      "context": "Mid-range at entry \u2014 less ideal"
-    },
-    "FATN_5m": {
-      "K": 93,
-      "D": 81,
-      "context": "Overbought during run"
-    }
+    "remove_from_charts": "Remove Supertrend and MACD — not part of W118 system. Only need: W118 Pine Script + Stoch RSI pane + Volume."
   },
   "key_insights": [
     "Pre-entry Stoch RSI K is consistently 0-20 (usually 0-10) on 5m chart. ta.crossover(k,20) = start of spike, not chasing.",
-    "All 3 trade profiles (PM fresh, RTH fresh, re-entries) have 100% win rate \u2014 use all 3.",
+    "All 3 trade profiles (PM fresh, RTH fresh, re-entries) have 100% win rate — use all 3.",
     "NEVER enter more than 3% above the BUY signal price. That's the bus-chasing rule.",
     "K=100 + SELL label fired = exit immediately. Don't wait for more. Party is over.",
     "K crossing below D at overbought levels (90+) = bearish rollover. Exit or skip.",
@@ -328,12 +237,11 @@
     "Position size UP at clean premarket setups. Small size = small profit even on big % moves.",
     "Cash account = no PDT rule. Perfect for small accounts doing 1-3 trades/morning.",
     "The waiting game IS the game. 90% watching, 10% clicking.",
-    "MNTS lesson: don't dismiss based on catalyst tier alone if float tiny and squeeze setup strong.",
-    "NEVER trust Strategy Tester with SHA scripts. Non-standard chart warning = meaningless.",
     "AIRBAG LESSON (YMAT 05-26): Stop loss is NON-NEGOTIABLE. -8% stop = $10 loss. No stop = $36 loss. Never hold below ZLSMA overnight. Never.",
-    "T1/T2/T3 EXIT LESSON (MASK 05-28): Set targets BEFORE you enter. Trim 1/3 at each. MASK ran $2.69 to $5.30 \u2014 sold all at $2.90 = $16. T1/T2/T3 = $99+. Same trade, 6x more profit.",
+    "T1/T2/T3 EXIT LESSON (MASK 05-28): Set targets BEFORE you enter. Trim 1/3 at each. MASK ran $2.69 to $5.30 — sold all at $2.90 = $16. T1/T2/T3 = $99+. Same trade, 6x more profit.",
     "WAIT FOR THE SIGNAL (NCT/QTEX 05-28): Intuition finds the stock. The system fires the entry. Enter before the signal = gambling. Enter AT the signal = edge.",
-    "TradingView alerts remove emotion from exits. Set alert at T1/T2/T3 BEFORE you enter."
+    "TradingView alerts remove emotion from exits. Set alert at T1/T2/T3 BEFORE you enter.",
+    "NEVER trust Strategy Tester with SHA scripts. Non-standard chart warning = meaningless."
   ],
   "trade_data_historical": {
     "total_trades": 101,
@@ -349,14 +257,14 @@
   },
   "important_rules": {
     "intraday_only": "NEVER hold overnight.",
-    "pdt_rule": "Use Webull CASH account \u2014 no PDT. Cash account = unlimited day trades with settled funds.",
+    "pdt_rule": "Use Webull CASH account — no PDT. Cash account = unlimited day trades with settled funds.",
     "good_faith_violation": "Don't buy with unsettled funds then sell same day. 3 violations = 90-day restriction.",
     "stop_discipline": "-8% stop is NON-NEGOTIABLE. No exceptions.",
     "three_percent_rule": "Never enter more than 3% above the BUY signal price.",
-    "no_set_and_forget": "New stocks found each morning via scanner. Can't automate without daily scanner.",
     "strategy_tester_warning": "UNRELIABLE with SHA scripts. Ignore those numbers.",
     "one_pine_script": "ONE Pine Script: pine-script/weatherman118-curl-flow.pine. Perfect this over time.",
-    "one_branch": "ALWAYS use claude/push-tradingbaby-ESEFn. Never create new branches."
+    "one_branch": "ALWAYS use claude/push-tradingbaby-ESEFn. Never create new branches.",
+    "security": "NEVER paste API keys in chat — only in Colab cells or n8n node code directly."
   },
   "github": {
     "repo": "positivitysparkles/tradingbaby",
@@ -364,25 +272,21 @@
     "google_drive_email": "iris.at.ps@positivitysparkles.com"
   },
   "roadmap": {
-    "now": "Real money, small size ($20-40/trade). Building muscle memory. 80% win rate target.",
+    "now": "Paper trade on Alpaca ($10k) + small real money ($20-40/trade). Building muscle memory. 80% win rate target.",
     "month_1_2": "Paper trade + small real money. 30+ trades minimum. Log every trade.",
     "month_3": "Scale to $100-500/trade as win rate proves consistent.",
     "month_4_6": "Reinvest profits, build toward $25k.",
     "month_7_12": "At $25k: unlimited day trading unlocked. Compounding accelerates.",
-    "goal": "$25k account with 80%+ win rate = $40k-$60k by end of year 1",
-    "what_if_math": {
-      "500_account_QTTB_trade": "+$109 on same trade",
-      "1000_account_QTTB_trade": "+$220 on same trade",
-      "1000_account_3_trades_week_20pct_avg": "Compounds to ~$5,159 in 12 weeks"
-    }
+    "goal": "$25k account with 80%+ win rate = $40k-$60k by end of year 1"
   },
   "pending_tasks": [
-    "Run backtest_curl_if_flow.py against all 52 trades to measure signal capture %",
-    "Read March 23-28 PDF from Google Drive (Canva march 23-28 2026 day trades.pdf) \u2014 file was too large last attempt",
+    "URGENT: Update n8n W118 Full Scanner code node with new code from w118_full_scanner.json (fixes Massive endpoint + guards)",
+    "Set Alpaca paper trading balance to $10,000",
+    "Run backtest_curl_if_flow.py against all trades to measure signal capture %",
     "Pine Script: optionally add pre-condition that K was below 10 before the crossover",
     "Continue adding new Discord recaps to trades-parsed.json as user shares them",
-    "Paper trade system \u2014 use journal/index.html to log live trades",
-    "Build confidence to 843%+ win consistency before going live"
+    "Weekly audit: pull Alpaca paper order history and compare to W118 criteria",
+    "Consider adding Colab morning scanner prompt improvements"
   ],
   "key_files": {
     "trades": "/home/user/tradingbaby/data/trades-parsed.json",
@@ -391,27 +295,16 @@
     "journal": "/home/user/tradingbaby/journal/index.html",
     "parser": "/home/user/tradingbaby/parser/discord_parser.py",
     "backtest": "/home/user/tradingbaby/backtest/backtest_curl_if_flow.py",
-    "vault": "/home/user/tradingbaby/.claude/memory/vault.json"
+    "vault": "/home/user/tradingbaby/.claude/memory/vault.json",
+    "scanner_n8n": "/home/user/tradingbaby/n8n/w118_full_scanner.json",
+    "toolkit_colab": "/content/drive/MyDrive/w118_toolkit.py"
   },
-  "confirmed_reentry_rule": "Stoch RSI must RESET BELOW 20 and curl UP again \u2014 not just mid-range pullback",
-  "key_insight": "Pre-entry Stoch RSI K is consistently 0-20 (usually 0-10) on the 5m chart. Entry fires at the moment K crosses above 20. The Pine Script ta.crossover(k, 20) is correct. This IS the beginning of the spike \u2014 not chasing.",
-  "trade_data": {
-    "total_trades": 101,
-    "win_rate_pct": 98.0,
-    "wins": 99,
-    "losses": 2,
-    "avg_winner_pct": 53.7,
-    "avg_loser_pct": 13.5,
-    "best_trade": "UGRO +692.0%",
-    "pm_wins": 62,
-    "rth_wins": 37,
-    "date_range": "2026-03-23 to 2026-04-30"
-  },
+  "confirmed_reentry_rule": "Stoch RSI must RESET BELOW 20 and curl UP again — not just mid-range pullback",
   "open_questions": [
-    "Exact Stoch RSI K value at entry \u2014 confirmed as 'crossing above 20' but is there a min pre-entry depth?",
+    "Exact Stoch RSI K value at entry — confirmed as 'crossing above 20' but is there a min pre-entry depth?",
     "Does SHA need 2+ consecutive green candles or just the current one?",
-    "On re-entries: full reset below 20 confirmed \u2014 but does price need to touch ZLSMA-50?",
-    "Volume multiplier: 1.5x confirmed in settings \u2014 is it ever eyeballed higher?",
-    "Session timing: PM entries have higher win rate (56%) \u2014 is midday always avoided?"
+    "On re-entries: full reset below 20 confirmed — but does price need to touch ZLSMA-50?",
+    "Volume multiplier: 1.5x confirmed in settings — is it ever eyeballed higher?",
+    "Session timing: PM entries have higher win rate (56%) — is midday always avoided?"
   ]
 }
