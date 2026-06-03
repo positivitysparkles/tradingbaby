@@ -57,24 +57,30 @@
   "n8n_setup": {
     "url": "https://n8n-scrz.srv1493928.hstgr.cloud",
     "plan": "Free (no Variables node — keys must be hardcoded in code nodes)",
+    "mcp_integration": "Instance-level MCP enabled in n8n settings — Claude Code can connect directly via MCP to build/fix/run workflows without manual copy-paste. See Settings → Instance-level MCP → Connection details.",
     "active_workflows": {
+      "W118 TV Webhook Receiver": {
+        "file": "n8n/w118_tv_webhook.json",
+        "status": "NEW — import this first. PRIMARY workflow.",
+        "trigger": "HTTP POST from TradingView Pro webhook",
+        "flow": "TradingView alert → Webhook → Parse+Guard → IF BUY: Alpaca market buy + STOP + T1/T2/T3 + Telegram | IF EXIT: cancel orders + market sell + Telegram",
+        "guard_rails": "Checks existing positions (no double-buy), caps at MAX_POSITIONS=3",
+        "user_setup": "1) Import JSON in n8n. 2) Copy webhook URL from node. 3) Set W118 BUY and EXIT alerts in TradingView on top Yassss screener stocks → paste webhook URL."
+      },
       "W118 Full Auto Scanner": {
         "file": "n8n/w118_full_scanner.json",
-        "status": "Active — updated 2026-06-03",
-        "trigger": "Every 1 minute, 24/7 (no time gate)",
-        "time_gate": "REMOVED — runs 24/7",
-        "max_daily_trades": 3,
-        "candidate_source": "PRIMARY: Alpaca screener (needs paid SIP — silently fails on free) | FALLBACK: Polygon.io gainers (api.polygon.io — free tier, 15-min delayed but acceptable)",
-        "guard_rails": "Checks existing Alpaca positions (no double-buy), caps at MAX_POSITIONS=3",
-        "k_condition": "K in 20-60 range AND K > D (widened from exact crossover — catches runners up to 5 bars after signal)",
-        "sha_check": "REMOVED — too laggy, fires after initial move already happened",
-        "flow": "Scanner → Alpaca BUY → [STOP LOSS + T1 + T2 + T3 sells] → Telegram"
+        "status": "Active — BACKUP layer. Updated 2026-06-03.",
+        "trigger": "Every 6 minutes, 4am–5pm ET only (time gate built in)",
+        "candidate_source": "FMP real-time gainers (financialmodelingprep.com/api/v3/stock_market/gainers — free tier, 250 req/day, real-time)",
+        "guard_rails": "Time gate UTC 8-21, checks existing positions, caps at MAX_POSITIONS=3",
+        "k_condition": "K > D — no upper limit, all-day setups",
+        "flow": "Scanner → Alpaca BUY → [STOP LOSS + T1 + T2 + T3 sells] → Telegram",
+        "user_setup": "Paste code from JSON into n8n code node. Add FMP_API_KEY constant."
       },
       "W118 Auto Paper Trading": {
         "file": "n8n/w118_auto_paper_trading.json",
-        "status": "Gmail-triggered — fires on TradingView email alerts",
-        "trigger": "Gmail poll every 1 min for noreply@tradingview.com",
-        "note": "Secondary workflow — requires TradingView alert set up manually"
+        "status": "DEPRECATED — replaced by TV Webhook Receiver",
+        "note": "Gmail-triggered, slow, fragile. Keep as reference only."
       }
     },
     "telegram": {
@@ -98,13 +104,18 @@
       "2026-06-02: No daily trade cap — added MAX_DAILY_TRADES=3",
       "2026-06-03: Polygon fallback URL was api.massive.com (wrong domain) — user fixed to api.polygon.io in n8n; local file synced",
       "2026-06-03: StochRSI condition too strict (exact crossover only) — widened to K in 20-60 AND K>D",
-      "2026-06-03: SHA check removed — fires after initial move, too laggy for entry signal"
+      "2026-06-03: SHA check removed — fires after initial move, too laggy for entry signal",
+      "2026-06-03: fetch() is undefined in n8n sandbox — replaced ALL fetch() calls with $helpers.httpRequest()",
+      "2026-06-03: Polygon free tier is 15-min delayed — switched to FMP real-time gainers",
+      "2026-06-03: Scanner ran 24/7 wasting resources — added 4am-5pm ET time gate (UTC 8-21)",
+      "2026-06-03: Scanner ran every 1 min with Polygon (15-min data) — changed to every 6 min with FMP (real-time, 250/day limit)"
     ],
     "data_sources_research": {
       "finviz": "REJECTED — no official API, returns HTML only, blocks automated requests. Not suitable for n8n.",
-      "polygon_free": "CURRENT — api.polygon.io gainers endpoint, 15-min delayed on free tier. Acceptable because W118 condition check uses real-time Alpaca IEX candles.",
-      "fmp": "FUTURE OPTION — Financial Modeling Prep free tier (250 req/day), real-time JSON gainers at financialmodelingprep.com/api/v3/stock_market/gainers. Need time gate to stay under 250/day.",
-      "alpaca_screener": "BROKEN on free tier — needs paid SIP subscription. Silently returns empty."
+      "polygon_free": "REJECTED — 15-min delayed on free tier. Not acceptable for momentum trading.",
+      "fmp": "CURRENT — Financial Modeling Prep free tier (250 req/day), REAL-TIME JSON gainers at financialmodelingprep.com/api/v3/stock_market/gainers. Every 6 min = 240 calls/day (under limit).",
+      "alpaca_screener": "BROKEN on free tier — needs paid SIP subscription. Silently returns empty.",
+      "tradingview": "PRIMARY signal source — Yassss screener + W118 Pine Script alerts. TV Pro webhooks fire instantly to n8n. Zero-cost, zero-delay."
     }
   },
   "paper_trading": {
@@ -291,13 +302,11 @@
     "goal": "$25k account with 80%+ win rate = $40k-$60k by end of year 1"
   },
   "pending_tasks": [
-    "URGENT: Update n8n W118 Full Scanner code node with new code from w118_full_scanner.json (fixes Massive endpoint + guards)",
-    "Set Alpaca paper trading balance to $10,000",
+    "USER SETUP (25 min): 1) Register financialmodelingprep.com → get free API key. 2) Rotate Alpaca paper keys (old ones were exposed in screenshot). 3) Import n8n/w118_tv_webhook.json in n8n → paste Alpaca keys in Parse+Guard node → copy webhook URL. 4) Update n8n/w118_full_scanner.json code node with new jsCode (FMP + time gate) → paste all three keys. 5) In TradingView: create W118 BUY alert + EXIT alert on top 15-20 Yassss screener stocks → webhook URL = n8n webhook.",
+    "Set Alpaca paper trading balance to $10,000 (alpaca.markets → Paper Trading → Reset Account)",
     "Run backtest_curl_if_flow.py against all trades to measure signal capture %",
-    "Pine Script: optionally add pre-condition that K was below 10 before the crossover",
-    "Continue adding new Discord recaps to trades-parsed.json as user shares them",
     "Weekly audit: pull Alpaca paper order history and compare to W118 criteria",
-    "Consider adding Colab morning scanner prompt improvements"
+    "Continue adding new Discord recaps to trades-parsed.json as user shares them"
   ],
   "key_files": {
     "trades": "/home/user/tradingbaby/data/trades-parsed.json",
