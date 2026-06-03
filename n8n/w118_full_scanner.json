@@ -4,22 +4,33 @@
     {
       "parameters": {
         "rule": {
-          "interval": [{"field": "minutes", "minutesInterval": 1}]
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
         }
       },
       "name": "Schedule Trigger",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.1,
-      "position": [240, 380]
+      "position": [
+        240,
+        380
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// CONFIGURE HERE\nvar ALPACA_KEY_ID     = 'PASTE_YOUR_KEY_ID_HERE';\nvar ALPACA_SECRET_KEY = 'PASTE_YOUR_SECRET_KEY_HERE';\nvar MASSIVE_API_KEY   = 'PASTE_YOUR_MASSIVE_KEY_HERE';\nvar MAX_POSITIONS     = 3;\n\n// Runs 24/7\n\nvar alpacaHeaders = {\n  'APCA-API-KEY-ID': ALPACA_KEY_ID,\n  'APCA-API-SECRET-KEY': ALPACA_SECRET_KEY\n};\n\n// Guard: stop if already holding max positions\nvar heldTickers = [];\ntry {\n  var pr = await fetch('https://paper-api.alpaca.markets/v2/positions', { headers: alpacaHeaders });\n  if (pr.ok) {\n    var pos = await pr.json();\n    for (var pi = 0; pi < pos.length; pi++) {\n      heldTickers.push(pos[pi].symbol);\n    }\n  }\n} catch(err) {}\nif (heldTickers.length >= MAX_POSITIONS) return [];\n\n// Step 1: Get top premarket movers\nvar candidates = [];\ntry {\n  var moversResp = await fetch(\n    'https://data.alpaca.markets/v1beta1/screener/stocks/movers?market_type=stocks&top=100',\n    { headers: alpacaHeaders }\n  );\n  var moversData = await moversResp.json();\n  var movers = moversData.gainers || [];\n  for (var mi = 0; mi < movers.length; mi++) {\n    if (movers[mi].price >= 0.10 && movers[mi].price <= 15.0) {\n      candidates.push(movers[mi].symbol);\n    }\n    if (candidates.length >= 20) break;\n  }\n} catch(e1) {\n  try {\n    var gainersResp = await fetch(\n      'https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/gainers?apiKey=' + MASSIVE_API_KEY\n    );\n    var gainersData = await gainersResp.json();\n    var tickers = gainersData.tickers || [];\n    for (var ti = 0; ti < tickers.length; ti++) {\n      var tp = 0;\n      if (tickers[ti].day && tickers[ti].day.c) {\n        tp = tickers[ti].day.c;\n      } else if (tickers[ti].lastTrade && tickers[ti].lastTrade.p) {\n        tp = tickers[ti].lastTrade.p;\n      }\n      if (tp >= 0.10 && tp <= 15.0) {\n        candidates.push(tickers[ti].ticker);\n      }\n      if (candidates.length >= 20) break;\n    }\n  } catch(e2) { return []; }\n}\n\nif (candidates.length === 0) return [];\n\nfunction emaArr(vals, p) {\n  var k = 2 / (p + 1);\n  var r = [vals[0]];\n  for (var i = 1; i < vals.length; i++) {\n    r.push(vals[i] * k + r[i-1] * (1 - k));\n  }\n  return r;\n}\n\nfunction calcRSI(closes, p) {\n  var ch = [];\n  for (var i = 1; i < closes.length; i++) {\n    ch.push(closes[i] - closes[i-1]);\n  }\n  var ag = 0;\n  var al = 0;\n  for (var i = 0; i < p; i++) {\n    if (ch[i] > 0) { ag += ch[i]; } else { al += -ch[i]; }\n  }\n  ag /= p;\n  al /= p;\n  var out = [];\n  for (var i = p; i < ch.length; i++) {\n    ag = (ag * (p - 1) + Math.max(ch[i], 0)) / p;\n    al = (al * (p - 1) + Math.max(-ch[i], 0)) / p;\n    out.push(al === 0 ? 100 : 100 - 100 / (1 + ag / al));\n  }\n  return out;\n}\n\nfunction calcStochRSI(closes) {\n  var rp = 14;\n  var sp = 14;\n  var ks = 3;\n  var ds = 3;\n  var rsi = calcRSI(closes, rp);\n  if (rsi.length < sp + ks + ds) return null;\n  var rawK = [];\n  for (var i = sp - 1; i < rsi.length; i++) {\n    var sl = rsi.slice(i - sp + 1, i + 1);\n    var lo = sl[0];\n    var hi = sl[0];\n    for (var j = 1; j < sl.length; j++) {\n      if (sl[j] < lo) lo = sl[j];\n      if (sl[j] > hi) hi = sl[j];\n    }\n    rawK.push(hi === lo ? 0 : (rsi[i] - lo) / (hi - lo) * 100);\n  }\n  var sK = [];\n  for (var i = ks - 1; i < rawK.length; i++) {\n    var sum = 0;\n    for (var j = i - ks + 1; j <= i; j++) sum += rawK[j];\n    sK.push(sum / ks);\n  }\n  var sD = [];\n  for (var i = ds - 1; i < sK.length; i++) {\n    var sum = 0;\n    for (var j = i - ds + 1; j <= i; j++) sum += sK[j];\n    sD.push(sum / ds);\n  }\n  if (sK.length < 2 || sD.length < 1) return null;\n  return {\n    k: sK[sK.length - 1],\n    kPrev: sK[sK.length - 2],\n    d: sD[sD.length - 1]\n  };\n}\n\nfunction calcZLSMA(closes, p) {\n  if (closes.length < p * 2) return null;\n  var e1 = emaArr(closes, p);\n  var e2 = emaArr(e1, p);\n  return 2 * e1[e1.length - 1] - e2[e2.length - 1];\n}\n\nfunction shaIsGreen(bars) {\n  var hc = [];\n  var ho = [];\n  for (var i = 0; i < bars.length; i++) {\n    hc.push((bars[i].o + bars[i].h + bars[i].l + bars[i].c) / 4);\n  }\n  ho.push((bars[0].o + bars[0].c) / 2);\n  for (var i = 1; i < bars.length; i++) {\n    ho.push((ho[i-1] + hc[i-1]) / 2);\n  }\n  var sc = emaArr(emaArr(hc, 10), 10);\n  var so = emaArr(emaArr(ho, 10), 10);\n  return sc[sc.length - 1] > so[so.length - 1];\n}\n\nvar signals = [];\n\nfor (var ci = 0; ci < candidates.length; ci++) {\n  var ticker = candidates[ci];\n  if (heldTickers.indexOf(ticker) >= 0) continue;\n  if (heldTickers.length + signals.length >= MAX_POSITIONS) break;\n\n  try {\n    var url = 'https://data.alpaca.markets/v2/stocks/' + ticker + '/bars?timeframe=5Min&limit=100&feed=iex&adjustment=raw';\n    var resp = await fetch(url, { headers: alpacaHeaders });\n    var data = await resp.json();\n    var bars = data.bars;\n    if (!bars || bars.length < 60) continue;\n\n    var closes = [];\n    for (var i = 0; i < bars.length; i++) { closes.push(bars[i].c); }\n    var price = closes[closes.length - 1];\n    if (price < 0.10 || price > 15.0) continue;\n\n    var srsi = calcStochRSI(closes);\n    if (!srsi) continue;\n\n    // K must be in 20-60 range AND above D (catches crossover + early follow-through)\n    if (srsi.k < 20 || srsi.k > 60) continue;\n    if (srsi.k <= srsi.d) continue;\n\n    // Price above ZLSMA-50 — non-negotiable\n    var zlsma = calcZLSMA(closes, 50);\n    if (!zlsma || price <= zlsma) continue;\n\n    // Volume >= 1.5x 20-bar average\n    var vols = [];\n    for (var i = bars.length - 21; i < bars.length - 1; i++) { vols.push(bars[i].v); }\n    var avgVol = 0;\n    for (var i = 0; i < vols.length; i++) { avgVol += vols[i]; }\n    avgVol /= vols.length;\n    var curVol = bars[bars.length - 1].v;\n    if (curVol < avgVol * 1.5) continue;\n\n    // Deep reset flag (bonus info — not a blocker)\n    var kWasLow = srsi.kPrev < 15;\n\n    signals.push({\n      json: {\n        ticker: ticker,\n        price: price,\n        stop: parseFloat((price * 0.92).toFixed(2)),\n        t1: parseFloat((price * 1.15).toFixed(2)),\n        t2: parseFloat((price * 1.30).toFixed(2)),\n        t3: parseFloat((price * 1.60).toFixed(2)),\n        qty: 10,\n        qty_t1: 3,\n        qty_t2: 3,\n        qty_t3: 4,\n        k: srsi.k.toFixed(1),\n        d: srsi.d.toFixed(1),\n        vol_ratio: (curVol / avgVol).toFixed(1),\n        deep_reset: kWasLow,\n        ALPACA_KEY_ID: ALPACA_KEY_ID,\n        ALPACA_SECRET_KEY: ALPACA_SECRET_KEY\n      }\n    });\n  } catch(e) {}\n}\n\nreturn signals;"
+        "jsCode": "// CONFIGURE HERE\nvar ALPACA_KEY_ID     = 'PASTE_YOUR_KEY_ID_HERE';\nvar ALPACA_SECRET_KEY = 'PASTE_YOUR_SECRET_KEY_HERE';\nvar MASSIVE_API_KEY   = 'PASTE_YOUR_MASSIVE_KEY_HERE';\nvar MAX_POSITIONS     = 3;\n\nvar alpacaHeaders = {\n  'APCA-API-KEY-ID': ALPACA_KEY_ID,\n  'APCA-API-SECRET-KEY': ALPACA_SECRET_KEY\n};\n\nvar heldTickers = [];\ntry {\n  var pos = await $helpers.httpRequest({\n    method: 'GET',\n    url: 'https://paper-api.alpaca.markets/v2/positions',\n    headers: alpacaHeaders\n  });\n  for (var pi = 0; pi < pos.length; pi++) {\n    heldTickers.push(pos[pi].symbol);\n  }\n} catch(err) {}\nif (heldTickers.length >= MAX_POSITIONS) return [];\n\nvar candidates = [];\ntry {\n  var moversData = await $helpers.httpRequest({\n    method: 'GET',\n    url: 'https://data.alpaca.markets/v1beta1/screener/stocks/movers?market_type=stocks&top=100',\n    headers: alpacaHeaders\n  });\n  var movers = moversData.gainers || [];\n  for (var mi = 0; mi < movers.length; mi++) {\n    if (movers[mi].price >= 0.10 && movers[mi].price <= 15.0) {\n      candidates.push(movers[mi].symbol);\n    }\n    if (candidates.length >= 20) break;\n  }\n} catch(e1) {\n  try {\n    var gainersData = await $helpers.httpRequest({\n      method: 'GET',\n      url: 'https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/gainers?apiKey=' + MASSIVE_API_KEY\n    });\n    var tickers = gainersData.tickers || [];\n    for (var ti = 0; ti < tickers.length; ti++) {\n      var tp = 0;\n      if (tickers[ti].day && tickers[ti].day.c) {\n        tp = tickers[ti].day.c;\n      } else if (tickers[ti].lastTrade && tickers[ti].lastTrade.p) {\n        tp = tickers[ti].lastTrade.p;\n      }\n      if (tp >= 0.10 && tp <= 15.0) {\n        candidates.push(tickers[ti].ticker);\n      }\n      if (candidates.length >= 20) break;\n    }\n  } catch(e2) { return []; }\n}\n\nif (candidates.length === 0) return [];\n\nfunction emaArr(vals, p) {\n  var k = 2 / (p + 1);\n  var r = [vals[0]];\n  for (var i = 1; i < vals.length; i++) {\n    r.push(vals[i] * k + r[i-1] * (1 - k));\n  }\n  return r;\n}\n\nfunction calcRSI(closes, p) {\n  var ch = [];\n  for (var i = 1; i < closes.length; i++) { ch.push(closes[i] - closes[i-1]); }\n  var ag = 0; var al = 0;\n  for (var i = 0; i < p; i++) {\n    if (ch[i] > 0) { ag += ch[i]; } else { al += -ch[i]; }\n  }\n  ag /= p; al /= p;\n  var out = [];\n  for (var i = p; i < ch.length; i++) {\n    ag = (ag * (p - 1) + Math.max(ch[i], 0)) / p;\n    al = (al * (p - 1) + Math.max(-ch[i], 0)) / p;\n    out.push(al === 0 ? 100 : 100 - 100 / (1 + ag / al));\n  }\n  return out;\n}\n\nfunction calcStochRSI(closes) {\n  var rp = 14; var sp = 14; var ks = 3; var ds = 3;\n  var rsi = calcRSI(closes, rp);\n  if (rsi.length < sp + ks + ds) return null;\n  var rawK = [];\n  for (var i = sp - 1; i < rsi.length; i++) {\n    var sl = rsi.slice(i - sp + 1, i + 1);\n    var lo = sl[0]; var hi = sl[0];\n    for (var j = 1; j < sl.length; j++) {\n      if (sl[j] < lo) lo = sl[j];\n      if (sl[j] > hi) hi = sl[j];\n    }\n    rawK.push(hi === lo ? 0 : (rsi[i] - lo) / (hi - lo) * 100);\n  }\n  var sK = [];\n  for (var i = ks - 1; i < rawK.length; i++) {\n    var sum = 0;\n    for (var j = i - ks + 1; j <= i; j++) sum += rawK[j];\n    sK.push(sum / ks);\n  }\n  var sD = [];\n  for (var i = ds - 1; i < sK.length; i++) {\n    var sum = 0;\n    for (var j = i - ds + 1; j <= i; j++) sum += sK[j];\n    sD.push(sum / ds);\n  }\n  if (sK.length < 2 || sD.length < 1) return null;\n  return { k: sK[sK.length-1], kPrev: sK[sK.length-2], d: sD[sD.length-1] };\n}\n\nfunction calcZLSMA(closes, p) {\n  if (closes.length < p * 2) return null;\n  var e1 = emaArr(closes, p);\n  var e2 = emaArr(e1, p);\n  return 2 * e1[e1.length-1] - e2[e2.length-1];\n}\n\nvar signals = [];\n\nfor (var ci = 0; ci < candidates.length; ci++) {\n  var ticker = candidates[ci];\n  if (heldTickers.indexOf(ticker) >= 0) continue;\n  if (heldTickers.length + signals.length >= MAX_POSITIONS) break;\n\n  try {\n    var barsData = await $helpers.httpRequest({\n      method: 'GET',\n      url: 'https://data.alpaca.markets/v2/stocks/' + ticker + '/bars?timeframe=5Min&limit=100&feed=iex&adjustment=raw',\n      headers: alpacaHeaders\n    });\n    var bars = barsData.bars;\n    if (!bars || bars.length < 60) continue;\n\n    var closes = [];\n    for (var i = 0; i < bars.length; i++) { closes.push(bars[i].c); }\n    var price = closes[closes.length - 1];\n    if (price < 0.10 || price > 15.0) continue;\n\n    var srsi = calcStochRSI(closes);\n    if (!srsi) continue;\n\n    // K must be trending up (K > D) \u2014 no upper limit, runs all day\n    if (srsi.k <= srsi.d) continue;\n\n    // Price above ZLSMA-50 \u2014 non-negotiable\n    var zlsma = calcZLSMA(closes, 50);\n    if (!zlsma || price <= zlsma) continue;\n\n    // Volume >= 4x 20-bar average (matches TradingView Yassss: Rel Vol > 4)\n    var vols = [];\n    for (var i = bars.length - 21; i < bars.length - 1; i++) { vols.push(bars[i].v); }\n    var avgVol = 0;\n    for (var i = 0; i < vols.length; i++) { avgVol += vols[i]; }\n    avgVol /= vols.length;\n    var curVol = bars[bars.length - 1].v;\n    if (curVol < avgVol * 4.0) continue;\n\n    signals.push({\n      json: {\n        ticker: ticker,\n        price: price,\n        stop: parseFloat((price * 0.92).toFixed(2)),\n        t1: parseFloat((price * 1.15).toFixed(2)),\n        t2: parseFloat((price * 1.30).toFixed(2)),\n        t3: parseFloat((price * 1.60).toFixed(2)),\n        qty: 10,\n        qty_t1: 3,\n        qty_t2: 3,\n        qty_t3: 4,\n        k: srsi.k.toFixed(1),\n        d: srsi.d.toFixed(1),\n        vol_ratio: (curVol / avgVol).toFixed(1),\n        deep_reset: srsi.kPrev < 15,\n        ALPACA_KEY_ID: ALPACA_KEY_ID,\n        ALPACA_SECRET_KEY: ALPACA_SECRET_KEY\n      }\n    });\n  } catch(e) {}\n}\n\nreturn signals;"
       },
       "name": "W118 Full Scanner",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [460, 380]
+      "position": [
+        460,
+        380
+      ]
     },
     {
       "parameters": {
@@ -28,8 +39,14 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {"name": "APCA-API-KEY-ID",     "value": "={{ $json.ALPACA_KEY_ID }}"},
-            {"name": "APCA-API-SECRET-KEY", "value": "={{ $json.ALPACA_SECRET_KEY }}"}
+            {
+              "name": "APCA-API-KEY-ID",
+              "value": "={{ $json.ALPACA_KEY_ID }}"
+            },
+            {
+              "name": "APCA-API-SECRET-KEY",
+              "value": "={{ $json.ALPACA_SECRET_KEY }}"
+            }
           ]
         },
         "sendBody": true,
@@ -39,7 +56,10 @@
       "name": "Alpaca BUY",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [680, 380]
+      "position": [
+        680,
+        380
+      ]
     },
     {
       "parameters": {
@@ -48,8 +68,14 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {"name": "APCA-API-KEY-ID",     "value": "={{ $('W118 Full Scanner').item.json.ALPACA_KEY_ID }}"},
-            {"name": "APCA-API-SECRET-KEY", "value": "={{ $('W118 Full Scanner').item.json.ALPACA_SECRET_KEY }}"}
+            {
+              "name": "APCA-API-KEY-ID",
+              "value": "={{ $('W118 Full Scanner').item.json.ALPACA_KEY_ID }}"
+            },
+            {
+              "name": "APCA-API-SECRET-KEY",
+              "value": "={{ $('W118 Full Scanner').item.json.ALPACA_SECRET_KEY }}"
+            }
           ]
         },
         "sendBody": true,
@@ -59,7 +85,10 @@
       "name": "Alpaca STOP LOSS",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [900, 240]
+      "position": [
+        900,
+        240
+      ]
     },
     {
       "parameters": {
@@ -68,8 +97,14 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {"name": "APCA-API-KEY-ID",     "value": "={{ $('W118 Full Scanner').item.json.ALPACA_KEY_ID }}"},
-            {"name": "APCA-API-SECRET-KEY", "value": "={{ $('W118 Full Scanner').item.json.ALPACA_SECRET_KEY }}"}
+            {
+              "name": "APCA-API-KEY-ID",
+              "value": "={{ $('W118 Full Scanner').item.json.ALPACA_KEY_ID }}"
+            },
+            {
+              "name": "APCA-API-SECRET-KEY",
+              "value": "={{ $('W118 Full Scanner').item.json.ALPACA_SECRET_KEY }}"
+            }
           ]
         },
         "sendBody": true,
@@ -79,7 +114,10 @@
       "name": "Alpaca T1 SELL",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [900, 360]
+      "position": [
+        900,
+        360
+      ]
     },
     {
       "parameters": {
@@ -88,8 +126,14 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {"name": "APCA-API-KEY-ID",     "value": "={{ $('W118 Full Scanner').item.json.ALPACA_KEY_ID }}"},
-            {"name": "APCA-API-SECRET-KEY", "value": "={{ $('W118 Full Scanner').item.json.ALPACA_SECRET_KEY }}"}
+            {
+              "name": "APCA-API-KEY-ID",
+              "value": "={{ $('W118 Full Scanner').item.json.ALPACA_KEY_ID }}"
+            },
+            {
+              "name": "APCA-API-SECRET-KEY",
+              "value": "={{ $('W118 Full Scanner').item.json.ALPACA_SECRET_KEY }}"
+            }
           ]
         },
         "sendBody": true,
@@ -99,7 +143,10 @@
       "name": "Alpaca T2 SELL",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [900, 480]
+      "position": [
+        900,
+        480
+      ]
     },
     {
       "parameters": {
@@ -108,8 +155,14 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {"name": "APCA-API-KEY-ID",     "value": "={{ $('W118 Full Scanner').item.json.ALPACA_KEY_ID }}"},
-            {"name": "APCA-API-SECRET-KEY", "value": "={{ $('W118 Full Scanner').item.json.ALPACA_SECRET_KEY }}"}
+            {
+              "name": "APCA-API-KEY-ID",
+              "value": "={{ $('W118 Full Scanner').item.json.ALPACA_KEY_ID }}"
+            },
+            {
+              "name": "APCA-API-SECRET-KEY",
+              "value": "={{ $('W118 Full Scanner').item.json.ALPACA_SECRET_KEY }}"
+            }
           ]
         },
         "sendBody": true,
@@ -119,18 +172,24 @@
       "name": "Alpaca T3 SELL",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [900, 600]
+      "position": [
+        900,
+        600
+      ]
     },
     {
       "parameters": {
         "chatId": "8223032422",
-        "text": "=🤖 W118 AUTO SCANNER TRADE\n🟢 BUY {{ $('W118 Full Scanner').item.json.ticker }} — 10 shares @ ${{ $('W118 Full Scanner').item.json.price }}\n📊 K={{ $('W118 Full Scanner').item.json.k }} D={{ $('W118 Full Scanner').item.json.d }} Vol={{ $('W118 Full Scanner').item.json.vol_ratio }}x\n🛑 Stop: ${{ $('W118 Full Scanner').item.json.stop }}\n🎯 T1: ${{ $('W118 Full Scanner').item.json.t1 }} | T2: ${{ $('W118 Full Scanner').item.json.t2 }} | T3: ${{ $('W118 Full Scanner').item.json.t3 }}",
+        "text": "=\ud83e\udd16 W118 AUTO SCANNER TRADE\n\ud83d\udfe2 BUY {{ $('W118 Full Scanner').item.json.ticker }} \u2014 10 shares @ ${{ $('W118 Full Scanner').item.json.price }}\n\ud83d\udcca K={{ $('W118 Full Scanner').item.json.k }} D={{ $('W118 Full Scanner').item.json.d }} Vol={{ $('W118 Full Scanner').item.json.vol_ratio }}x\n\ud83d\uded1 Stop: ${{ $('W118 Full Scanner').item.json.stop }}\n\ud83c\udfaf T1: ${{ $('W118 Full Scanner').item.json.t1 }} | T2: ${{ $('W118 Full Scanner').item.json.t2 }} | T3: ${{ $('W118 Full Scanner').item.json.t3 }}",
         "additionalFields": {}
       },
       "name": "Telegram Confirmation",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
-      "position": [1120, 420],
+      "position": [
+        1120,
+        420
+      ],
       "credentials": {
         "telegramApi": {
           "name": "W118 Telegram Bot"
@@ -140,21 +199,63 @@
   ],
   "connections": {
     "Schedule Trigger": {
-      "main": [[{"node": "W118 Full Scanner", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "W118 Full Scanner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "W118 Full Scanner": {
-      "main": [[{"node": "Alpaca BUY", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "Alpaca BUY",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Alpaca BUY": {
-      "main": [[
-        {"node": "Alpaca STOP LOSS", "type": "main", "index": 0},
-        {"node": "Alpaca T1 SELL",   "type": "main", "index": 0},
-        {"node": "Alpaca T2 SELL",   "type": "main", "index": 0},
-        {"node": "Alpaca T3 SELL",   "type": "main", "index": 0}
-      ]]
+      "main": [
+        [
+          {
+            "node": "Alpaca STOP LOSS",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Alpaca T1 SELL",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Alpaca T2 SELL",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Alpaca T3 SELL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Alpaca T3 SELL": {
-      "main": [[{"node": "Telegram Confirmation", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "Telegram Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
