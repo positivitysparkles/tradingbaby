@@ -60,12 +60,14 @@
     "active_workflows": {
       "W118 Full Auto Scanner": {
         "file": "n8n/w118_full_scanner.json",
-        "status": "Active — updated 2026-06-02",
-        "trigger": "Every 1 minute",
-        "time_gate": "4:00am–10:30am ET (EDT = UTC-4)",
+        "status": "Active — updated 2026-06-03",
+        "trigger": "Every 1 minute, 24/7 (no time gate)",
+        "time_gate": "REMOVED — runs 24/7",
         "max_daily_trades": 3,
-        "candidate_source": "PRIMARY: Massive snapshot gainers (real-time) | FALLBACK: Alpaca snapshots on 40-ticker seed list",
-        "guard_rails": "Checks existing Alpaca positions (no double-buy) + counts today's buys (cap at 3)",
+        "candidate_source": "PRIMARY: Alpaca screener (needs paid SIP — silently fails on free) | FALLBACK: Polygon.io gainers (api.polygon.io — free tier, 15-min delayed but acceptable)",
+        "guard_rails": "Checks existing Alpaca positions (no double-buy), caps at MAX_POSITIONS=3",
+        "k_condition": "K in 20-60 range AND K > D (widened from exact crossover — catches runners up to 5 bars after signal)",
+        "sha_check": "REMOVED — too laggy, fires after initial move already happened",
         "flow": "Scanner → Alpaca BUY → [STOP LOSS + T1 + T2 + T3 sells] → Telegram"
       },
       "W118 Auto Paper Trading": {
@@ -93,8 +95,17 @@
       "2026-06-02: Timezone was UTC-5 (EST) instead of UTC-4 (EDT) — scanner started 1hr late",
       "2026-06-02: Time gate was 4am-4pm instead of 4am-10:30am — could trade all day",
       "2026-06-02: No duplicate-entry guard — scanner could re-buy same ticker next minute",
-      "2026-06-02: No daily trade cap — added MAX_DAILY_TRADES=3"
-    ]
+      "2026-06-02: No daily trade cap — added MAX_DAILY_TRADES=3",
+      "2026-06-03: Polygon fallback URL was api.massive.com (wrong domain) — user fixed to api.polygon.io in n8n; local file synced",
+      "2026-06-03: StochRSI condition too strict (exact crossover only) — widened to K in 20-60 AND K>D",
+      "2026-06-03: SHA check removed — fires after initial move, too laggy for entry signal"
+    ],
+    "data_sources_research": {
+      "finviz": "REJECTED — no official API, returns HTML only, blocks automated requests. Not suitable for n8n.",
+      "polygon_free": "CURRENT — api.polygon.io gainers endpoint, 15-min delayed on free tier. Acceptable because W118 condition check uses real-time Alpaca IEX candles.",
+      "fmp": "FUTURE OPTION — Financial Modeling Prep free tier (250 req/day), real-time JSON gainers at financialmodelingprep.com/api/v3/stock_market/gainers. Need time gate to stay under 250/day.",
+      "alpaca_screener": "BROKEN on free tier — needs paid SIP subscription. Silently returns empty."
+    }
   },
   "paper_trading": {
     "platform": "Alpaca (paper)",
