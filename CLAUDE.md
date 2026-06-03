@@ -1,6 +1,6 @@
 # tradingbaby — Claude Code Briefing
 
-> Auto-loaded every session. Updated by PreCompact hook. Last manual update: 2026-06-02.
+> Auto-loaded every session. Updated by PreCompact hook. Last manual update: 2026-06-03.
 
 ## What this project is
 
@@ -69,24 +69,44 @@ D still at 10. Pine Script trigger: `ta.crossover(k, 20)` ← confirmed correct.
 
 **n8n URL:** https://n8n-scrz.srv1493928.hstgr.cloud
 **Plan:** Free (no Variables — keys hardcoded in code nodes)
+**MCP:** Instance-level MCP enabled → Claude Code can directly edit/create/run workflows
 
-### Active Workflows
+### Architecture (rebuilt 2026-06-03)
+
+```
+TradingView Pro (Yassss screener + W118 alerts)
+        │ webhook POST {ticker, price, signal}
+        ▼
+n8n: W118 TV Webhook Receiver  ← PRIMARY
+        │ BUY → Alpaca market buy + STOP + T1/T2/T3 + Telegram
+        │ EXIT → cancel orders + market sell + Telegram
+        │
+FMP Scanner (backup, every 6 min, 4am-5pm ET)
+        │ real-time gainers → W118 conditions check → same Alpaca flow
+```
+
+### Workflows
 | Workflow | File | Trigger | Status |
 |----------|------|---------|--------|
-| W118 Full Auto Scanner | n8n/w118_full_scanner.json | Every 1 min | ✅ Active |
-| W118 Auto Paper Trading | n8n/w118_auto_paper_trading.json | Gmail (TradingView alerts) | Secondary |
+| W118 TV Webhook Receiver | n8n/w118_tv_webhook.json | TradingView webhook POST | ⚠️ Import + configure |
+| W118 Full Auto Scanner | n8n/w118_full_scanner.json | Every 6 min, 4am–5pm ET | ⚠️ Update code node |
+| W118 Auto Paper Trading | n8n/w118_auto_paper_trading.json | Gmail | ❌ Deprecated |
 
-### W118 Full Scanner — How it works
-1. Runs every minute, **4am–10:30am ET only** (EDT = UTC-4)
-2. Pulls real-time top gainers from **Massive snapshot API** (not EOD data)
-3. Fallback: Alpaca snapshots on curated 40-ticker seed list
-4. Checks each candidate against all 5 W118 conditions
-5. Guards: won't re-buy existing positions; max **3 trades/day**
-6. On signal: Alpaca BUY → STOP(-8%) + T1(+15%) + T2(+30%) + T3(+60%) orders → Telegram
+### W118 TV Webhook Receiver — How it works
+1. TradingView fires W118 BUY or EXIT alert → POST to n8n webhook URL
+2. Parse + Guard node: validates ticker/price/signal, checks Alpaca positions (MAX=3)
+3. IF BUY: place Alpaca market buy → STOP(-8%) + T1(+15%) + T2(+30%) + T3(+60%) → Telegram
+4. IF EXIT: cancel all open orders for ticker → market sell full position → Telegram
 
-### When you update this workflow in n8n
-**Only update the "W118 Full Scanner" code node** — paste new jsCode from the JSON file.
-The other nodes (Alpaca BUY, STOP, T1/T2/T3, Telegram) never change.
+### W118 Full Auto Scanner — How it works (backup)
+1. Runs every 6 min, **4am–5pm ET only** (UTC 8-21 time gate built in)
+2. Pulls real-time top gainers from **FMP API** (financialmodelingprep.com — free, 250/day)
+3. Checks each candidate: K>D, price>ZLSMA-50, volume 4x avg
+4. On signal: same Alpaca BUY + bracket orders + Telegram flow
+
+### When you update scanner code in n8n
+**Only update the "W118 Full Scanner" code node** — paste jsCode from the JSON file.
+Need 3 keys at top: ALPACA_KEY_ID, ALPACA_SECRET_KEY, FMP_API_KEY.
 
 ### Telegram
 - Bot: @RichAlertOls_bot | Chat ID: 8223032422 | Credential: "W118 Telegram Bot"
