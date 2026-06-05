@@ -1,6 +1,6 @@
 # tradingbaby — Claude Code Briefing
 
-> Auto-loaded every session. Updated by PreCompact hook. Last manual update: 2026-06-03.
+> Auto-loaded every session. Updated by PreCompact hook. Last manual update: 2026-06-05.
 
 ## What this project is
 
@@ -21,28 +21,37 @@ data/trades-parsed.json            ← 101 historical trades, 98.0% win rate
 
 ## The System — "Curl if Flow"
 
-**Author:** Weatherman118 | **Universe:** NASDAQ small-caps $0.10–$15, float <20M
+**Author:** Weatherman118 | **Universe:** NASDAQ small-caps $0.10–$15, float <10M (tightened 2026-06-05)
 
-### 6 Entry Conditions (ALL required)
-| # | Condition | Weight | Confirmed |
-|---|-----------|--------|-----------|
-| 1 | Stoch RSI K crosses UP through 20, K above D | critical | ✅ |
-| 2 | Smoothed HA candle is green | critical | ✅ |
-| 3 | Price above ZLSMA-50 | critical | ✅ NEVER trade below |
-| 4 | Volume ≥ 1.5× 20-bar average | confirming | ✅ |
-| 5 | Float <20M, $0.10–$15, NASDAQ | filter | ✅ |
-| 6 | Catalyst: Tier 1 (FDA/merger) > Tier 2 (halt-resume) > Tier 3 (China momentum) | confirming | ✅ |
+### Entry System (updated 2026-06-05 — Supertrend as primary trigger)
 
-### Indicator Settings (confirmed from chart screenshots)
+**Step 1 — Stock Discovery (Scanner):**
+- FMP real-time gainers → filter: price $0.10–$5, float < 10M, change > 10%, rel vol > 4x
+- Absolute volume > 1M shares (filters out dead stocks like HTLM 69K)
+
+**Step 2 — Chart Confirmation (ALL required):**
+| # | Condition | Timeframe | Weight |
+|---|-----------|-----------|--------|
+| 1 | **Supertrend flips bullish (green)** | 5m | PRIMARY trigger |
+| 2 | Price above ZLSMA-50 | 5m | critical — NEVER trade below |
+| 3 | StochRSI K > D | 5m | critical |
+| 4 | MACD histogram > 0 | 5m | confirming — filters fading stocks |
+| 5 | Volume > 4x 20-bar average | 5m | confirming |
+| 6 | Catalyst: Tier 1 (FDA/merger) > Tier 2 (halt-resume) > Tier 3 (China momentum) | — | confirming |
+
+**Step 3 — Entry:**
+- Enter on 5m Supertrend buy signal, OR zoom to 1m for a better price if signal already fired
+
+### Indicator Settings (all confirmed)
+- **Supertrend:** ATR Period=10, Source=(H+L)/2, ATR Multiplier=2, Change ATR Calc=✓
 - **Stoch RSI:** RSI=14, Stoch=14, K_smooth=3, D_smooth=3, Source=Close
-- **SHA:** Double EMA(10,10) on Heikin Ashi values
 - **ZLSMA-50:** 2×EMA(close,50) − EMA(EMA(close,50),50) | color: yellow
+- **MACD:** 12, 26, 9 | histogram > 0 = momentum building, not fading
+- **SHA:** Double EMA(10,10) on Heikin Ashi values (visual reference only)
 
-### What the charts showed (KEY INSIGHT)
-Pre-entry Stoch RSI K on the 5m chart is **0–20** (usually 0–10) before crossover fires.
-
-**AHMA 5m is the clearest entry-state screenshot**: K=24.43, D=10.48. K just crossed 20 from below,
-D still at 10. Pine Script trigger: `ta.crossover(k, 20)` ← confirmed correct.
+### Why Supertrend > W118 Buy Signal as trigger
+The W118 Pine Script Buy label fires AFTER the move starts (lagging). Supertrend flips
+at the trend change itself. Use W118 indicators as confirmation filters, Supertrend as the gun.
 
 ### Exit Rules
 | Exit | Trigger | Action |
@@ -99,10 +108,13 @@ FMP Scanner (backup, every 6 min, 4am-5pm ET)
 4. IF EXIT: cancel all open orders for ticker → market sell full position → Telegram
 
 ### W118 Full Auto Scanner — How it works (backup)
-1. Runs every 6 min, **4am–5pm ET only** (UTC 8-21 time gate built in)
+1. Runs every 6 min, **4am–11am ET only** (UTC 8-15 time gate — afternoon signals can't reach T1/T2/T3)
 2. Pulls real-time top gainers from **FMP API** (financialmodelingprep.com — free, 250/day)
-3. Checks each candidate: K>D, price>ZLSMA-50, volume 4x avg
-4. On signal: same Alpaca BUY + bracket orders + Telegram flow
+3. Filters: price $0.10–$5, float <10M, absolute vol >1M, rel vol >4x
+4. Checks each candidate: Supertrend bullish, price>ZLSMA-50, K>D, MACD histogram>0
+5. On signal: same Alpaca BUY + bracket orders + Telegram flow
+
+**TODO (laptop):** Add Supertrend + MACD calculations to scanner code node to match new entry rules.
 
 ### When you update scanner code in n8n
 **Only update the "W118 Full Scanner" code node** — paste jsCode from the JSON file.
@@ -115,6 +127,27 @@ Need 3 keys at top: ALPACA_KEY_ID, ALPACA_SECRET_KEY, FMP_API_KEY.
 - **Recommended balance: $10,000** (not $1k — need room for 3 simultaneous positions)
 - Paper mode only — real trades done manually on Webull/Schwab
 - Reset balance at: alpaca.markets → Paper Trading → Reset Account
+
+## Colab Setup Note
+Google Drive asks to connect every new Colab session — this is by design (security). Fix: add
+this as the first cell in every Colab notebook:
+```python
+from google.colab import drive
+import os
+if not os.path.isdir('/content/drive/MyDrive'):
+    drive.mount('/content/drive')
+print("✅ Drive ready")
+```
+One click, then it connects without re-asking within the same session.
+
+## Open Positions (2026-06-05, carry to Monday)
+| Ticker | Entry | Shares | Account | Stop | T1 | T2 | T3 |
+|--------|-------|--------|---------|------|----|----|-----|
+| CALC | $0.99 | ~252 | Schwab Roth | $0.91 | $1.14 | $1.29 | $1.58 |
+| VVOS | $0.87 | 98 | Schwab Roth | $0.80 | $1.00 | $1.13 | $1.39 |
+
+**VVOS warning:** hit $0.78 after hours (below $0.80 stop). Watch pre-market Monday.
+If opens below $0.80 → exit at market immediately.
 
 ## Security Rules
 - **NEVER paste API keys in chat** — only in Colab cells or n8n node code directly
