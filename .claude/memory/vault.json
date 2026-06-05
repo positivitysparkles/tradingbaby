@@ -3,7 +3,7 @@
   "system_name": "Curl if Flow",
   "author": "Weatherman118",
   "last_compact": "2026-06-02T22:00:00Z",
-  "last_manual_update": "2026-06-02",
+  "last_manual_update": "2026-06-05",
   "compact_count": 14,
   "goal": "Reverse-engineer Weatherman118's exact entry + exit system. Paper trade on Alpaca until 80%+ consistent win rate, then go live. ONE Pine Script = his secret sauce. Perfect it over time.",
   "confirmed_entry_conditions": {
@@ -27,7 +27,18 @@
       "trigger": "Volume >= 1.5x the 20-bar average",
       "weight": "confirming (not critical)"
     },
-    "float": "< 20M shares, $0.10–$15, NASDAQ only",
+    "float": "< 10M shares preferred (tightened 2026-06-05), $0.10–$5 sweet spot, NASDAQ only",
+    "absolute_volume_min": "> 1M shares/day — filters dead stocks (HTLM lesson: 69K vol passed Rel Vol filter but was untradeable)",
+    "supertrend": {
+      "trigger": "Supertrend flips bullish (green) on 5m = PRIMARY entry trigger",
+      "settings": "ATR Period=10, Source=(H+L)/2, ATR Multiplier=2, Change ATR Calc Method=true",
+      "note": "Supertrend replaced W118 Buy label as trigger. W118 label fires after move starts (lagging). Supertrend catches the flip itself."
+    },
+    "macd": {
+      "trigger": "MACD histogram > 0 (MACD line above signal line) = momentum building",
+      "settings": "Fast=12, Slow=26, Signal=9",
+      "note": "Critical filter — BCDA had deeply negative MACD at same time as K reset. MACD negative = fading. Skip."
+    },
     "catalyst": "Tier 1 (FDA/merger/earnings), Tier 2 (halt-resume/sympathy), Tier 3 (China momentum)"
   },
   "confirmed_exit_rules": {
@@ -108,7 +119,12 @@
       "2026-06-03: fetch() is undefined in n8n sandbox — replaced ALL fetch() calls with $helpers.httpRequest()",
       "2026-06-03: Polygon free tier is 15-min delayed — switched to FMP real-time gainers",
       "2026-06-03: Scanner ran 24/7 wasting resources — added 4am-5pm ET time gate (UTC 8-21)",
-      "2026-06-03: Scanner ran every 1 min with Polygon (15-min data) — changed to every 6 min with FMP (real-time, 250/day limit)"
+      "2026-06-03: Scanner ran every 1 min with Polygon (15-min data) — changed to every 6 min with FMP (real-time, 250/day limit)",
+      "2026-06-05: Float filter tightened from <20M to <10M — HTLM had 191M mkt cap and only 69K volume, passed filter but was untradeable",
+      "2026-06-05: Added absolute volume >1M requirement — Rel Vol alone is misleading (16x of 4K = still nothing)",
+      "2026-06-05: Entry trigger changed from W118 Buy label to Supertrend 5m flip — W118 label is lagging, Supertrend catches trend change itself",
+      "2026-06-05: Added MACD histogram >0 as confirmation filter — BCDA had K reset but MACD deeply negative, correctly skipped",
+      "2026-06-05: Time gate tightened from UTC 8-21 (4am-5pm ET) to UTC 8-15 (4am-11am ET) — afternoon signals confirmed can't reach T1/T2/T3"
     ],
     "data_sources_research": {
       "finviz": "REJECTED — no official API, returns HTML only, blocks automated requests. Not suitable for n8n.",
@@ -169,6 +185,40 @@
     "safe_cash_workflow": "Start with settled cash → buy → sell same day (OK) → wait T+2 before reusing proceeds, OR use Webull instant buying power buffer."
   },
   "live_trades_log": {
+    "open_positions_2026-06-05": {
+      "CALC": {
+        "entry": 0.99,
+        "shares": 252,
+        "account": "schwab_roth",
+        "position_size": 250,
+        "stop": 0.91,
+        "t1": 1.14,
+        "t2": 1.29,
+        "t3": 1.58,
+        "t1_shares": 75,
+        "t2_shares": 75,
+        "t3_shares": 102,
+        "status": "open — carry to Monday",
+        "close_friday": 1.06,
+        "note": "MACD positive, above ZLSMA, +7% from entry. T1 ($1.14) realistic Monday."
+      },
+      "VVOS": {
+        "entry": 0.87,
+        "shares": 98,
+        "account": "schwab_roth",
+        "stop": 0.80,
+        "t1": 1.00,
+        "t2": 1.13,
+        "t3": 1.39,
+        "t1_shares": 29,
+        "t2_shares": 29,
+        "t3_shares": 40,
+        "status": "open — WARNING: hit $0.78 after hours",
+        "close_friday": 0.8749,
+        "after_hours_low": 0.78,
+        "note": "AH dip below $0.80 stop. If opens Monday below $0.80 → exit at market immediately. 15m K=18 at close was bullish but AH undercut stop level."
+      }
+    },
     "week_2026-05-26_to_05-28": {
       "total_trades": 9,
       "wins": 7,
@@ -247,7 +297,7 @@
       "7 alertconditions for mobile notifications"
     ],
     "known_limitation": "Strategy Tester is UNRELIABLE with SHA scripts. Non-standard chart warning = meaningless numbers. Use manual trade log.",
-    "remove_from_charts": "Remove Supertrend and MACD — not part of W118 system. Only need: W118 Pine Script + Stoch RSI pane + Volume."
+    "chart_indicators_keep": "W118 Pine Script + Stoch RSI + Supertrend (10 hl2 2) + MACD (12,26,9) + Volume. Supertrend is now PRIMARY entry trigger. MACD is confirmation filter."
   },
   "key_insights": [
     "Pre-entry Stoch RSI K is consistently 0-20 (usually 0-10) on 5m chart. ta.crossover(k,20) = start of spike, not chasing.",
@@ -263,7 +313,14 @@
     "T1/T2/T3 EXIT LESSON (MASK 05-28): Set targets BEFORE you enter. Trim 1/3 at each. MASK ran $2.69 to $5.30 — sold all at $2.90 = $16. T1/T2/T3 = $99+. Same trade, 6x more profit.",
     "WAIT FOR THE SIGNAL (NCT/QTEX 05-28): Intuition finds the stock. The system fires the entry. Enter before the signal = gambling. Enter AT the signal = edge.",
     "TradingView alerts remove emotion from exits. Set alert at T1/T2/T3 BEFORE you enter.",
-    "NEVER trust Strategy Tester with SHA scripts. Non-standard chart warning = meaningless."
+    "NEVER trust Strategy Tester with SHA scripts. Non-standard chart warning = meaningless.",
+    "SCANNER FALSE POSITIVE LESSON (HTLM 2026-06-05): Rel Vol 16x sounds good until you check absolute volume. 16x of 4K shares = 69K total. Zero momentum. Always check absolute volume column — under 1M = skip immediately.",
+    "MACD IS THE FADING FILTER (2026-06-05): BCDA had K reset + Buy signal but MACD=-0.034. Correctly skipped. CALC had MACD positive and building. Ran from $0.85 to $1.06. MACD histogram >0 separates building from fading.",
+    "FLOAT TIERS (2026-06-05): Under 3M = nuclear (100%+ possible, crashes fast). 3-8M = sweet spot. 8-15M = solid. 15-20M = acceptable but slower. Over 20M = skip. Tighter float = each dollar of buying = bigger % move.",
+    "AFTERNOON CONFIRMATION (2026-06-05): SNBR and VVOS both showed re-entry setups at 2:30pm ET with clean charts. Neither had volume to reach T1. Time gate (4am-11am ET) is confirmed correct — not just theory.",
+    "SUPERTREND IS THE GUN (2026-06-05): W118 Buy label fires after the move starts. Supertrend flips AT the trend change. Enter on Supertrend flip, confirm with W118 indicators. Supertrend = timing, W118 = confirmation.",
+    "HOLD OVER WEEKEND RISK (2026-06-05): VVOS closed at $0.87, dropped to $0.78 AH. Stop orders don't execute AH. Weekend holds bypass stop protection. Small size on late-day entries, or don't hold over weekend.",
+    "HOW TO READ SCANNER PRIORITY (2026-06-05): Formula = Rel Vol × % Change = priority score. High Rel Vol + low % change = early in move = best. High % change already = late = skip. SPHL at +159% = ghost. SMTK at +36% with 54x rel vol = fresh."
   ],
   "trade_data_historical": {
     "total_trades": 101,
@@ -302,10 +359,15 @@
     "goal": "$25k account with 80%+ win rate = $40k-$60k by end of year 1"
   },
   "pending_tasks": [
-    "USER SETUP (25 min): 1) Register financialmodelingprep.com → get free API key. 2) Rotate Alpaca paper keys (old ones were exposed in screenshot). 3) Import n8n/w118_tv_webhook.json in n8n → paste Alpaca keys in Parse+Guard node → copy webhook URL. 4) Update n8n/w118_full_scanner.json code node with new jsCode (FMP + time gate) → paste all three keys. 5) In TradingView: create W118 BUY alert + EXIT alert on top 15-20 Yassss screener stocks → webhook URL = n8n webhook.",
+    "MONDAY MORNING: Check VVOS pre-market. If opens below $0.80 → exit at market immediately. CALC T1 limit at $1.14 already set (GTC).",
+    "MONDAY WATCHLIST: LBGJ (3.79M mkt cap, K reset, MACD positive), BGMS (8.28M mkt cap, 39x rel vol), ELOG (208x rel vol). Pull 5m charts at 8am ET.",
+    "USER SETUP (25 min): 1) Register financialmodelingprep.com → get free API key. 2) Rotate Alpaca paper keys (old ones were exposed in screenshot). 3) Import n8n/w118_tv_webhook.json in n8n → paste Alpaca keys in Parse+Guard node → copy webhook URL. 4) Update n8n/w118_full_scanner.json code node → paste all three keys. 5) In TradingView: create Supertrend+W118 alerts on top Yassss stocks → webhook to n8n.",
+    "SCANNER UPDATE (laptop): Add Supertrend (ATR=10, hl2, mult=2) calculation to n8n scanner code node",
+    "SCANNER UPDATE (laptop): Add MACD (12,26,9) histogram calculation to n8n scanner code node",
+    "SCANNER UPDATE: Tighten float filter to <10M and add absolute volume >1M check",
+    "COLAB FIX: Add drive mount check cell at top of Colab notebook (see CLAUDE.md)",
     "Set Alpaca paper trading balance to $10,000 (alpaca.markets → Paper Trading → Reset Account)",
-    "Run backtest_curl_if_flow.py against all trades to measure signal capture %",
-    "Weekly audit: pull Alpaca paper order history and compare to W118 criteria",
+    "Weekly audit: pull Alpaca paper order history and compare to criteria",
     "Continue adding new Discord recaps to trades-parsed.json as user shares them"
   ],
   "key_files": {
