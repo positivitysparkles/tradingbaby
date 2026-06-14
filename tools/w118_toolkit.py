@@ -121,74 +121,34 @@ def alpaca_account():
     print(f"{'═'*42}\n")
 
 
-# ══ MASSIVE API — real-time data layer ══════════════════════════════════════
+# ══ FMP API — real-time data layer ══════════════════════════════════════════
 
-MASSIVE_API_KEY = None  # set with: set_massive_key('your_key_here')
+FMP_API_KEY = None  # set with: set_fmp_key('your_key_here')
 
-def set_massive_key(key: str):
-    """Set your Massive API key. Call this once at the start of each session."""
-    global MASSIVE_API_KEY
-    MASSIVE_API_KEY = key
-    # quick connection test
-    result = _massive_get("reference/tickers", {"ticker": "AAPL", "limit": 1})
-    if result and result.get("status") == "OK":
-        print(f"✅ Massive API connected — real-time data active")
+def set_fmp_key(key: str):
+    """Set your FMP API key (financialmodelingprep.com — free tier, 250 req/day)."""
+    global FMP_API_KEY
+    FMP_API_KEY = key
+    result = _fmp_gainers()
+    if result is not None:
+        print(f"✅ FMP API connected — real-time gainers active ({len(result)} stocks today)")
     else:
-        print(f"⚠️  Massive API key set but connection test failed. Check the key.")
+        print(f"⚠️  FMP API key set but connection test failed. Check the key.")
 
-def _massive_get(endpoint: str, params: dict = None) -> dict | None:
-    """Make a GET request to the Massive API."""
-    if not MASSIVE_API_KEY or not _requests:
+def _fmp_gainers(max_price: float = 15.0, min_price: float = 0.10) -> list | None:
+    """Fetch real-time top gainers from FMP. Free tier: 250 req/day."""
+    if not FMP_API_KEY or not _requests:
         return None
-    base = "https://api.massive.com/v3"
-    p = {"apiKey": MASSIVE_API_KEY, **(params or {})}
     try:
-        r = _requests.get(f"{base}/{endpoint}", params=p, timeout=5)
-        if r.status_code == 200:
-            return r.json()
+        url = f"https://financialmodelingprep.com/api/v3/stock_market/gainers?apikey={FMP_API_KEY}"
+        r = _requests.get(url, timeout=8)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        return [g for g in data
+                if min_price <= (g.get("price") or 0) <= max_price]
     except Exception:
-        pass
-    return None
-
-def _massive_bars(ticker: str, timeframe: str = '5m', days: int = 5) -> pd.DataFrame:
-    """Fetch OHLCV bars from Massive API. Returns DataFrame compatible with yfinance output."""
-    if not MASSIVE_API_KEY:
-        return pd.DataFrame()
-    from datetime import datetime, timedelta
-    multiplier, timespan = (5, "minute") if timeframe == "5m" else (1, "minute")
-    end   = datetime.now()
-    start = end - timedelta(days=days)
-    endpoint = f"stocks/{ticker}/aggregates/{multiplier}/{timespan}/{start.strftime('%Y-%m-%d')}/{end.strftime('%Y-%m-%d')}"
-    data = _massive_get(endpoint, {"adjusted": "true", "sort": "asc", "limit": 5000})
-    if not data or not data.get("results"):
-        return pd.DataFrame()
-    rows = data["results"]
-    df = pd.DataFrame(rows)
-    df.rename(columns={"o": "Open", "h": "High", "l": "Low",
-                        "c": "Close", "v": "Volume", "t": "Datetime"}, inplace=True)
-    df["Datetime"] = pd.to_datetime(df["Datetime"], unit="ms")
-    df.set_index("Datetime", inplace=True)
-    return df[["Open", "High", "Low", "Close", "Volume"]]
-
-def _massive_snapshot(ticker: str) -> dict | None:
-    """Get real-time snapshot for a ticker — price, volume, change%."""
-    data = _massive_get(f"stocks/{ticker}/snapshot")
-    if not data or not data.get("results"):
         return None
-    r = data["results"]
-    if isinstance(r, list):
-        r = r[0]
-    return r
-
-def _massive_float(ticker: str) -> float | None:
-    """Get shares outstanding / float from Massive ticker details."""
-    data = _massive_get("reference/tickers", {"ticker": ticker, "limit": 1})
-    if not data or not data.get("results"):
-        return None
-    r = data["results"]
-    if isinstance(r, list) and r:
-        r = r[0]
-    return r.get("share_class_shares_outstanding") or r.get("weighted_shares_outstanding")
 
 
 # ══ TOOL 1: POSITION SIZE CALCULATOR ════════════════════════════════════════
@@ -457,57 +417,58 @@ def _quick_k(ticker: str) -> float | None:
 
 
 def morning_scan(min_change_pct: float = 10.0, max_price: float = 15.0,
-                 max_float: str = 'Under 20M', grade_top: int = 5,
+                 max_float_m: float = 10.0, grade_top: int = 5,
                  k_max: float = 40.0):
     """
-    Scan NASDAQ for W118 candidates and grade the best ones.
+    Scan for W118 candidates using FMP real-time gainers + Alpaca bar data.
 
     Args:
         min_change_pct: Minimum % gain today (default 10%)
         max_price:      Max stock price (default $15)
-        max_float:      Float filter (default 'Under 20M'). Set None to skip.
-                        Options: 'Under 1M','Under 5M','Under 10M','Under 20M','Under 50M'
+        max_float_m:    Max float in millions (default 10M — tightened 2026-06-05)
         grade_top:      How many candidates to auto-grade (default 5)
         k_max:          Only grade tickers where K < this value (default 40)
-                        Skips overbought stocks automatically. Set 100 to grade all.
     """
-    try:
-        from finvizfinance.screener.overview import Overview
-    except ImportError:
-        print("Run: !pip install finvizfinance")
+    if not FMP_API_KEY:
+        print("⚠️  FMP key not set. Call set_fmp_key('YOUR_KEY') first.")
+        print("    Get a free key at: financialmodelingprep.com")
         return
 
-    float_label = f" | Float {max_float}" if max_float else ""
     print(f"\n{'═'*42}")
-    print(f"  🔍 W118 SCANNER  (smart mode — live data any time)")
-    print(f"  Filters: NASDAQ | >{min_change_pct}% today | <${max_price}{float_label}")
+    print(f"  🔍 W118 SCANNER  (FMP real-time gainers)")
+    print(f"  Filters: >{min_change_pct}% | <${max_price} | Float<{max_float_m}M")
     print(f"  Grading only K<{k_max} (skips overbought)")
     print(f"{'═'*42}\n")
 
-    try:
-        fov = Overview()
-        filters = {
-            'Exchange': 'NASDAQ',
-            'Price':    'Under $15',
-            'Change':   'Up 10%',
-        }
-        if max_float:
-            filters['Float'] = max_float
-        fov.set_filter(filters_dict=filters)
-        df = fov.screener_view()
-    except Exception as e:
-        print(f"  Scanner error: {e}")
-        print("  Market may be closed, or try lowering min_change_pct.")
+    gainers = _fmp_gainers(max_price=max_price)
+    if not gainers:
+        print("  No gainers returned. Check FMP key or market hours.")
         return
 
-    if df is None or df.empty:
-        print("  No results. Market may be closed or try: morning_scan(min_change_pct=5)")
+    # Build a simple DataFrame for display
+    rows = []
+    for g in gainers:
+        chg = g.get("changesPercentage") or g.get("changePercent") or 0
+        vol = g.get("volume") or 0
+        price = g.get("price") or 0
+        if chg < min_change_pct:
+            continue
+        if vol < 1_000_000:  # absolute volume filter
+            continue
+        rows.append({
+            "Ticker":  g.get("symbol", ""),
+            "Price":   price,
+            "Change":  chg,
+            "Volume":  vol,
+            "Company": g.get("name", ""),
+        })
+
+    if not rows:
+        print(f"  No candidates >{min_change_pct}% with vol>1M right now.")
         return
 
-    # Clean up
-    df['Change'] = pd.to_numeric(df['Change'].astype(str).str.replace('%',''), errors='coerce')
-    df['Volume'] = pd.to_numeric(df['Volume'].astype(str).str.replace(',',''), errors='coerce')
-    df = df.dropna(subset=['Change']).sort_values('Change', ascending=False)
+    import pandas as pd
+    df = pd.DataFrame(rows).sort_values("Change", ascending=False)
 
     # Quick K pre-check on top 15 candidates
     print(f"  Quick K-check on top 15 candidates (skipping K>{k_max})...\n")
