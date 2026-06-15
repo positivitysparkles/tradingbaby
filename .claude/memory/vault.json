@@ -3,7 +3,7 @@
   "system_name": "Curl if Flow",
   "author": "Weatherman118",
   "last_compact": "2026-06-02T22:00:00Z",
-  "last_manual_update": "2026-06-05",
+  "last_manual_update": "2026-06-15",
   "compact_count": 14,
   "goal": "Reverse-engineer Weatherman118's exact entry + exit system. Paper trade on Alpaca until 80%+ consistent win rate, then go live. ONE Pine Script = his secret sauce. Perfect it over time.",
   "confirmed_entry_conditions": {
@@ -80,13 +80,14 @@
       },
       "W118 Full Auto Scanner": {
         "file": "n8n/w118_full_scanner.json",
-        "status": "Active — BACKUP layer. Updated 2026-06-03.",
-        "trigger": "Every 6 minutes, 4am–5pm ET only (time gate built in)",
+        "status": "✅ All 5 conditions active — updated 2026-06-15",
+        "trigger": "Every 6 minutes, 4am–11am ET only (time gate built in)",
         "candidate_source": "FMP real-time gainers (financialmodelingprep.com/api/v3/stock_market/gainers — free tier, 250 req/day, real-time)",
-        "guard_rails": "Time gate UTC 8-21, checks existing positions, caps at MAX_POSITIONS=3",
-        "k_condition": "K > D — no upper limit, all-day setups",
+        "guard_rails": "Time gate UTC 8-15, checks existing positions, caps at MAX_POSITIONS=3",
+        "entry_conditions": "1) Supertrend bullish (PRIMARY) 2) K>D 3) price>ZLSMA-50 4) MACD hist>0 5) vol>4x avg",
+        "fmp_prefilter": "price $0.10-$5, change>10%, absolute vol>1M",
         "flow": "Scanner → Alpaca BUY → [STOP LOSS + T1 + T2 + T3 sells] → Telegram",
-        "user_setup": "Paste code from JSON into n8n code node. Add FMP_API_KEY constant."
+        "user_setup": "Paste jsCode from JSON into n8n code node. Add ALPACA_KEY_ID, ALPACA_SECRET_KEY, FMP_API_KEY constants at top."
       },
       "W118 Auto Paper Trading": {
         "file": "n8n/w118_auto_paper_trading.json",
@@ -124,7 +125,9 @@
       "2026-06-05: Added absolute volume >1M requirement — Rel Vol alone is misleading (16x of 4K = still nothing)",
       "2026-06-05: Entry trigger changed from W118 Buy label to Supertrend 5m flip — W118 label is lagging, Supertrend catches trend change itself",
       "2026-06-05: Added MACD histogram >0 as confirmation filter — BCDA had K reset but MACD deeply negative, correctly skipped",
-      "2026-06-05: Time gate tightened from UTC 8-21 (4am-5pm ET) to UTC 8-15 (4am-11am ET) — afternoon signals confirmed can't reach T1/T2/T3"
+      "2026-06-05: Time gate tightened from UTC 8-21 (4am-5pm ET) to UTC 8-15 (4am-11am ET) — afternoon signals confirmed can't reach T1/T2/T3",
+      "2026-06-12: Colab scanner morning_scan() replaced broken finvizfinance+Yahoo with FMP gainers (same source as n8n) — scanner returning zero was silent finviz/Yahoo breakage",
+      "2026-06-15: n8n full scanner now has all 5 W118 entry conditions: calcSupertrend(ATR=10,hl2,mult=2) PRIMARY, K>D, price>ZLSMA-50, calcMACD(12,26,9) hist>0, vol>4x. FMP pre-filter tightened to $5 max, +10% min, abs vol >1M"
     ],
     "data_sources_research": {
       "finviz": "REJECTED — no official API, returns HTML only, blocks automated requests. Not suitable for n8n.",
@@ -359,16 +362,12 @@
     "goal": "$25k account with 80%+ win rate = $40k-$60k by end of year 1"
   },
   "pending_tasks": [
-    "MONDAY MORNING: Check VVOS pre-market. If opens below $0.80 → exit at market immediately. CALC T1 limit at $1.14 already set (GTC).",
-    "MONDAY WATCHLIST: LBGJ (3.79M mkt cap, K reset, MACD positive), BGMS (8.28M mkt cap, 39x rel vol), ELOG (208x rel vol). Pull 5m charts at 8am ET.",
-    "USER SETUP (25 min): 1) Register financialmodelingprep.com → get free API key. 2) Rotate Alpaca paper keys (old ones were exposed in screenshot). 3) Import n8n/w118_tv_webhook.json in n8n → paste Alpaca keys in Parse+Guard node → copy webhook URL. 4) Update n8n/w118_full_scanner.json code node → paste all three keys. 5) In TradingView: create Supertrend+W118 alerts on top Yassss stocks → webhook to n8n.",
-    "SCANNER UPDATE (laptop): Add Supertrend (ATR=10, hl2, mult=2) calculation to n8n scanner code node",
-    "SCANNER UPDATE (laptop): Add MACD (12,26,9) histogram calculation to n8n scanner code node",
-    "SCANNER UPDATE: Tighten float filter to <10M and add absolute volume >1M check",
-    "COLAB FIX: Add drive mount check cell at top of Colab notebook (see CLAUDE.md)",
+    "LOG ENTRY PRICES: CAST and HQ entered 2026-06-15 — user to confirm exact entry price so stops/targets can be calculated and logged.",
+    "USER SETUP (25 min): 1) Register financialmodelingprep.com → get free API key. 2) Rotate Alpaca paper keys (old ones were exposed in screenshot). 3) Import n8n/w118_tv_webhook.json in n8n → paste Alpaca keys in Parse+Guard node → copy webhook URL. 4) Paste jsCode from n8n/w118_full_scanner.json into n8n code node → add 3 keys. 5) In TradingView: create Supertrend+W118 BUY and EXIT alerts on top Yassss stocks → webhook to n8n URL.",
     "Set Alpaca paper trading balance to $10,000 (alpaca.markets → Paper Trading → Reset Account)",
     "Weekly audit: pull Alpaca paper order history and compare to criteria",
-    "Continue adding new Discord recaps to trades-parsed.json as user shares them"
+    "Continue adding new Discord recaps to trades-parsed.json as user shares them",
+    "CONFIRM CALC/VVOS status from June 5 — unknown if closed or still open after 10 days"
   ],
   "key_files": {
     "trades": "/home/user/tradingbaby/data/trades-parsed.json",

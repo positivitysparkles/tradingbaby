@@ -32,85 +32,53 @@ except ImportError:
 
 WATCHLIST_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "watchlist.json")
 
-# ── FINVIZ SCREENER ───────────────────────────────────────────────────────────
+# ── FMP SCREENER (primary — real-time, free 250 req/day) ─────────────────────
 
-def screen_yahoo_top_movers(min_gain_pct: float = 5.0, max_price: float = 15.0,
-                             min_price: float = 0.10) -> list[dict]:
+FMP_API_KEY = os.environ.get("FMP_API_KEY", "")  # set env var or edit here
+
+def screen_fmp_gainers(min_gain_pct: float = 10.0, max_price: float = 15.0,
+                        min_price: float = 0.10, min_vol: int = 1_000_000) -> list[dict]:
     """
-    Pull Yahoo Finance day gainers — same list Webull shows as 'Top Movers'.
-    This is the source W118 likely uses for his pre-market watchlist.
+    Pull real-time top gainers from FMP (financialmodelingprep.com).
+    Free tier: 250 req/day. At every-6-min schedule = ~70 req/day during 4am-11am ET.
     """
+    if not FMP_API_KEY:
+        print("[scanner] FMP_API_KEY not set. Set it at the top of this file or as env var.")
+        return []
     try:
         import urllib.request
-        url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=day_gainers&count=50"
+        url = f"https://financialmodelingprep.com/api/v3/stock_market/gainers?apikey={FMP_API_KEY}"
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read())
-        quotes = data["finance"]["result"][0]["quotes"]
         results = []
-        for q in quotes:
-            price  = q.get("regularMarketPrice", 0) or 0
-            change = q.get("regularMarketChangePercent", 0) or 0
-            exch   = (q.get("exchange", "") or "").upper()
+        for g in data:
+            price  = g.get("price") or 0
+            chg    = g.get("changesPercentage") or g.get("changePercent") or 0
+            vol    = g.get("volume") or 0
             if not (min_price <= price <= max_price):
                 continue
-            if change < min_gain_pct:
+            if chg < min_gain_pct:
+                continue
+            if vol < min_vol:
                 continue
             results.append({
-                "ticker":     q.get("symbol", ""),
-                "name":       q.get("shortName", ""),
-                "price":      round(price, 4),
-                "change_pct": round(change, 2),
-                "volume":     str(q.get("regularMarketVolume", 0)),
-                "float_m":    0,   # enriched below via yfinance
-                "exchange":   exch,
-                "source":     "yahoo_top_movers",
+                "ticker":     g.get("symbol", ""),
+                "name":       g.get("name", ""),
+                "price":      round(float(price), 4),
+                "change_pct": round(float(chg), 2),
+                "volume":     str(int(vol)),
+                "float_m":    0,
+                "exchange":   "NASDAQ",
+                "source":     "fmp_gainers",
             })
-        print(f"[scanner] Yahoo Top Movers: {len(results)} candidates (price/gain filtered)")
+            if len(results) >= 30:
+                break
+        print(f"[scanner] FMP gainers: {len(results)} candidates (price/gain/vol filtered)")
         return results
     except Exception as e:
-        print(f"[scanner] Yahoo Top Movers failed: {e}")
+        print(f"[scanner] FMP gainers failed: {e}")
         return []
-
-
-def screen_finviz(min_gain_pct: float = 5.0, max_float_m: float = 20.0,
-                  max_price: float = 15.0, min_price: float = 0.10) -> list[dict]:
-    """
-    Pull top NASDAQ gainers from Finviz screener matching W118's universe.
-    Falls back to yfinance-based approach if finviz is unavailable.
-    """
-    try:
-        from finviz.screener import Screener
-        filters = [
-            "exch_nasd",                          # NASDAQ only
-            f"sh_price_{int(min_price*10)}to{int(max_price)}",  # price range
-            "sh_float_u20",                        # float under 20M
-            "ta_change_u10",                       # up 10%+ today
-        ]
-        stock_list = Screener(filters=filters, table="Overview", order="-change")
-        results = []
-        for stock in stock_list:
-            try:
-                results.append({
-                    "ticker":   stock["Ticker"],
-                    "price":    float(stock.get("Price", 0)),
-                    "change_pct": float(stock.get("Change", "0%").replace("%", "")),
-                    "volume":   stock.get("Volume", "0").replace(",", ""),
-                    "float_m":  _parse_float(stock.get("Float", "0")),
-                    "sector":   stock.get("Sector", ""),
-                    "industry": stock.get("Industry", ""),
-                    "source":   "finviz",
-                })
-            except Exception:
-                continue
-        return results
-
-    except ImportError:
-        print("[scanner] finviz not installed — using yfinance fallback")
-        return _yfinance_fallback(min_gain_pct, max_price, min_price)
-    except Exception as e:
-        print(f"[scanner] Finviz error: {e} — using yfinance fallback")
-        return _yfinance_fallback(min_gain_pct, max_price, min_price)
 
 
 def _parse_float(val: str) -> float:
@@ -298,11 +266,8 @@ def main():
                        "volume": "0", "float_m": 0, "source": "manual"}
                       for t in args.tickers]
     else:
-        # Try Yahoo Top Movers first (same list as Webull "Top Stocks"), fall back to Finviz
-        candidates = screen_yahoo_top_movers(args.min_gain, args.max_price, args.min_price)
-        if not candidates:
-            candidates = screen_finviz(args.min_gain, args.max_float, args.max_price, args.min_price)
-        print(f"[scanner] Found {len(candidates)} raw candidates from screener")
+        candidates = screen_fmp_gainers(args.min_gain, args.max_price, args.min_price)
+        print(f"[scanner] Found {len(candidates)} raw candidates from FMP")
 
     if not args.no_enrich:
         print("[scanner] Enriching with yfinance (catalyst tier, float verification)...")

@@ -1,6 +1,6 @@
 # tradingbaby — Claude Code Briefing
 
-> Auto-loaded every session. Updated by PreCompact hook. Last manual update: 2026-06-05.
+> Auto-loaded every session. Updated by PreCompact hook. Last manual update: 2026-06-15.
 
 ## What this project is
 
@@ -98,7 +98,7 @@ FMP Scanner (backup, every 6 min, 4am-5pm ET)
 | Workflow | File | Trigger | Status |
 |----------|------|---------|--------|
 | W118 TV Webhook Receiver | n8n/w118_tv_webhook.json | TradingView webhook POST | ⚠️ Import + configure |
-| W118 Full Auto Scanner | n8n/w118_full_scanner.json | Every 6 min, 4am–5pm ET | ⚠️ Update code node |
+| W118 Full Auto Scanner | n8n/w118_full_scanner.json | Every 6 min, 4am–11am ET | ✅ All 5 conditions active |
 | W118 Auto Paper Trading | n8n/w118_auto_paper_trading.json | Gmail | ❌ Deprecated |
 
 ### W118 TV Webhook Receiver — How it works
@@ -113,8 +113,6 @@ FMP Scanner (backup, every 6 min, 4am-5pm ET)
 3. Filters: price $0.10–$5, float <10M, absolute vol >1M, rel vol >4x
 4. Checks each candidate: Supertrend bullish, price>ZLSMA-50, K>D, MACD histogram>0
 5. On signal: same Alpaca BUY + bracket orders + Telegram flow
-
-**TODO (laptop):** Add Supertrend + MACD calculations to scanner code node to match new entry rules.
 
 ### When you update scanner code in n8n
 **Only update the "W118 Full Scanner" code node** — paste jsCode from the JSON file.
@@ -140,14 +138,13 @@ print("✅ Drive ready")
 ```
 One click, then it connects without re-asking within the same session.
 
-## Open Positions (2026-06-05, carry to Monday)
-| Ticker | Entry | Shares | Account | Stop | T1 | T2 | T3 |
-|--------|-------|--------|---------|------|----|----|-----|
-| CALC | $0.99 | ~252 | Schwab Roth | $0.91 | $1.14 | $1.29 | $1.58 |
-| VVOS | $0.87 | 98 | Schwab Roth | $0.80 | $1.00 | $1.13 | $1.39 |
+## Open Positions (2026-06-15)
+| Ticker | Entry | Account | Stop | T1 | T2 | T3 |
+|--------|-------|---------|------|----|----|-----|
+| CAST | TBD | TBD | entry×0.92 | entry×1.15 | entry×1.30 | entry×1.60 |
+| HQ | TBD | TBD | entry×0.92 | entry×1.15 | entry×1.30 | entry×1.60 |
 
-**VVOS warning:** hit $0.78 after hours (below $0.80 stop). Watch pre-market Monday.
-If opens below $0.80 → exit at market immediately.
+**Note:** Entry prices for CAST and HQ not yet logged — user to confirm. CALC/VVOS status from June 5 unknown (assumed closed).
 
 ## Security Rules
 - **NEVER paste API keys in chat** — only in Colab cells or n8n node code directly
