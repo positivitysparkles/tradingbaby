@@ -74,57 +74,60 @@ at the trend change itself. Use W118 indicators as confirmation filters, Supertr
 - **101 trades** | 2026-03-23 to 2026-04-30 | 99W / 2L | **98.0% win rate**
 - Avg winner: +53.7% | Avg loser: -13.5% | Best: UGRO +692.0%
 
-## n8n Automation Setup
+## Automation — Python Bot (replaces n8n, 2026-06-15)
 
-**n8n URL:** https://n8n-scrz.srv1493928.hstgr.cloud
-**Plan:** Free (no Variables — keys hardcoded in code nodes)
-**MCP:** Instance-level MCP enabled → Claude Code can directly edit/create/run workflows
+**Run on MacBook:** `python bot/bot.py`
+**Setup:** Edit `bot/config.py` → paste Alpaca paper keys + Telegram token
 
-### Architecture (rebuilt 2026-06-03)
+### Architecture
 
 ```
-TradingView Pro (Yassss screener + W118 alerts)
-        │ webhook POST {ticker, price, signal}
-        ▼
-n8n: W118 TV Webhook Receiver  ← PRIMARY
-        │ BUY → Alpaca market buy + STOP + T1/T2/T3 + Telegram
-        │ EXIT → cancel orders + market sell + Telegram
+Yahoo Finance free screener  ←  auto discovery (no API key needed)
+data/watchlist.json          ←  manual tickers (python bot/add_ticker.py TICKER)
         │
-FMP Scanner (backup, every 6 min, 4am-5pm ET)
-        │ real-time gainers → W118 conditions check → same Alpaca flow
+        ▼
+bot/bot.py  (runs every 6 min, 4am–11am ET)
+        │  checks all 5 W118 conditions via bot/indicators.py
+        │
+        ├── ALL PASS → Alpaca paper buy + STOP(-8%) + T1(+15%) + T2(+30%) + T3(+60%)
+        │              + Telegram BUY alert
+        │
+        ├── Open position check → signal exits (K<20, price<ZLSMA, ST bearish)
+        │              → cancel orders + market sell + Telegram EXIT alert
+        │
+        └── 4:30pm ET daily → Telegram audit (trades, P&L, positions)
+            Monday 5pm ET  → Telegram weekly win rate summary
 ```
 
-### Workflows
-| Workflow | File | Trigger | Status |
-|----------|------|---------|--------|
-| W118 TV Webhook Receiver | n8n/w118_tv_webhook.json | TradingView webhook POST | ⚠️ Import + configure |
-| W118 Full Auto Scanner | n8n/w118_full_scanner.json | Every 6 min, 4am–11am ET | ✅ All 5 conditions active |
-| W118 Auto Paper Trading | n8n/w118_auto_paper_trading.json | Gmail | ❌ Deprecated |
+### Bot files
+| File | Purpose |
+|------|---------|
+| `bot/config.py` | API keys + trade rules (edit this once) |
+| `bot/bot.py` | Main loop — run this |
+| `bot/indicators.py` | Supertrend, StochRSI, ZLSMA, MACD |
+| `bot/add_ticker.py` | `python bot/add_ticker.py AHMA JRSH` |
+| `bot/status.py` | Quick positions/P&L check |
 
-### W118 TV Webhook Receiver — How it works
-1. TradingView fires W118 BUY or EXIT alert → POST to n8n webhook URL
-2. Parse + Guard node: validates ticker/price/signal, checks Alpaca positions (MAX=3)
-3. IF BUY: place Alpaca market buy → STOP(-8%) + T1(+15%) + T2(+30%) + T3(+60%) → Telegram
-4. IF EXIT: cancel all open orders for ticker → market sell full position → Telegram
-
-### W118 Full Auto Scanner — How it works (backup)
-1. Runs every 6 min, **4am–11am ET only** (UTC 8-15 time gate — afternoon signals can't reach T1/T2/T3)
-2. Pulls real-time top gainers from **FMP API** (financialmodelingprep.com — free, 250/day)
-3. Filters: price $0.10–$5, float <10M, absolute vol >1M, rel vol >4x
-4. Checks each candidate: Supertrend bullish, price>ZLSMA-50, K>D, MACD histogram>0
-5. On signal: same Alpaca BUY + bracket orders + Telegram flow
-
-### When you update scanner code in n8n
-**Only update the "W118 Full Scanner" code node** — paste jsCode from the JSON file.
-Need 3 keys at top: ALPACA_KEY_ID, ALPACA_SECRET_KEY, FMP_API_KEY.
+### Quick start
+```bash
+pip install requests schedule
+# Edit bot/config.py → paste 3 values: ALPACA_KEY_ID, ALPACA_SECRET_KEY, TELEGRAM_TOKEN
+python bot/bot.py
+```
 
 ### Telegram
-- Bot: @RichAlertOls_bot | Chat ID: 8223032422 | Credential: "W118 Telegram Bot"
+- Bot: @RichAlertOls_bot | Chat ID: 8223032422 | Token: in config.py (never in chat)
 
 ### Alpaca Paper Trading
-- **Recommended balance: $10,000** (not $1k — need room for 3 simultaneous positions)
+- **Recommended balance: $10,000** (reset at alpaca.markets → Paper Trading → Reset Account)
 - Paper mode only — real trades done manually on Webull/Schwab
-- Reset balance at: alpaca.markets → Paper Trading → Reset Account
+
+### Legacy n8n workflows (kept for reference, not active)
+| File | Status |
+|------|--------|
+| n8n/w118_full_scanner.json | ⚠️ Not active — replaced by bot/ |
+| n8n/w118_tv_webhook.json | ⚠️ Not active — replaced by bot/ |
+| n8n/w118_auto_paper_trading.json | ❌ Deprecated |
 
 ## Colab Setup Note
 Google Drive asks to connect every new Colab session — this is by design (security). Fix: add
