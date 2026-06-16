@@ -66,48 +66,59 @@
     }
   },
   "n8n_setup": {
-    "url": "https://n8n-scrz.srv1493928.hstgr.cloud",
-    "plan": "Free (no Variables node — keys must be hardcoded in code nodes)",
-    "mcp_integration": "Instance-level MCP enabled in n8n settings — Claude Code can connect directly via MCP to build/fix/run workflows without manual copy-paste. See Settings → Instance-level MCP → Connection details.",
-    "active_workflows": {
-      "W118 TV Webhook Receiver": {
-        "file": "n8n/w118_tv_webhook.json",
-        "status": "NEW — import this first. PRIMARY workflow.",
-        "trigger": "HTTP POST from TradingView Pro webhook",
-        "flow": "TradingView alert → Webhook → Parse+Guard → IF BUY: Alpaca market buy + STOP + T1/T2/T3 + Telegram | IF EXIT: cancel orders + market sell + Telegram",
-        "guard_rails": "Checks existing positions (no double-buy), caps at MAX_POSITIONS=3",
-        "user_setup": "1) Import JSON in n8n. 2) Copy webhook URL from node. 3) Set W118 BUY and EXIT alerts in TradingView on top Yassss screener stocks → paste webhook URL."
-      },
-      "W118 Full Auto Scanner": {
-        "file": "n8n/w118_full_scanner.json",
-        "status": "✅ All 5 conditions active — updated 2026-06-15",
-        "trigger": "Every 6 minutes, 4am–11am ET only (time gate built in)",
-        "candidate_source": "FMP real-time gainers (financialmodelingprep.com/api/v3/stock_market/gainers — free tier, 250 req/day, real-time)",
-        "guard_rails": "Time gate UTC 8-15, checks existing positions, caps at MAX_POSITIONS=3",
-        "entry_conditions": "1) Supertrend bullish (PRIMARY) 2) K>D 3) price>ZLSMA-50 4) MACD hist>0 5) vol>4x avg",
-        "fmp_prefilter": "price $0.10-$5, change>10%, absolute vol>1M",
-        "flow": "Scanner → Alpaca BUY → [STOP LOSS + T1 + T2 + T3 sells] → Telegram",
-        "user_setup": "Paste jsCode from JSON into n8n code node. Add ALPACA_KEY_ID, ALPACA_SECRET_KEY, FMP_API_KEY constants at top."
-      },
-      "W118 Auto Paper Trading": {
-        "file": "n8n/w118_auto_paper_trading.json",
-        "status": "DEPRECATED — replaced by TV Webhook Receiver",
-        "note": "Gmail-triggered, slow, fragile. Keep as reference only."
-      }
+    "status": "DEPRECATED — replaced by Python bot (bot/) on 2026-06-15",
+    "note": "n8n never worked reliably. fetch() undefined in sandbox, Polygon delayed, FMP added but UI config too fragile. Replaced with standalone Python bot.",
+    "legacy_files_kept": ["n8n/w118_full_scanner.json", "n8n/w118_tv_webhook.json", "n8n/w118_auto_paper_trading.json"]
+  },
+  "bot_setup": {
+    "status": "ACTIVE — Python bot on Hostinger VPS (2026-06-15)",
+    "vps": {
+      "host": "187.124.224.156",
+      "hostname": "srv1493928.hstgr.cloud",
+      "os": "Ubuntu 24.04",
+      "ssh": "root@187.124.224.156",
+      "specs": "2 CPU, 8GB RAM, 100GB disk",
+      "termius_label": "Iris"
+    },
+    "run_command": "screen -S w118bot && python3 tradingbaby/bot/bot.py",
+    "detach": "Ctrl+A then D",
+    "files": {
+      "bot/config.py": "Paste ALPACA_KEY_ID, ALPACA_SECRET_KEY, TELEGRAM_TOKEN here (one time)",
+      "bot/bot.py": "Main loop — run this",
+      "bot/indicators.py": "Supertrend, StochRSI, ZLSMA, MACD — pure Python",
+      "bot/add_ticker.py": "python3 bot/add_ticker.py AHMA JRSH — adds to today's watchlist",
+      "bot/status.py": "Quick check: positions, P&L, today's trades"
+    },
+    "discovery": "Yahoo Finance free screener (no API key). Falls back to manual watchlist.",
+    "dependencies": "pip3 install requests schedule (2 packages only)",
+    "schedule": {
+      "scan": "Every 6 min, 4am–11am ET only",
+      "daily_audit": "4:30pm ET → Telegram",
+      "weekly_audit": "Monday 5pm ET → Telegram"
     },
     "telegram": {
       "bot": "@RichAlertOls_bot",
       "chat_id": "8223032422",
-      "credential_name": "W118 Telegram Bot"
+      "token": "in bot/config.py — never in chat"
     },
     "alpaca": {
       "mode": "Paper trading only",
       "paper_api": "paper-api.alpaca.markets",
-      "data_api": "data.alpaca.markets",
-      "data_feed": "IEX (free tier)",
-      "recommended_paper_balance": "$10,000 (realistic small account simulation)",
-      "note": "Real trades done manually on Webull/Schwab only"
+      "data_feed": "IEX (free)",
+      "recommended_balance": "$10,000",
+      "reset": "alpaca.markets → Paper Trading → Reset Account"
     },
+    "setup_steps_done": [
+      "Bot code written + merged to main (PR #19)",
+      "VPS identified: 187.124.224.156, Ubuntu 24.04, Termius configured on iPad"
+    ],
+    "setup_steps_pending": [
+      "SSH into VPS via Termius → git clone → pip3 install requests schedule",
+      "Edit bot/config.py → paste Alpaca paper keys (rotate first) + Telegram token",
+      "screen -S w118bot && python3 tradingbaby/bot/bot.py",
+      "Reset Alpaca paper balance to $10,000"
+    ]
+  },
     "known_bugs_fixed": [
       "2026-06-02: Massive grouped daily endpoint returned EOD data — switched to snapshot gainers (real-time)",
       "2026-06-02: Timezone was UTC-5 (EST) instead of UTC-4 (EDT) — scanner started 1hr late",
@@ -362,12 +373,13 @@
     "goal": "$25k account with 80%+ win rate = $40k-$60k by end of year 1"
   },
   "pending_tasks": [
-    "LOG ENTRY PRICES: CAST and HQ entered 2026-06-15 — user to confirm exact entry price so stops/targets can be calculated and logged.",
-    "USER SETUP (25 min): 1) Register financialmodelingprep.com → get free API key. 2) Rotate Alpaca paper keys (old ones were exposed in screenshot). 3) Import n8n/w118_tv_webhook.json in n8n → paste Alpaca keys in Parse+Guard node → copy webhook URL. 4) Paste jsCode from n8n/w118_full_scanner.json into n8n code node → add 3 keys. 5) In TradingView: create Supertrend+W118 BUY and EXIT alerts on top Yassss stocks → webhook to n8n URL.",
-    "Set Alpaca paper trading balance to $10,000 (alpaca.markets → Paper Trading → Reset Account)",
+    "VPS BOT SETUP: SSH into 187.124.224.156 via Termius → git clone → pip3 install → edit bot/config.py (Alpaca keys + Telegram token) → screen + python3 bot/bot.py",
+    "ROTATE ALPACA PAPER KEYS: old keys were visible in a screenshot — regenerate at alpaca.markets → Paper Trading → API Keys",
+    "RESET ALPACA PAPER BALANCE: alpaca.markets → Paper Trading → Reset Account → $10,000",
+    "LOG ENTRY PRICES: CAST and HQ entered 2026-06-15 — user to confirm exact entry price for stop/target logging",
     "Weekly audit: pull Alpaca paper order history and compare to criteria",
     "Continue adding new Discord recaps to trades-parsed.json as user shares them",
-    "CONFIRM CALC/VVOS status from June 5 — unknown if closed or still open after 10 days"
+    "CONFIRM CALC/VVOS status from June 5 — unknown if closed or still open"
   ],
   "key_files": {
     "trades": "/home/user/tradingbaby/data/trades-parsed.json",
