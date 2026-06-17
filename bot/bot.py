@@ -141,38 +141,50 @@ def tg(msg: str):
 # ── Stock discovery ───────────────────────────────────────────────────────────
 
 def _yahoo_gainers() -> list[str]:
-    """Free Yahoo Finance predefined screener — no API key needed."""
-    try:
-        r = requests.get(
-            "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved",
-            params={"scrIds": "day_gainers", "count": 50,
-                    "formatted": "false", "lang": "en-US", "region": "US"},
-            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"},
-            timeout=12,
-        )
-        quotes = r.json()["finance"]["result"][0]["quotes"]
-        tickers = []
-        for q in quotes:
-            price = q.get("regularMarketPrice") or 0
-            chg   = q.get("regularMarketChangePercent") or 0
-            vol   = q.get("regularMarketVolume") or 0
-            exch  = q.get("fullExchangeName") or ""
-            if not (MIN_PRICE <= price <= MAX_PRICE):
-                continue
-            if chg < MIN_CHANGE_PCT:
-                continue
-            if vol < MIN_ABS_VOLUME:
-                continue
-            if not any(x in exch for x in ("NASDAQ", "Nasdaq")):
-                continue
-            tickers.append(q["symbol"])
-            if len(tickers) >= 25:
-                break
-        log.info(f"[discovery] Yahoo: {len(tickers)} candidates")
-        return tickers
-    except Exception as e:
-        log.warning(f"[discovery] Yahoo failed: {e}")
-        return []
+    """
+    Pull from multiple Yahoo Finance screeners to catch small-cap movers.
+    day_gainers misses penny stocks — small_cap_gainers + aggressive_small_caps
+    are much better for the $0.10–$5 NASDAQ universe we trade.
+    """
+    screener_ids = ["small_cap_gainers", "aggressive_small_caps", "day_gainers"]
+    seen: set = set()
+    tickers: list = []
+
+    for scr_id in screener_ids:
+        if len(tickers) >= 25:
+            break
+        try:
+            r = requests.get(
+                "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved",
+                params={"scrIds": scr_id, "count": 100,
+                        "formatted": "false", "lang": "en-US", "region": "US"},
+                headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"},
+                timeout=12,
+            )
+            quotes = r.json()["finance"]["result"][0]["quotes"]
+            for q in quotes:
+                sym   = q.get("symbol", "")
+                price = q.get("regularMarketPrice") or 0
+                chg   = q.get("regularMarketChangePercent") or 0
+                vol   = q.get("regularMarketVolume") or 0
+                exch  = q.get("fullExchangeName") or ""
+                if sym in seen:
+                    continue
+                if not (MIN_PRICE <= price <= MAX_PRICE):
+                    continue
+                if chg < MIN_CHANGE_PCT:
+                    continue
+                if vol < MIN_ABS_VOLUME:
+                    continue
+                seen.add(sym)
+                tickers.append(sym)
+                if len(tickers) >= 25:
+                    break
+        except Exception as e:
+            log.warning(f"[discovery] Yahoo {scr_id} failed: {e}")
+
+    log.info(f"[discovery] Yahoo: {len(tickers)} candidates {tickers[:8]}")
+    return tickers
 
 def _manual_watchlist() -> list[str]:
     """Tickers added manually via add_ticker.py — today's list only."""
@@ -253,7 +265,7 @@ def execute_buy(ticker: str, price: float, info: dict):
     msg = (
         f"<b>🟢 W118 AUTO BUY — {ticker}</b>\n"
         f"Entry: ${price:.4f}  ×{SHARES_PER_TRADE} shares\n"
-        f"K={info['k']}  D={info['d']}  MACD={info['macd_hist']:.5f}  Vol {info['vol_ratio']}x\n"
+        f"K={info['k']}  D={info['d']}  MACD={'▲' if (info.get('macd_hist') or 0) > 0 else '▽'}  Vol {info['vol_ratio']}x\n"
         f"🛑 Stop:  ${stop}  (-8%)\n"
         f"🎯 T1: ${t1}  (+15%)  ×{T1_SHARES}\n"
         f"   T2: ${t2}  (+30%)  ×{T2_SHARES}\n"
@@ -427,7 +439,7 @@ def main():
         f"🤖 <b>W118 Bot started</b>\n"
         f"Gate: 4am–11am ET  |  Max {MAX_DAILY_TRADES} trades/day\n"
         f"Universe: NASDAQ $0.10–$5, vol>1M, chg>10%, relVol>{REL_VOL_MIN}x\n"
-        f"Conditions: Supertrend ✓ K>D ✓ price>ZLSMA ✓ MACD>0 ✓ vol>4x"
+        f"Conditions: Supertrend ✓  K>D ✓  price>ZLSMA ✓  vol>4x ✓  (MACD logged)"
     )
 
     schedule.every(SCAN_INTERVAL_MIN).minutes.do(scan)
