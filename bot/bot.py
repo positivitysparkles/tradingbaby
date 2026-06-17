@@ -140,60 +140,35 @@ def tg(msg: str):
 
 # ── Stock discovery ───────────────────────────────────────────────────────────
 
-def _alpaca_actives() -> list[str]:
+def _alpaca_gainers() -> list[str]:
     """
-    Primary scanner: Alpaca's most-actives endpoint (top 100 by volume).
-    Works from any IP — uses the Alpaca key already configured.
-    Filters for our W118 universe: price $0.10-$5, >10% gain, vol >1M.
+    Alpaca top-gainers endpoint (sorted by % change).
+    Most-actives was dominated by large caps — gainers surfaces the penny
+    stocks up 50-200% that we actually want to trade.
     """
     try:
-        # Step 1: get top 100 most active symbols
         r = requests.get(
-            ALPACA_DATA_URL + "/v1beta1/screener/stocks/most-actives",
+            ALPACA_DATA_URL + "/v1beta1/screener/stocks/gainers",
             headers=_HDR,
-            params={"by": "volume", "top": 100},
+            params={"top": 50},
             timeout=15,
         )
         r.raise_for_status()
-        symbols = [s["symbol"] for s in r.json().get("most_actives", [])]
-        if not symbols:
-            log.info("[discovery] Alpaca most-actives: no results")
-            return []
-
-        # Step 2: batch snapshot to filter price/change/volume
-        snap_r = requests.get(
-            ALPACA_DATA_URL + "/v2/stocks/snapshots",
-            headers=_HDR,
-            params={"symbols": ",".join(symbols[:80]), "feed": "iex"},
-            timeout=15,
-        )
-        snap_r.raise_for_status()
-        snaps = snap_r.json()
-
         result = []
-        for sym in symbols:
-            snap = snaps.get(sym)
-            if not snap:
+        for g in r.json().get("gainers", []):
+            sym   = g.get("symbol", "")
+            price = g.get("price") or g.get("close") or 0
+            chg   = g.get("percent_change") or g.get("change_percent") or 0
+            vol   = g.get("volume") or 0
+            if not sym or not (MIN_PRICE <= price <= MAX_PRICE):
                 continue
-            price = (snap.get("latestTrade") or {}).get("p") or \
-                    (snap.get("dailyBar") or {}).get("c") or 0
-            prev  = (snap.get("prevDailyBar") or {}).get("c") or 0
-            vol   = (snap.get("dailyBar") or {}).get("v") or 0
-            chg   = ((price - prev) / prev * 100) if prev else 0
-            if not (MIN_PRICE <= price <= MAX_PRICE):
-                continue
-            if chg < MIN_CHANGE_PCT:
-                continue
-            if vol < MIN_ABS_VOLUME:
+            if chg < MIN_CHANGE_PCT or vol < MIN_ABS_VOLUME:
                 continue
             result.append(sym)
-            if len(result) >= 40:
-                break
-
-        log.info(f"[discovery] Alpaca: {len(result)} candidates {result[:10]}")
+        log.info(f"[discovery] Alpaca gainers: {len(result)} {result[:8]}")
         return result
     except Exception as e:
-        log.warning(f"[discovery] Alpaca screener failed: {e}")
+        log.warning(f"[discovery] Alpaca gainers failed: {e}")
         return []
 
 
@@ -242,9 +217,10 @@ def _manual_watchlist() -> list[str]:
 
 def discover() -> list[str]:
     manual = _manual_watchlist()
-    auto   = _alpaca_actives() or _yahoo_gainers()  # Alpaca first, Yahoo as fallback
+    alpaca = _alpaca_gainers()
+    yahoo  = _yahoo_gainers()
     seen, result = set(), []
-    for t in (manual + auto):   # manual always gets priority
+    for t in (manual + alpaca + yahoo):  # both sources combined, manual first
         if t not in seen:
             seen.add(t); result.append(t)
     return result
