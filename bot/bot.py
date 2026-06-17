@@ -657,7 +657,7 @@ def main():
         f"🤖 <b>W118 Bot started</b>\n"
         f"Gate: 2am–4pm MT (4am–6pm ET)  |  Max {MAX_DAILY_TRADES} trades/day\n"
         f"Universe: NASDAQ $0.10–$15, vol>1M, chg>10%, relVol>{REL_VOL_MIN}x\n"
-        f"Conditions: Supertrend ✓  K>D+rising ✓  price>ZLSMA ✓  MACD(5,10,16)>0 ✓  vol>4x ✓"
+        f"Conditions: Supertrend ✓  K>D+rising ✓  price>ZLSMA ✓  MACD(5,10,16)>0 ✓  vol>{REL_VOL_MIN}x ✓"
     )
 
     schedule.every(SCAN_INTERVAL_MIN).minutes.do(scan)
