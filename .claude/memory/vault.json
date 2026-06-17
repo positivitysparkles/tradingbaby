@@ -110,10 +110,15 @@
     },
     "setup_steps_done": [
       "Bot code written + merged to main (PR #19)",
-      "VPS identified: 187.124.224.156, Ubuntu 24.04, Termius configured on iPad"
+      "VPS identified: 187.124.224.156, Ubuntu 24.04, Termius configured on iPad",
+      "git clone + pip3 install requests schedule --break-system-packages on VPS",
+      "bot/config.py filled in with Alpaca keys + Telegram token",
+      "Bot running in screen session w118bot — confirmed live 2026-06-16 23:29 UTC"
     ],
     "setup_steps_pending": [
-      "SSH into VPS via Termius → git clone → pip3 install requests schedule",
+      "Rotate Alpaca paper keys (old ones visible in screenshot — regenerate at alpaca.markets)",
+      "Reset Alpaca paper balance to $10,000 (currently $100k default)",
+      "Confirm first scan fires at 4am ET (8:00 UTC) tomorrow morning via Telegram",
       "Edit bot/config.py → paste Alpaca paper keys (rotate first) + Telegram token",
       "screen -S w118bot && python3 tradingbaby/bot/bot.py",
       "Reset Alpaca paper balance to $10,000"
