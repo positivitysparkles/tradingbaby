@@ -17,6 +17,7 @@ import logging
 import os
 import sys
 import time
+from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -410,10 +411,44 @@ def _in_gate() -> bool:
     h = datetime.now(UTC).hour
     return GATE_OPEN_UTC <= h < GATE_CLOSE_UTC
 
+def _blocker_bucket(reason: str) -> str:
+    """Map a check_all_entry fail string to a human bucket for the heartbeat."""
+    r = reason.lower()
+    if "supertrend" in r:                     return "Supertrend not green"
+    if r.startswith("k ") or "stoch" in r:    return "StochRSI (K<D / not rising)"
+    if "zlsma" in r:                          return "below ZLSMA"
+    if "macd" in r:                           return "MACD not positive"
+    if "vol" in r:                            return "volume < 4x"
+    if "price" in r:                          return "price out of range"
+    return "other"
+
 _first_scan_of_day: str = ""
+_last_summary: dict = {}     # populated each scan, read by the hourly heartbeat
+
+def heartbeat() -> None:
+    """Hourly Telegram pulse — proves the bot is alive and explains why no entry."""
+    if not _in_gate():
+        return
+    s = _last_summary
+    if not s:
+        tg("💓 <b>W118 alive</b> — first scan still pending.")
+        return
+    if s.get("blockers"):
+        top = sorted(s["blockers"].items(), key=lambda x: -x[1])
+        blk = " · ".join(f"{name} ({n})" for name, n in top)
+    else:
+        blk = "—"
+    tg(
+        f"💓 <b>W118 alive</b> — {s['time']}\n"
+        f"Checked {s['candidates']} candidates · {s['positions']} open · "
+        f"{s['trades']}/{MAX_DAILY_TRADES} trades today\n"
+        f"Setups passing all 5: <b>{s['signals']}</b>\n"
+        f"Why no entry → {blk}"
+    )
+    log.info("[heartbeat] sent")
 
 def scan():
-    global _first_scan_of_day
+    global _first_scan_of_day, _last_summary
     if not _in_gate():
         return
 
@@ -449,6 +484,8 @@ def scan():
     candidates = discover()
     log.info(f"[scan] {len(candidates)} candidates → checking W118 conditions")
 
+    blockers: Counter = Counter()
+    signals = 0
     for ticker in candidates:
         if ticker in held:
             continue
@@ -461,14 +498,25 @@ def scan():
 
         ok, info = check_all_entry(bars, MIN_PRICE, MAX_PRICE, REL_VOL_MIN)
         if ok:
+            signals += 1
             log.info(f"[SIGNAL] {ticker} — ALL 5 PASS: price=${info['price']} K={info['k']}↑ MACD▲ vol={info['vol_ratio']}x")
             execute_buy(ticker, info["price"], info)
             held = get_held()
         else:
-            log.info(f"[skip] {ticker}: {info.get('fail', info)}")
+            reason = str(info.get("fail", info))
+            blockers[_blocker_bucket(reason)] += 1
+            log.info(f"[skip] {ticker}: {reason}")
 
         time.sleep(0.15)  # ~6 reqs/sec — well under Alpaca's 200/min free limit
 
+    _last_summary = {
+        "time":       now,
+        "candidates": len(candidates),
+        "positions":  len(get_held()),
+        "trades":     trades_today(),
+        "signals":    signals,
+        "blockers":   dict(blockers),
+    }
     log.info(f"[scan] done. Positions: {len(get_held())} / {MAX_POSITIONS}")
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -491,13 +539,14 @@ def main():
 
     tg(
         f"🤖 <b>W118 Bot started</b>\n"
-        f"Gate: 4am–11am ET  |  Max {MAX_DAILY_TRADES} trades/day\n"
+        f"Gate: 2am–4pm MT (4am–6pm ET)  |  Max {MAX_DAILY_TRADES} trades/day\n"
         f"Universe: NASDAQ $0.10–$5, vol>1M, chg>10%, relVol>{REL_VOL_MIN}x\n"
         f"Conditions: Supertrend ✓  K>D+rising ✓  price>ZLSMA ✓  MACD(5,10,16)>0 ✓  vol>4x ✓"
     )
 
     schedule.every(SCAN_INTERVAL_MIN).minutes.do(scan)
-    schedule.every().day.at("20:30").do(daily_audit)    # 4:30pm ET = 20:30 UTC
+    schedule.every().hour.do(heartbeat)                  # hourly "alive + why no entry" pulse
+    schedule.every().day.at("20:30").do(daily_audit)     # 4:30pm ET = 20:30 UTC
     schedule.every().monday.at("21:00").do(weekly_audit) # Monday 5pm ET
 
     scan()  # run once immediately on startup
