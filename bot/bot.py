@@ -140,67 +140,50 @@ def tg(msg: str):
 
 # ── Stock discovery ───────────────────────────────────────────────────────────
 
-# Cached Yahoo session + crumb — refreshed every 4 hours to avoid 429 rate limits
-_yf_session: requests.Session | None = None
-_yf_crumb: str = ""
-_yf_crumb_ts: float = 0.0
+# Browser-like headers — TradingView's scanner rejects bare requests (403)
+_TV_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                   "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
+    "Origin":  "https://www.tradingview.com",
+    "Referer": "https://www.tradingview.com/",
+    "Accept":  "application/json",
+}
 
-def _yahoo_session_crumb() -> tuple[requests.Session, str]:
-    global _yf_session, _yf_crumb, _yf_crumb_ts
-    if _yf_session and _yf_crumb and (time.time() - _yf_crumb_ts) < 14400:
-        return _yf_session, _yf_crumb
-    ua = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-          "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-    s = requests.Session()
-    s.headers.update({"User-Agent": ua})
-    s.get("https://fc.yahoo.com/", timeout=8)
-    crumb = s.get("https://query1.finance.yahoo.com/v1/test/getcrumb", timeout=8).text.strip()
-    if len(crumb) > 30 or not crumb:
-        raise ValueError(f"Bad crumb: {crumb[:40]}")
-    _yf_session, _yf_crumb, _yf_crumb_ts = s, crumb, time.time()
-    log.info("[discovery] Yahoo session refreshed")
-    return s, crumb
-
-
-def _yahoo_custom_screener() -> list[str]:
+def _tradingview_screener() -> list[str]:
     """
-    Yahoo Finance custom POST screener — exact W118 filters applied server-side.
-    Session + crumb cached for 4 hours so we don't hit Yahoo's 429 rate limit
-    by fetching a new crumb every minute.
+    Primary discovery — TradingView's public scanner, the same engine behind the
+    Yassss screener. No crumb/login, and (unlike Yahoo) not rate-limited from a
+    data-center IP. Applies the exact W118 filters server-side and keeps NASDAQ.
     """
     try:
-        session, crumb = _yahoo_session_crumb()
         body = {
-            "size": 50,
-            "offset": 0,
-            "sortField": "percentchange",
-            "sortType": "DESC",
-            "quoteType": "EQUITY",
-            "query": {
-                "operator": "AND",
-                "operands": [
-                    {"operator": "GT",   "operands": ["percentchange", MIN_CHANGE_PCT]},
-                    {"operator": "BTWN", "operands": ["intradayprice", MIN_PRICE, MAX_PRICE]},
-                    {"operator": "GT",   "operands": ["dayvolume",     MIN_ABS_VOLUME]},
-                ],
-            },
-            "userId": "",
-            "userIdType": "guid",
+            "filter": [
+                {"left": "change",                   "operation": "greater",  "right": MIN_CHANGE_PCT},
+                {"left": "close",                    "operation": "in_range", "right": [MIN_PRICE, MAX_PRICE]},
+                {"left": "relative_volume_10d_calc", "operation": "greater",  "right": REL_VOL_MIN},
+                {"left": "volume",                   "operation": "greater",  "right": MIN_ABS_VOLUME},
+            ],
+            "options":  {"lang": "en"},
+            "symbols":  {"query": {"types": []}, "tickers": []},
+            "columns":  ["name", "close", "change", "volume", "relative_volume_10d_calc"],
+            "sort":     {"sortBy": "change", "sortOrder": "desc"},
+            "range":    [0, 50],
+            "markets":  ["america"],
         }
-        r = session.post(
-            "https://query1.finance.yahoo.com/v1/finance/screener",
-            params={"crumb": crumb, "lang": "en-US", "region": "US", "formatted": "false"},
-            json=body,
-            headers={"Content-Type": "application/json"},
-            timeout=15,
+        r = requests.post(
+            "https://scanner.tradingview.com/america/scan",
+            json=body, headers=_TV_HEADERS, timeout=15,
         )
         r.raise_for_status()
-        quotes  = r.json()["finance"]["result"][0]["quotes"]
-        tickers = [q["symbol"] for q in quotes if q.get("symbol")][:40]
-        log.info(f"[discovery] Yahoo custom: {len(tickers)} candidates {tickers[:8]}")
+        rows = r.json().get("data") or []
+        # row["s"] is "EXCHANGE:TICKER" — keep NASDAQ (W118 universe)
+        tickers = [row["s"].split(":", 1)[1]
+                   for row in rows
+                   if row.get("s", "").startswith("NASDAQ:")][:40]
+        log.info(f"[discovery] TradingView: {len(tickers)} candidates {tickers[:8]}")
         return tickers
     except Exception as e:
-        log.warning(f"[discovery] Yahoo custom screener failed: {e}")
+        log.warning(f"[discovery] TradingView screener failed: {e}")
         return []
 
 
@@ -260,11 +243,11 @@ def discover() -> list[str]:
     manual = _manual_watchlist()  # always fresh — cheap local file read
 
     if not _disc_cache_ts or (time.time() - _disc_cache_ts) >= DISCOVERY_TTL:
-        _disc_cache_ts = time.time()  # mark attempt so a 429 won't retry next scan
-        custom     = _yahoo_custom_screener()   # exact filters: price+change+vol
-        predefined = _yahoo_gainers()            # small_cap_gainers + aggressive
+        _disc_cache_ts = time.time()  # mark attempt so a failure won't retry next scan
+        tv         = _tradingview_screener()     # primary: same engine as Yassss screener
+        predefined = _yahoo_gainers()            # fallback: small_cap_gainers + aggressive
         net, seen_net = [], set()
-        for t in (custom + predefined):
+        for t in (tv + predefined):
             if t not in seen_net:
                 seen_net.add(t); net.append(t)
         if net:
