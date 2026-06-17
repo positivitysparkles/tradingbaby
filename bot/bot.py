@@ -35,6 +35,7 @@ from config import (
     STOP_PCT, T1_PCT, T2_PCT, T3_PCT, T1_SHARES, T2_SHARES, T3_SHARES,
     MIN_PRICE, MAX_PRICE, MAX_FLOAT, MIN_CHANGE_PCT, MIN_ABS_VOLUME, REL_VOL_MIN,
     SCAN_INTERVAL_MIN, GATE_OPEN_UTC, GATE_CLOSE_UTC,
+    AVOID_MIDDAY, MIDDAY_START_ET, MIDDAY_END_ET, DEEP_CURL_RESET,
 )
 from indicators import check_all_entry, check_exit_signal
 
@@ -370,7 +371,7 @@ def execute_buy(ticker: str, price: float, info: dict):
     log_trade(ticker, price, info)
 
     msg = (
-        f"<b>🟢 W118 AUTO BUY — {html.escape(ticker)}</b>\n"
+        f"<b>🟢 W118 AUTO BUY — {html.escape(ticker)}</b>{' ⭐ DEEP CURL' if info.get('deep_curl') else ''}\n"
         f"Entry: ${price:.4f}  ×{SHARES_PER_TRADE} shares\n"
         f"K={info['k']}↑  D={info['d']}  MACD(5,10,16)={'▲' if info['macd_hist'] > 0 else '▽'}  Vol {info['vol_ratio']}x\n"
         f"🛑 Stop: ${stop}  (-8%) — scan-enforced\n"
@@ -463,6 +464,15 @@ def _in_gate() -> bool:
     h = datetime.now(UTC).hour
     return GATE_OPEN_UTC <= h < GATE_CLOSE_UTC
 
+def _in_midday_chop() -> bool:
+    """True during the 10:30am-3pm ET dead zone. Pauses NEW entries only —
+    exits on open positions still run every scan regardless of this."""
+    if not AVOID_MIDDAY:
+        return False
+    et = datetime.now(ET)
+    hours = et.hour + et.minute / 60.0
+    return MIDDAY_START_ET <= hours < MIDDAY_END_ET
+
 def _blocker_bucket(reason: str) -> str:
     """Map a check_all_entry fail string to a human bucket for the heartbeat."""
     r = reason.lower()
@@ -470,7 +480,7 @@ def _blocker_bucket(reason: str) -> str:
     if r.startswith("k ") or "stoch" in r:    return "StochRSI (K below D / not rising)"
     if "zlsma" in r:                          return "below ZLSMA"
     if "macd" in r:                           return "MACD not positive"
-    if "vol" in r:                            return "volume under 4x"
+    if "vol" in r:                            return "volume under 1.5x"
     if "price" in r:                          return "price out of range"
     return "other"
 
@@ -487,8 +497,9 @@ def _send_watch_alert(ticker: str, info: dict) -> None:
     score    = info["score"]
     max_     = info["max"]
     missing  = html.escape(info.get("fail") or "—")   # escape so '<' can't break Telegram HTML
+    curl = " ⭐deep-curl" if info.get("deep_curl") else ""
     tg(
-        f"👀 <b>WATCH: {html.escape(ticker)}</b> — {score}/{max_} conditions\n"
+        f"👀 <b>WATCH: {html.escape(ticker)}</b> — {score}/{max_} conditions{curl}\n"
         f"Price ${info['price']:.2f}  "
         f"K={info['k']}  Vol {info['vol_ratio']}x\n"
         f"Missing: {missing}\n"
@@ -563,6 +574,17 @@ def scan():
         log.info(f"[scan] Position cap reached ({MAX_POSITIONS}). No new entries.")
         return
 
+    # Midday chop (10:30am-3pm ET): exits already ran above; pause NEW entries.
+    # 56% of W118 wins are premarket — midday only chops out good setups.
+    if _in_midday_chop():
+        log.info("[scan] midday chop (10:30am-3pm ET) — exits managed, new entries paused")
+        _last_summary = {
+            "time": now, "candidates": 0, "positions": len(held),
+            "trades": trades_today(), "signals": 0,
+            "blockers": {"midday chop — entries paused": 1},
+        }
+        return
+
     candidates = discover()
     log.info(f"[scan] {len(candidates)} candidates → checking W118 conditions")
 
@@ -578,12 +600,13 @@ def scan():
         if not bars:
             continue
 
-        ok, info = check_all_entry(bars, MIN_PRICE, MAX_PRICE, REL_VOL_MIN)
+        ok, info = check_all_entry(bars, MIN_PRICE, MAX_PRICE, REL_VOL_MIN, DEEP_CURL_RESET)
         score, max_ = info.get("score", 0), info.get("max", 5)
 
         if ok:
             signals += 1
-            log.info(f"[SIGNAL] {ticker} — ALL PASS: price=${info['price']} K={info['k']}↑ MACD▲ vol={info['vol_ratio']}x")
+            curl = " ⭐deep-curl" if info.get("deep_curl") else ""
+            log.info(f"[SIGNAL] {ticker} — ALL PASS: price=${info['price']} K={info['k']}↑ MACD▲ vol={info['vol_ratio']}x{curl}")
             execute_buy(ticker, info["price"], info)
             held = get_held()
         else:

@@ -34,3 +34,15 @@ SCAN_INTERVAL_MIN = 1         # how often to scan in minutes
 # Time gate (UTC). Summer: MT = UTC-6, ET = UTC-4
 GATE_OPEN_UTC  = 8            # 2:00am MT / 4:00am ET  (premarket start)
 GATE_CLOSE_UTC = 22           # 4:00pm MT / 6:00pm ET  (run all day, end at MT close)
+
+# Session timing — avoid the midday chop (W118: 56% of wins are premarket;
+# 10:30am-3pm ET is the dead zone). NEW ENTRIES are paused midday; exits on
+# open positions ALWAYS run regardless of time. Power hour (3-4pm) stays open.
+AVOID_MIDDAY    = True
+MIDDAY_START_ET = 10.5        # 10:30am ET — entries pause
+MIDDAY_END_ET   = 15.0        # 3:00pm ET  — entries resume (power hour)
+
+# Entry quality — deep-curl flag (informational only, no gate). StochRSI K that
+# recently dipped near 0 then curled up = stronger reload (Colab grader's ⭐).
+# Shown in alerts + logged so the audit can learn if deep curls win more often.
+DEEP_CURL_RESET = 20.0        # K dipped below this in the lookback = deep curl
