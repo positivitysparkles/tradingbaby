@@ -18,11 +18,14 @@ def zlsma(closes: list, period: int = 50) -> float | None:
     return 2 * e1[-1] - e2[-1]
 
 
-def stochrsi(closes: list) -> tuple[float | None, float | None]:
-    """StochRSI(14,14,3,3). Returns (K, D). Entry requires K > D."""
+def stochrsi(closes: list) -> tuple[float | None, float | None, float | None]:
+    """
+    StochRSI(14,14,3,3). Returns (K, D, K_prev).
+    Entry requires K > D AND K rising (K > K_prev).
+    """
     rp, sp, ks, ds = 14, 14, 3, 3
     if len(closes) < rp + sp + ks + ds:
-        return None, None
+        return None, None, None
 
     ch = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
     ag = sum(max(c, 0) for c in ch[:rp]) / rp
@@ -43,18 +46,21 @@ def stochrsi(closes: list) -> tuple[float | None, float | None]:
     sd = [sum(sk[i - ds + 1 : i + 1]) / ds for i in range(ds - 1, len(sk))]
 
     if len(sk) < 2 or not sd:
-        return None, None
-    return sk[-1], sd[-1]
+        return None, None, None
+    return sk[-1], sd[-1], sk[-2]
 
 
 def macd_hist(closes: list) -> float | None:
-    """MACD(12,26,9) histogram. Must be > 0 to enter (momentum building, not fading)."""
-    if len(closes) < 35:
+    """
+    MACD(5,10,16) histogram. Blue line (MACD) must be above red line (signal).
+    Faster settings than standard 12,26,9 — fires earlier, in sync with Supertrend.
+    """
+    if len(closes) < 32:
         return None
-    e12 = _ema(closes, 12)
-    e26 = _ema(closes, 26)
-    macd_line = [a - b for a, b in zip(e12, e26)]
-    sig_line = _ema(macd_line, 9)
+    e5  = _ema(closes, 5)
+    e10 = _ema(closes, 10)
+    macd_line = [a - b for a, b in zip(e5, e10)]
+    sig_line  = _ema(macd_line, 16)
     return macd_line[-1] - sig_line[-1]
 
 
@@ -107,8 +113,7 @@ def supertrend(bars: list, period: int = 10, mult: float = 2.0) -> int | None:
 
 def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min: float) -> tuple[bool, dict]:
     """
-    Run 4 W118 entry conditions. Returns (passed, details_dict).
-    MACD dropped as hard gate (lags, missed real setups) — kept as info only.
+    Run all 5 W118 entry conditions. Returns (passed, details_dict).
     bars: list of dicts with keys h, l, c, v (from Alpaca IEX)
     """
     closes = [b["c"] for b in bars]
@@ -122,34 +127,41 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
     if st != 1:
         return False, {"fail": "supertrend_bearish"}
 
-    # 2. StochRSI K > D
-    k, d = stochrsi(closes)
-    if k is None or k <= d:
-        fail = f"K {k:.1f} <= D {d:.1f}" if k is not None else "stochrsi_error"
-        return False, {"fail": fail}
+    # 2. StochRSI K > D AND K rising (heading upward, not just above D)
+    k, d, k_prev = stochrsi(closes)
+    if k is None:
+        return False, {"fail": "stochrsi_error"}
+    if k <= d:
+        return False, {"fail": f"K {k:.1f} <= D {d:.1f}"}
+    if k_prev is not None and k < k_prev:
+        return False, {"fail": f"Stoch not rising ({k_prev:.1f}→{k:.1f})"}
 
-    # 3. Price above ZLSMA-50
+    # 3. Price above ZLSMA-50 — NEVER trade below yellow line
     zl = zlsma(closes)
     if zl is None or price <= zl:
         fail = f"price ${price:.4f} below ZLSMA ${zl:.4f}" if zl is not None else "zlsma_error"
         return False, {"fail": fail}
 
-    # 4. Volume > rel_vol_min × 20-bar average
+    # 4. MACD(5,10,16) blue above red — faster than 12,26,9, fires with the move
+    hist = macd_hist(closes)
+    if hist is None or hist <= 0:
+        fail = f"MACD hist {hist:.5f}" if hist is not None else "macd_error"
+        return False, {"fail": fail}
+
+    # 5. Volume > rel_vol_min × 20-bar average
     vols    = [b["v"] for b in bars[-21:-1]]
     avg_vol = sum(vols) / len(vols) if vols else 0
     cur_vol = bars[-1]["v"]
     if cur_vol < avg_vol * rel_vol_min:
         return False, {"fail": f"vol {cur_vol:.0f} < {rel_vol_min}x avg {avg_vol:.0f}"}
 
-    # MACD: informational only (not a hard gate — lags and missed real setups)
-    hist = macd_hist(closes)
-
     return True, {
         "price":      price,
         "k":          round(k, 1),
         "d":          round(d, 1),
+        "k_prev":     round(k_prev, 1) if k_prev is not None else None,
         "zlsma":      round(zl, 4),
-        "macd_hist":  round(hist, 6) if hist is not None else None,
+        "macd_hist":  round(hist, 5),
         "vol_ratio":  round(cur_vol / avg_vol, 1) if avg_vol else 0,
     }
 
@@ -161,7 +173,7 @@ def check_exit_signal(bars: list) -> str | None:
     """
     closes = [b["c"] for b in bars]
 
-    k, _ = stochrsi(closes)
+    k, _, _ = stochrsi(closes)
     if k is not None and k < 20:
         return f"K_below_20 (K={k:.1f})"
 

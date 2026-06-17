@@ -283,7 +283,7 @@ def execute_buy(ticker: str, price: float, info: dict):
     msg = (
         f"<b>🟢 W118 AUTO BUY — {ticker}</b>\n"
         f"Entry: ${price:.4f}  ×{SHARES_PER_TRADE} shares\n"
-        f"K={info['k']}  D={info['d']}  MACD={'▲' if (info.get('macd_hist') or 0) > 0 else '▽'}  Vol {info['vol_ratio']}x\n"
+        f"K={info['k']}↑  D={info['d']}  MACD(5,10,16)={'▲' if info['macd_hist'] > 0 else '▽'}  Vol {info['vol_ratio']}x\n"
         f"🛑 Stop:  ${stop}  (-8%)\n"
         f"🎯 T1: ${t1}  (+15%)  ×{T1_SHARES}\n"
         f"   T2: ${t2}  (+30%)  ×{T2_SHARES}\n"
@@ -425,7 +425,7 @@ def scan():
 
         ok, info = check_all_entry(bars, MIN_PRICE, MAX_PRICE, REL_VOL_MIN)
         if ok:
-            log.info(f"[SIGNAL] {ticker} — ALL 5 CONDITIONS PASS: {info}")
+            log.info(f"[SIGNAL] {ticker} — ALL 5 PASS: price=${info['price']} K={info['k']}↑ MACD▲ vol={info['vol_ratio']}x")
             execute_buy(ticker, info["price"], info)
             held = get_held()
         else:
@@ -457,7 +457,7 @@ def main():
         f"🤖 <b>W118 Bot started</b>\n"
         f"Gate: 4am–11am ET  |  Max {MAX_DAILY_TRADES} trades/day\n"
         f"Universe: NASDAQ $0.10–$5, vol>1M, chg>10%, relVol>{REL_VOL_MIN}x\n"
-        f"Conditions: Supertrend ✓  K>D ✓  price>ZLSMA ✓  vol>4x ✓  (MACD logged)"
+        f"Conditions: Supertrend ✓  K>D+rising ✓  price>ZLSMA ✓  MACD(5,10,16)>0 ✓  vol>4x ✓"
     )
 
     schedule.every(SCAN_INTERVAL_MIN).minutes.do(scan)
