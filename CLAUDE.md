@@ -26,8 +26,9 @@ data/trades-parsed.json            ← 101 historical trades, 98.0% win rate
 ### Entry System (updated 2026-06-17 — MACD dropped as hard gate)
 
 **Step 1 — Stock Discovery (Scanner):**
-- Yahoo Finance free screener → filter: price $0.10–$5, float < 10M, change > 10%, rel vol > 4x
+- TradingView scanner (same engine as the Yassss screen) → filter: price $0.10–$15, change > 10%, rel vol > 4x
 - Absolute volume > 1M shares (filters out dead stocks like HTLM 69K)
+- Yahoo predefined gainers kept as crumb-free fallback. Price ceiling raised $5→$15 on 2026-06-17 (BIRD lesson)
 
 **Step 2 — Chart Confirmation (ALL required):**
 | # | Condition | Timeframe | Weight |

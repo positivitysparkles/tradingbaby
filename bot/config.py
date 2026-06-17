@@ -24,7 +24,7 @@ T3_SHARES         = 4         # shares to sell at T3
 
 # Scanner filters (W118 universe)
 MIN_PRICE         = 0.10
-MAX_PRICE         = 5.00
+MAX_PRICE         = 15.00     # matches the TradingView Yassss screen ($15 ceiling)
 MIN_CHANGE_PCT    = 10.0      # minimum % gain to consider
 MIN_ABS_VOLUME    = 1_000_000 # absolute volume floor (HTLM lesson)
 REL_VOL_MIN       = 4.0       # relative volume minimum
