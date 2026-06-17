@@ -388,7 +388,7 @@ def scan():
     # Send one "I'm alive" Telegram at the first scan of each day
     if _first_scan_of_day != today:
         _first_scan_of_day = today
-        tg(f"⏰ <b>W118 Bot scanning</b> — {now}\nGate open. Checking Yahoo Finance gainers...")
+        tg(f"⏰ <b>W118 Bot scanning</b> — {now}\nGate open. Running Finviz scanner...")
 
     held = get_held()
 
@@ -429,7 +429,7 @@ def scan():
             execute_buy(ticker, info["price"], info)
             held = get_held()
         else:
-            log.debug(f"[skip] {ticker}: {info.get('fail', info)}")
+            log.info(f"[skip] {ticker}: {info.get('fail', info)}")
 
         time.sleep(0.15)  # ~6 reqs/sec — well under Alpaca's 200/min free limit
 
