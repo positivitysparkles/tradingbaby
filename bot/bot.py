@@ -276,12 +276,9 @@ def discover() -> list[str]:
 
     if not _disc_cache_ts or (time.time() - _disc_cache_ts) >= DISCOVERY_TTL:
         _disc_cache_ts = time.time()  # mark attempt so a failure won't retry next scan
-        tv         = _tradingview_screener()     # primary: same engine as Yassss screener
-        predefined = _yahoo_gainers()            # fallback: small_cap_gainers + aggressive
-        net, seen_net = [], set()
-        for t in (tv + predefined):
-            if t not in seen_net:
-                seen_net.add(t); net.append(t)
+        tv = _tradingview_screener()     # primary: float<20M NASDAQ universe, same as Yassss
+        # Yahoo only kicks in when TradingView returns nothing (premarket, after hours, outage)
+        net = tv or _yahoo_gainers()
         if net:
             _disc_cache = net
         else:
