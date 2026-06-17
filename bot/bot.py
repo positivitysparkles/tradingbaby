@@ -95,9 +95,12 @@ def get_bars(ticker: str, limit: int = 100) -> list | None:
     try:
         data = _alpaca("GET", f"/v2/stocks/{ticker}/bars",
                        params={"timeframe": "5Min", "limit": limit,
-                               "feed": "iex", "adjustment": "raw"})
+                               "feed": "sip", "adjustment": "raw"})
         bars = data.get("bars") or []
-        return bars if len(bars) >= 50 else None
+        if len(bars) < 30:
+            log.debug(f"bars {ticker}: only {len(bars)} bars (need 30), skip")
+            return None
+        return bars
     except Exception as e:
         log.debug(f"bars {ticker}: {e}")
         return None
@@ -131,11 +134,15 @@ def market_sell_position(ticker: str) -> bool:
 
 def tg(msg: str):
     try:
-        requests.post(
+        r = requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
             json={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": "HTML"},
             timeout=8,
         )
+        if not r.ok:
+            log.warning(f"Telegram {r.status_code}: {r.text[:120]}")
+        else:
+            log.debug("Telegram OK")
     except Exception as e:
         log.warning(f"Telegram: {e}")
 
