@@ -43,6 +43,8 @@ data/trades-parsed.json            ← 101 historical trades, 98.0% win rate
 
 **Step 3 — Entry:**
 - Enter on 5m Supertrend buy signal, OR zoom to 1m for a better price if signal already fired
+- **Session gate (2026-06-17):** bot pauses NEW entries 10:30am–3pm ET (midday chop). Exits still run all day. Premarket + open + power hour only. Toggle: `AVOID_MIDDAY` in config.
+- **Deep-curl flag (2026-06-17):** if StochRSI K reloaded near 0 (≤20) within the last ~12 bars before curling up, the setup is marked ⭐ in alerts (stronger entry). Informational only — does not gate entry yet; feeds the audit.
 
 ### Indicator Settings (all confirmed)
 - **Supertrend:** ATR Period=10, Source=(H+L)/2, ATR Multiplier=2, Change ATR Calc=✓

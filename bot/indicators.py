@@ -18,14 +18,17 @@ def zlsma(closes: list, period: int = 50) -> float | None:
     return 2 * e1[-1] - e2[-1]
 
 
-def stochrsi(closes: list) -> tuple[float | None, float | None, float | None]:
+def stochrsi(closes: list, curl_lookback: int = 12
+            ) -> tuple[float | None, float | None, float | None, float | None]:
     """
-    StochRSI(14,14,3,3). Returns (K, D, K_prev).
+    StochRSI(14,14,3,3). Returns (K, D, K_prev, K_recent_low).
     Entry requires K > D AND K rising (K > K_prev).
+    K_recent_low = lowest smoothed-K over the last `curl_lookback` bars — used to
+    flag a "deep curl" (K reloaded near 0 before turning up = stronger setup).
     """
     rp, sp, ks, ds = 14, 14, 3, 3
     if len(closes) < rp + sp + ks + ds:
-        return None, None, None
+        return None, None, None, None
 
     ch = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
     ag = sum(max(c, 0) for c in ch[:rp]) / rp
@@ -46,8 +49,9 @@ def stochrsi(closes: list) -> tuple[float | None, float | None, float | None]:
     sd = [sum(sk[i - ds + 1 : i + 1]) / ds for i in range(ds - 1, len(sk))]
 
     if len(sk) < 2 or not sd:
-        return None, None, None
-    return sk[-1], sd[-1], sk[-2]
+        return None, None, None, None
+    recent_low = min(sk[-curl_lookback:])
+    return sk[-1], sd[-1], sk[-2], recent_low
 
 
 def macd_hist(closes: list) -> float | None:
@@ -111,7 +115,8 @@ def supertrend(bars: list, period: int = 10, mult: float = 2.0) -> int | None:
     return d[-1]
 
 
-def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min: float) -> tuple[bool, dict]:
+def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min: float,
+                    deep_curl_reset: float = 20.0) -> tuple[bool, dict]:
     """
     Run all W118 entry conditions. Returns (passed, details_dict).
 
@@ -119,7 +124,11 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
     partial setups (4/5) for WATCH alerts. ZLSMA is skipped (not failed)
     when insufficient bar history — the other 4 conditions are sufficient.
 
-    info dict always contains: score, max, blockers, price, k, d, vol_ratio
+    `deep_curl_reset`: if StochRSI K dipped below this within the lookback and is
+    now curling up, the setup is flagged deep_curl=True (stronger reload). This is
+    INFORMATIONAL only — it does not gate entry, just enriches alerts + the audit.
+
+    info dict always contains: score, max, blockers, price, k, d, vol_ratio, deep_curl
     On full pass: fail=None. On partial: fail = joined blocker string.
     """
     closes = [b["c"] for b in bars]
@@ -128,7 +137,7 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
     if not (min_price <= price <= max_price):
         return False, {"fail": "price_range", "price": price, "score": 0, "max": 5,
                        "blockers": ["price out of range"], "k": None, "d": None,
-                       "vol_ratio": 0, "zlsma": None, "macd_hist": None}
+                       "vol_ratio": 0, "zlsma": None, "macd_hist": None, "deep_curl": False}
 
     passed   = 0
     blockers = []
@@ -141,7 +150,7 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
         blockers.append("Supertrend bearish")
 
     # 2. StochRSI K > D AND K rising
-    k, d, k_prev = stochrsi(closes)
+    k, d, k_prev, k_low = stochrsi(closes)
     if k is None:
         blockers.append("StochRSI error")
     elif k <= d:
@@ -150,6 +159,9 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
         blockers.append(f"Stoch not rising ({k_prev:.1f}→{k:.1f})")
     else:
         passed += 1
+
+    # Deep-curl flag (informational, not a gate): K reloaded near 0 then turned up.
+    deep_curl = (k_low is not None and k_low <= deep_curl_reset)
 
     # 3. Price above ZLSMA-50 — skip (not fail) when insufficient bar history.
     #    New stocks / halted-and-resumed may have <100 5m bars; the other 4
@@ -191,6 +203,8 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
         "k":         round(k, 1)      if k    is not None else None,
         "d":         round(d, 1)      if d    is not None else None,
         "k_prev":    round(k_prev, 1) if k_prev is not None else None,
+        "k_low":     round(k_low, 1)  if k_low is not None else None,
+        "deep_curl": deep_curl,
         "zlsma":     round(zl, 4)     if zl   is not None else None,
         "macd_hist": round(hist, 5)   if hist  is not None else None,
         "vol_ratio": round(vol_ratio, 1),
