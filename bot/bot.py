@@ -337,17 +337,24 @@ def execute_buy(ticker: str, price: float, info: dict):
         log.error(f"[buy] BUY order failed for {ticker}")
         return
 
-    # Brief pause so Alpaca settles the fill before we place the stop
-    time.sleep(2)
+    # Wait for Alpaca to settle the fill — placing sell orders before the position
+    # exists causes a 403 race condition.
+    time.sleep(3)
 
-    # Stop-loss for full position only. T1/T2/T3 partial exits are handled by
-    # check_exit_signal in the scan loop. Placing a full-position stop AND
-    # partial limit orders simultaneously causes Alpaca to reject all of them
-    # (total sell qty 20 > position 10 = oversell error).
-    stop_ok = place_order(ticker, SHARES_PER_TRADE, "sell", "stop", stop_price=stop)
-    if not stop_ok:
-        log.error(f"[buy] STOP order failed for {ticker} — position unprotected!")
-        tg(f"<b>⚠️ STOP ORDER FAILED — {ticker}</b>\nManually set stop at ${stop} on Alpaca!")
+    # Place T1/T2/T3 limit orders. Quantities sum to exactly SHARES_PER_TRADE
+    # (3+3+4=10) so Alpaca never sees an oversell. The -8% hard stop is enforced
+    # by the scan loop P&L check every minute (execute_exit calls cancel+market sell).
+    r1 = place_order(ticker, T1_SHARES, "sell", "limit", limit_price=t1)
+    r2 = place_order(ticker, T2_SHARES, "sell", "limit", limit_price=t2)
+    r3 = place_order(ticker, T3_SHARES, "sell", "limit", limit_price=t3)
+
+    failed = []
+    if not r1: failed.append(f"T1 ${t1}")
+    if not r2: failed.append(f"T2 ${t2}")
+    if not r3: failed.append(f"T3 ${t3}")
+    if failed:
+        log.error(f"[buy] target orders failed for {ticker}: {', '.join(failed)}")
+        tg(f"<b>⚠️ TARGET ORDERS FAILED — {ticker}</b>\nFailed: {', '.join(failed)}\nManually place on Alpaca!")
 
     log_trade(ticker, price, info)
 
@@ -355,11 +362,10 @@ def execute_buy(ticker: str, price: float, info: dict):
         f"<b>🟢 W118 AUTO BUY — {ticker}</b>\n"
         f"Entry: ${price:.4f}  ×{SHARES_PER_TRADE} shares\n"
         f"K={info['k']}↑  D={info['d']}  MACD(5,10,16)={'▲' if info['macd_hist'] > 0 else '▽'}  Vol {info['vol_ratio']}x\n"
-        f"🛑 Stop: ${stop}  (-8%)\n"
-        f"🎯 T1: ${t1}  (+15%)\n"
-        f"   T2: ${t2}  (+30%)\n"
-        f"   T3: ${t3}  (+60%)\n"
-        f"Exits: auto via K&lt;20 | ZLSMA | Supertrend flip"
+        f"🛑 Stop: ${stop}  (-8%) — auto via scan\n"
+        f"🎯 T1: ${t1}  (+15%)  ×{T1_SHARES} — limit order ✓\n"
+        f"   T2: ${t2}  (+30%)  ×{T2_SHARES} — limit order ✓\n"
+        f"   T3: ${t3}  (+60%)  ×{T3_SHARES} — limit order ✓"
     )
     tg(msg)
     log.info(f"[buy] {ticker} @ ${price}  stop=${stop}  T1=${t1}  T2=${t2}  T3=${t3}")
