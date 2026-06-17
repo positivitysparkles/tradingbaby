@@ -15,7 +15,6 @@ No FMP key, no extra signups. Uses Yahoo Finance (free) + Alpaca IEX data.
 import json
 import logging
 import os
-import re
 import sys
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -141,35 +140,60 @@ def tg(msg: str):
 
 # ── Stock discovery ───────────────────────────────────────────────────────────
 
-def _finviz_gainers() -> list[str]:
+def _alpaca_actives() -> list[str]:
     """
-    Primary scanner: Finviz screener with exact W118 universe filters applied
-    server-side. Returns NASDAQ stocks, price $0.10-$5, float <10M, change >10%.
-    This is purpose-built for penny stock momentum — Yahoo predefined screeners
-    return large/mid caps that all get filtered out.
+    Primary scanner: Alpaca's most-actives endpoint (top 100 by volume).
+    Works from any IP — uses the Alpaca key already configured.
+    Filters for our W118 universe: price $0.10-$5, >10% gain, vol >1M.
     """
     try:
+        # Step 1: get top 100 most active symbols
         r = requests.get(
-            "https://finviz.com/screener.ashx",
-            params={
-                "v": "111",
-                "f": "exch_nasd,sh_float_u10,sh_price_u5,ta_change_u10",
-                "o": "-change",
-            },
-            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                                   "AppleWebKit/537.36 (KHTML, like Gecko) "
-                                   "Chrome/120.0.0.0 Safari/537.36"},
+            ALPACA_DATA_URL + "/v1beta1/screener/stocks/most-actives",
+            headers=_HDR,
+            params={"by": "volume", "top": 100},
             timeout=15,
         )
-        tickers = re.findall(r'screener-link-primary">([A-Z]{1,6})<', r.text)
-        seen, result = set(), []
-        for t in tickers:
-            if t not in seen and len(result) < 40:
-                seen.add(t); result.append(t)
-        log.info(f"[discovery] Finviz: {len(result)} candidates {result[:10]}")
+        r.raise_for_status()
+        symbols = [s["symbol"] for s in r.json().get("most_actives", [])]
+        if not symbols:
+            log.info("[discovery] Alpaca most-actives: no results")
+            return []
+
+        # Step 2: batch snapshot to filter price/change/volume
+        snap_r = requests.get(
+            ALPACA_DATA_URL + "/v2/stocks/snapshots",
+            headers=_HDR,
+            params={"symbols": ",".join(symbols[:80]), "feed": "iex"},
+            timeout=15,
+        )
+        snap_r.raise_for_status()
+        snaps = snap_r.json()
+
+        result = []
+        for sym in symbols:
+            snap = snaps.get(sym)
+            if not snap:
+                continue
+            price = (snap.get("latestTrade") or {}).get("p") or \
+                    (snap.get("dailyBar") or {}).get("c") or 0
+            prev  = (snap.get("prevDailyBar") or {}).get("c") or 0
+            vol   = (snap.get("dailyBar") or {}).get("v") or 0
+            chg   = ((price - prev) / prev * 100) if prev else 0
+            if not (MIN_PRICE <= price <= MAX_PRICE):
+                continue
+            if chg < MIN_CHANGE_PCT:
+                continue
+            if vol < MIN_ABS_VOLUME:
+                continue
+            result.append(sym)
+            if len(result) >= 40:
+                break
+
+        log.info(f"[discovery] Alpaca: {len(result)} candidates {result[:10]}")
         return result
     except Exception as e:
-        log.warning(f"[discovery] Finviz failed: {e}")
+        log.warning(f"[discovery] Alpaca screener failed: {e}")
         return []
 
 
@@ -218,7 +242,7 @@ def _manual_watchlist() -> list[str]:
 
 def discover() -> list[str]:
     manual = _manual_watchlist()
-    auto   = _finviz_gainers() or _yahoo_gainers()  # Finviz first, Yahoo if Finviz fails
+    auto   = _alpaca_actives() or _yahoo_gainers()  # Alpaca first, Yahoo as fallback
     seen, result = set(), []
     for t in (manual + auto):   # manual always gets priority
         if t not in seen:
