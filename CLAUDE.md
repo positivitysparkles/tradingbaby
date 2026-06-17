@@ -26,7 +26,7 @@ data/trades-parsed.json            ← 101 historical trades, 98.0% win rate
 ### Entry System (updated 2026-06-17 — MACD dropped as hard gate)
 
 **Step 1 — Stock Discovery (Scanner):**
-- TradingView scanner (same engine as the Yassss screen) → filter: price $0.10–$15, change > 10%, rel vol > 4x
+- TradingView scanner (same engine as the Yassss screen) → filter: price $0.10–$15, change > 10%, rel vol > 1.5x
 - Absolute volume > 1M shares (filters out dead stocks like HTLM 69K)
 - Yahoo predefined gainers kept as crumb-free fallback. Price ceiling raised $5→$15 on 2026-06-17 (BIRD lesson)
 
@@ -36,7 +36,7 @@ data/trades-parsed.json            ← 101 historical trades, 98.0% win rate
 | 1 | **Supertrend flips bullish (green)** | 5m | PRIMARY trigger |
 | 2 | Price above ZLSMA-50 | 5m | critical — NEVER trade below |
 | 3 | StochRSI K > D | 5m | critical |
-| 4 | Volume > 4x 20-bar average | 5m | confirming |
+| 4 | Volume > 1.5x 20-bar average | 5m | confirming (was 4x — too strict, matched to Colab grader 2026-06-17) |
 | 5 | Catalyst: Tier 1 (FDA/merger) > Tier 2 (halt-resume) > Tier 3 (China momentum) | — | confirming |
 
 **Note:** MACD settings changed to (5,10,16) on 2026-06-17 — faster than standard 12,26,9, fires in sync with Supertrend rather than lagging. Blue line above red = histogram > 0 = hard gate. StochRSI now requires K rising (K > K_prev) in addition to K > D.
