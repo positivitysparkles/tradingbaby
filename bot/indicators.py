@@ -205,20 +205,29 @@ def check_exit_signal(bars: list) -> str | None:
     """
     Check W118 signal-based exits. Returns reason string or None.
     Called on every scan cycle for each open position.
+
+    Structure-aware: a StochRSI reset (K dipping below 20) inside an intact
+    uptrend is HEALTHY consolidation — the oscillator reloading for the next
+    leg — not a reason to bail. We only exit when the trend STRUCTURE breaks:
+      • Supertrend flips bearish (trend reversed), or
+      • Price loses ZLSMA-50 (uptrend support gone).
+    K<20 on its own = hold. This avoids whipsaw exits during consolidation.
+    The -8% hard stop (scan loop) and T1/T2/T3 targets still cap risk/reward.
     """
     closes = [b["c"] for b in bars]
+    price  = closes[-1]
 
-    k, _, _ = stochrsi(closes)
-    if k is not None and k < 20:
-        return f"K_below_20 (K={k:.1f})"
-
-    price = closes[-1]
-    zl = zlsma(closes)
-    if zl and price < zl:
-        return f"below_ZLSMA (price={price:.4f} ZLSMA={zl:.4f})"
-
+    # Structure exit 1 — trend reversal
     st = supertrend(bars)
     if st == -1:
         return "supertrend_bearish"
 
+    # Structure exit 2 — lost uptrend support
+    zl = zlsma(closes)
+    if zl and price < zl:
+        return f"below_ZLSMA (price={price:.4f} ZLSMA={zl:.4f})"
+
+    # StochRSI K<20 deliberately does NOT trigger an exit while structure holds.
+    # When K resets and then curls back up with structure intact, the scanner
+    # re-enters on the next leg — we don't want to be whipsawed out first.
     return None
