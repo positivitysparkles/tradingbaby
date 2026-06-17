@@ -28,7 +28,7 @@ MAX_PRICE         = 15.00     # matches TradingView Yassss screen
 MAX_FLOAT         = 20_000_000 # float < 20M shares — low float = explosive moves
 MIN_CHANGE_PCT    = 10.0      # minimum % gain to consider
 MIN_ABS_VOLUME    = 1_000_000 # absolute volume floor (HTLM lesson)
-REL_VOL_MIN       = 4.0       # relative volume minimum
+REL_VOL_MIN       = 1.5       # relative volume minimum — matches Colab grader (was 4.0, too strict, blocked nearly every entry)
 SCAN_INTERVAL_MIN = 1         # how often to scan in minutes
 
 # Time gate (UTC). Summer: MT = UTC-6, ET = UTC-4
