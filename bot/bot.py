@@ -488,7 +488,7 @@ def scan():
     # Send one "I'm alive" Telegram at the first scan of each day
     if _first_scan_of_day != today:
         _first_scan_of_day = today
-        tg(f"⏰ <b>W118 Bot scanning</b> — {now}\nGate open. Running Yahoo scanner...")
+        tg(f"⏰ <b>W118 Bot scanning</b> — {now}\nGate open. Running TradingView scanner...")
 
     held = get_held()
 
@@ -569,7 +569,7 @@ def main():
     tg(
         f"🤖 <b>W118 Bot started</b>\n"
         f"Gate: 2am–4pm MT (4am–6pm ET)  |  Max {MAX_DAILY_TRADES} trades/day\n"
-        f"Universe: NASDAQ $0.10–$5, vol>1M, chg>10%, relVol>{REL_VOL_MIN}x\n"
+        f"Universe: NASDAQ $0.10–$15, vol>1M, chg>10%, relVol>{REL_VOL_MIN}x\n"
         f"Conditions: Supertrend ✓  K>D+rising ✓  price>ZLSMA ✓  MACD(5,10,16)>0 ✓  vol>4x ✓"
     )
 
