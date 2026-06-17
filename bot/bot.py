@@ -337,11 +337,17 @@ def execute_buy(ticker: str, price: float, info: dict):
         log.error(f"[buy] BUY order failed for {ticker}")
         return
 
-    # Bracket orders
-    place_order(ticker, SHARES_PER_TRADE, "sell", "stop",  stop_price=stop)
-    place_order(ticker, T1_SHARES,        "sell", "limit", limit_price=t1)
-    place_order(ticker, T2_SHARES,        "sell", "limit", limit_price=t2)
-    place_order(ticker, T3_SHARES,        "sell", "limit", limit_price=t3)
+    # Brief pause so Alpaca settles the fill before we place the stop
+    time.sleep(2)
+
+    # Stop-loss for full position only. T1/T2/T3 partial exits are handled by
+    # check_exit_signal in the scan loop. Placing a full-position stop AND
+    # partial limit orders simultaneously causes Alpaca to reject all of them
+    # (total sell qty 20 > position 10 = oversell error).
+    stop_ok = place_order(ticker, SHARES_PER_TRADE, "sell", "stop", stop_price=stop)
+    if not stop_ok:
+        log.error(f"[buy] STOP order failed for {ticker} — position unprotected!")
+        tg(f"<b>⚠️ STOP ORDER FAILED — {ticker}</b>\nManually set stop at ${stop} on Alpaca!")
 
     log_trade(ticker, price, info)
 
@@ -349,10 +355,11 @@ def execute_buy(ticker: str, price: float, info: dict):
         f"<b>🟢 W118 AUTO BUY — {ticker}</b>\n"
         f"Entry: ${price:.4f}  ×{SHARES_PER_TRADE} shares\n"
         f"K={info['k']}↑  D={info['d']}  MACD(5,10,16)={'▲' if info['macd_hist'] > 0 else '▽'}  Vol {info['vol_ratio']}x\n"
-        f"🛑 Stop:  ${stop}  (-8%)\n"
-        f"🎯 T1: ${t1}  (+15%)  ×{T1_SHARES}\n"
-        f"   T2: ${t2}  (+30%)  ×{T2_SHARES}\n"
-        f"   T3: ${t3}  (+60%)  ×{T3_SHARES}"
+        f"🛑 Stop: ${stop}  (-8%)\n"
+        f"🎯 T1: ${t1}  (+15%)\n"
+        f"   T2: ${t2}  (+30%)\n"
+        f"   T3: ${t3}  (+60%)\n"
+        f"Exits: auto via K&lt;20 | ZLSMA | Supertrend flip"
     )
     tg(msg)
     log.info(f"[buy] {ticker} @ ${price}  stop=${stop}  T1=${t1}  T2=${t2}  T3=${t3}")
@@ -510,8 +517,19 @@ def scan():
 
     held = get_held()
 
-    # Check signal exits on existing positions first
+    # Check exits on existing positions first (signal exits + hard P&L stop backup)
+    positions = get_positions()
+    pos_map = {p["symbol"]: p for p in positions}
     for ticker in list(held):
+        # Hard stop: P&L-based exit catches the -8% floor if the Alpaca stop order
+        # failed to place (e.g. 403 timing race between buy fill and stop placement)
+        if ticker in pos_map:
+            pl_pct = float(pos_map[ticker].get("unrealized_plpc", 0))
+            if pl_pct <= -STOP_PCT:
+                execute_exit(ticker, f"hard_stop ({pl_pct*100:.1f}%)")
+                held.discard(ticker)
+                continue
+
         bars = get_bars(ticker, limit=60)
         if not bars:
             continue
