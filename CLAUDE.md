@@ -38,7 +38,7 @@ data/trades-parsed.json            ← 101 historical trades, 98.0% win rate
 | 4 | Volume > 4x 20-bar average | 5m | confirming |
 | 5 | Catalyst: Tier 1 (FDA/merger) > Tier 2 (halt-resume) > Tier 3 (China momentum) | — | confirming |
 
-**Note:** MACD removed as hard gate 2026-06-17 — lags behind Supertrend, caused missed entries on real setups that blew up with 4/5 conditions. Still logged in scan output for informational reference.
+**Note:** MACD settings changed to (5,10,16) on 2026-06-17 — faster than standard 12,26,9, fires in sync with Supertrend rather than lagging. Blue line above red = histogram > 0 = hard gate. StochRSI now requires K rising (K > K_prev) in addition to K > D.
 
 **Step 3 — Entry:**
 - Enter on 5m Supertrend buy signal, OR zoom to 1m for a better price if signal already fired
