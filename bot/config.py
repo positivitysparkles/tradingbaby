@@ -22,9 +22,10 @@ T1_SHARES         = 3         # shares to sell at T1
 T2_SHARES         = 3         # shares to sell at T2
 T3_SHARES         = 4         # shares to sell at T3
 
-# Scanner filters (W118 universe)
+# Scanner filters (W118 universe — matches Colab scanner exactly)
 MIN_PRICE         = 0.10
-MAX_PRICE         = 15.00     # matches the TradingView Yassss screen ($15 ceiling)
+MAX_PRICE         = 15.00     # matches TradingView Yassss screen
+MAX_FLOAT         = 20_000_000 # float < 20M shares — low float = explosive moves
 MIN_CHANGE_PCT    = 10.0      # minimum % gain to consider
 MIN_ABS_VOLUME    = 1_000_000 # absolute volume floor (HTLM lesson)
 REL_VOL_MIN       = 4.0       # relative volume minimum

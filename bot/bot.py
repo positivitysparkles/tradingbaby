@@ -32,7 +32,7 @@ from config import (
     TELEGRAM_TOKEN, TELEGRAM_CHAT_ID,
     MAX_DAILY_TRADES, MAX_POSITIONS, SHARES_PER_TRADE,
     STOP_PCT, T1_PCT, T2_PCT, T3_PCT, T1_SHARES, T2_SHARES, T3_SHARES,
-    MIN_PRICE, MAX_PRICE, MIN_CHANGE_PCT, MIN_ABS_VOLUME, REL_VOL_MIN,
+    MIN_PRICE, MAX_PRICE, MAX_FLOAT, MIN_CHANGE_PCT, MIN_ABS_VOLUME, REL_VOL_MIN,
     SCAN_INTERVAL_MIN, GATE_OPEN_UTC, GATE_CLOSE_UTC,
 )
 from indicators import check_all_entry, check_exit_signal
@@ -182,9 +182,10 @@ def _tradingview_screener() -> list[str]:
     chg_field, vol_field, sess = _tv_session_fields()
     try:
         filters = [
-            {"left": chg_field, "operation": "greater",  "right": MIN_CHANGE_PCT},
-            {"left": "close",   "operation": "in_range", "right": [MIN_PRICE, MAX_PRICE]},
-            {"left": vol_field, "operation": "greater",  "right": MIN_ABS_VOLUME},
+            {"left": chg_field,               "operation": "greater",  "right": MIN_CHANGE_PCT},
+            {"left": "close",                 "operation": "in_range", "right": [MIN_PRICE, MAX_PRICE]},
+            {"left": vol_field,               "operation": "greater",  "right": MIN_ABS_VOLUME},
+            {"left": "float_shares_outstanding", "operation": "less",  "right": MAX_FLOAT},
         ]
         # rel_vol_10d is a regular-session metric — only meaningful 9:30–16:00 ET
         if sess == "regular":
@@ -488,7 +489,7 @@ def scan():
     # Send one "I'm alive" Telegram at the first scan of each day
     if _first_scan_of_day != today:
         _first_scan_of_day = today
-        tg(f"⏰ <b>W118 Bot scanning</b> — {now}\nGate open. Running Yahoo scanner...")
+        tg(f"⏰ <b>W118 Bot scanning</b> — {now}\nGate open. Running TradingView scanner...")
 
     held = get_held()
 
@@ -569,7 +570,7 @@ def main():
     tg(
         f"🤖 <b>W118 Bot started</b>\n"
         f"Gate: 2am–4pm MT (4am–6pm ET)  |  Max {MAX_DAILY_TRADES} trades/day\n"
-        f"Universe: NASDAQ $0.10–$5, vol>1M, chg>10%, relVol>{REL_VOL_MIN}x\n"
+        f"Universe: NASDAQ $0.10–$15, vol>1M, chg>10%, relVol>{REL_VOL_MIN}x\n"
         f"Conditions: Supertrend ✓  K>D+rising ✓  price>ZLSMA ✓  MACD(5,10,16)>0 ✓  vol>4x ✓"
     )
 
