@@ -140,35 +140,53 @@ def tg(msg: str):
 
 # ── Stock discovery ───────────────────────────────────────────────────────────
 
-def _alpaca_gainers() -> list[str]:
+def _yahoo_custom_screener() -> list[str]:
     """
-    Alpaca top-gainers endpoint (sorted by % change).
-    Most-actives was dominated by large caps — gainers surfaces the penny
-    stocks up 50-200% that we actually want to trade.
+    Yahoo Finance custom POST screener — applies our exact W118 filters
+    server-side (price $0.10-$5, change >10%, vol >1M). Works from any IP.
+    Uses a session + crumb which Yahoo requires for authenticated POST queries.
     """
     try:
-        r = requests.get(
-            ALPACA_DATA_URL + "/v1beta1/screener/stocks/gainers",
-            headers=_HDR,
-            params={"top": 50},
+        ua = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+              "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        session = requests.Session()
+        session.headers.update({"User-Agent": ua})
+        session.get("https://fc.yahoo.com/", timeout=8)
+        crumb = session.get(
+            "https://query1.finance.yahoo.com/v1/test/getcrumb", timeout=8
+        ).text.strip()
+
+        body = {
+            "size": 50,
+            "offset": 0,
+            "sortField": "percentchange",
+            "sortType": "DESC",
+            "quoteType": "EQUITY",
+            "query": {
+                "operator": "AND",
+                "operands": [
+                    {"operator": "GT",   "operands": ["percentchange",  MIN_CHANGE_PCT]},
+                    {"operator": "BTWN", "operands": ["intradayprice",  MIN_PRICE, MAX_PRICE]},
+                    {"operator": "GT",   "operands": ["dayvolume",      MIN_ABS_VOLUME]},
+                ],
+            },
+            "userId": "",
+            "userIdType": "guid",
+        }
+        r = session.post(
+            "https://query1.finance.yahoo.com/v1/finance/screener",
+            params={"crumb": crumb, "lang": "en-US", "region": "US", "formatted": "false"},
+            json=body,
+            headers={"Content-Type": "application/json"},
             timeout=15,
         )
         r.raise_for_status()
-        result = []
-        for g in r.json().get("gainers", []):
-            sym   = g.get("symbol", "")
-            price = g.get("price") or g.get("close") or 0
-            chg   = g.get("percent_change") or g.get("change_percent") or 0
-            vol   = g.get("volume") or 0
-            if not sym or not (MIN_PRICE <= price <= MAX_PRICE):
-                continue
-            if chg < MIN_CHANGE_PCT or vol < MIN_ABS_VOLUME:
-                continue
-            result.append(sym)
-        log.info(f"[discovery] Alpaca gainers: {len(result)} {result[:8]}")
-        return result
+        quotes  = r.json()["finance"]["result"][0]["quotes"]
+        tickers = [q["symbol"] for q in quotes if q.get("symbol")][:40]
+        log.info(f"[discovery] Yahoo custom: {len(tickers)} candidates {tickers[:8]}")
+        return tickers
     except Exception as e:
-        log.warning(f"[discovery] Alpaca gainers failed: {e}")
+        log.warning(f"[discovery] Yahoo custom screener failed: {e}")
         return []
 
 
@@ -216,11 +234,11 @@ def _manual_watchlist() -> list[str]:
         return []
 
 def discover() -> list[str]:
-    manual = _manual_watchlist()
-    alpaca = _alpaca_gainers()
-    yahoo  = _yahoo_gainers()
+    manual  = _manual_watchlist()
+    custom  = _yahoo_custom_screener()   # exact filters: price+change+vol
+    predefined = _yahoo_gainers()        # small_cap_gainers + aggressive_small_caps
     seen, result = set(), []
-    for t in (manual + alpaca + yahoo):  # both sources combined, manual first
+    for t in (manual + custom + predefined):
         if t not in seen:
             seen.add(t); result.append(t)
     return result
