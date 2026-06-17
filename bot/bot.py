@@ -326,6 +326,16 @@ def log_trade(ticker: str, price: float, info: dict):
 
 # ── Trade execution ───────────────────────────────────────────────────────────
 
+def _confirm_position(ticker: str, timeout: int = 15) -> bool:
+    """Poll Alpaca until the buy fill appears as a confirmed position."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if any(p["symbol"] == ticker for p in get_positions()):
+            return True
+        time.sleep(1)
+    return False
+
+
 def execute_buy(ticker: str, price: float, info: dict):
     stop = round(price * (1 - STOP_PCT), 2)
     t1   = round(price * (1 + T1_PCT), 2)
@@ -337,38 +347,39 @@ def execute_buy(ticker: str, price: float, info: dict):
         log.error(f"[buy] BUY order failed for {ticker}")
         return
 
-    # Wait for Alpaca to settle the fill — placing sell orders before the position
-    # exists causes a 403 race condition.
-    time.sleep(3)
+    # Poll until Alpaca confirms the position exists. A fixed sleep can still race;
+    # polling is deterministic — targets land exactly when the fill is settled.
+    if not _confirm_position(ticker, timeout=15):
+        log.error(f"[buy] {ticker} position not confirmed after 15s — targets NOT placed")
+        tg(f"<b>⚠️ {html.escape(ticker)}: fill unconfirmed after 15s</b>\nSet T1/T2/T3 manually on Alpaca!")
+        log_trade(ticker, price, info)
+        tg(
+            f"<b>🟢 W118 AUTO BUY — {html.escape(ticker)}</b>\n"
+            f"Entry: ${price:.4f}  ×{SHARES_PER_TRADE} shares\n"
+            f"🛑 Stop: ${stop}  (-8%) — scan-enforced\n"
+            f"🎯 T1: ${t1}  T2: ${t2}  T3: ${t3}  — SET MANUALLY"
+        )
+        return
 
-    # Place T1/T2/T3 limit orders. Quantities sum to exactly SHARES_PER_TRADE
-    # (3+3+4=10) so Alpaca never sees an oversell. The -8% hard stop is enforced
-    # by the scan loop P&L check every minute (execute_exit calls cancel+market sell).
+    # T1+T2+T3 quantities sum to exactly SHARES_PER_TRADE so Alpaca never sees an
+    # oversell. Stop is enforced each scan via P&L check (execute_exit → cancel + sell).
     r1 = place_order(ticker, T1_SHARES, "sell", "limit", limit_price=t1)
     r2 = place_order(ticker, T2_SHARES, "sell", "limit", limit_price=t2)
     r3 = place_order(ticker, T3_SHARES, "sell", "limit", limit_price=t3)
 
-    failed = []
-    if not r1: failed.append(f"T1 ${t1}")
-    if not r2: failed.append(f"T2 ${t2}")
-    if not r3: failed.append(f"T3 ${t3}")
-    if failed:
-        log.error(f"[buy] target orders failed for {ticker}: {', '.join(failed)}")
-        tg(f"<b>⚠️ TARGET ORDERS FAILED — {ticker}</b>\nFailed: {', '.join(failed)}\nManually place on Alpaca!")
-
     log_trade(ticker, price, info)
 
     msg = (
-        f"<b>🟢 W118 AUTO BUY — {ticker}</b>\n"
+        f"<b>🟢 W118 AUTO BUY — {html.escape(ticker)}</b>\n"
         f"Entry: ${price:.4f}  ×{SHARES_PER_TRADE} shares\n"
         f"K={info['k']}↑  D={info['d']}  MACD(5,10,16)={'▲' if info['macd_hist'] > 0 else '▽'}  Vol {info['vol_ratio']}x\n"
-        f"🛑 Stop: ${stop}  (-8%) — auto via scan\n"
-        f"🎯 T1: ${t1}  (+15%)  ×{T1_SHARES} — limit order ✓\n"
-        f"   T2: ${t2}  (+30%)  ×{T2_SHARES} — limit order ✓\n"
-        f"   T3: ${t3}  (+60%)  ×{T3_SHARES} — limit order ✓"
+        f"🛑 Stop: ${stop}  (-8%) — scan-enforced\n"
+        f"🎯 T1: ${t1}  (+15%)  ×{T1_SHARES} — {'✓' if r1 else '❌ FAILED'}\n"
+        f"   T2: ${t2}  (+30%)  ×{T2_SHARES} — {'✓' if r2 else '❌ FAILED'}\n"
+        f"   T3: ${t3}  (+60%)  ×{T3_SHARES} — {'✓' if r3 else '❌ FAILED'}"
     )
     tg(msg)
-    log.info(f"[buy] {ticker} @ ${price}  stop=${stop}  T1=${t1}  T2=${t2}  T3=${t3}")
+    log.info(f"[buy] {ticker} @ ${price}  stop=${stop}  T1=${t1}({'✓' if r1 else '✗'})  T2=${t2}({'✓' if r2 else '✗'})  T3=${t3}({'✓' if r3 else '✗'})")
 
 def execute_exit(ticker: str, reason: str):
     sold = market_sell_position(ticker)
@@ -536,7 +547,7 @@ def scan():
                 held.discard(ticker)
                 continue
 
-        bars = get_bars(ticker, limit=60)
+        bars = get_bars(ticker, limit=100)
         if not bars:
             continue
         reason = check_exit_signal(bars)
