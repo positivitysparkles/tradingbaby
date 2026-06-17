@@ -140,22 +140,36 @@ def tg(msg: str):
 
 # ── Stock discovery ───────────────────────────────────────────────────────────
 
+# Cached Yahoo session + crumb — refreshed every 4 hours to avoid 429 rate limits
+_yf_session: requests.Session | None = None
+_yf_crumb: str = ""
+_yf_crumb_ts: float = 0.0
+
+def _yahoo_session_crumb() -> tuple[requests.Session, str]:
+    global _yf_session, _yf_crumb, _yf_crumb_ts
+    if _yf_session and _yf_crumb and (time.time() - _yf_crumb_ts) < 14400:
+        return _yf_session, _yf_crumb
+    ua = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+          "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    s = requests.Session()
+    s.headers.update({"User-Agent": ua})
+    s.get("https://fc.yahoo.com/", timeout=8)
+    crumb = s.get("https://query1.finance.yahoo.com/v1/test/getcrumb", timeout=8).text.strip()
+    if len(crumb) > 30 or not crumb:
+        raise ValueError(f"Bad crumb: {crumb[:40]}")
+    _yf_session, _yf_crumb, _yf_crumb_ts = s, crumb, time.time()
+    log.info("[discovery] Yahoo session refreshed")
+    return s, crumb
+
+
 def _yahoo_custom_screener() -> list[str]:
     """
-    Yahoo Finance custom POST screener — applies our exact W118 filters
-    server-side (price $0.10-$5, change >10%, vol >1M). Works from any IP.
-    Uses a session + crumb which Yahoo requires for authenticated POST queries.
+    Yahoo Finance custom POST screener — exact W118 filters applied server-side.
+    Session + crumb cached for 4 hours so we don't hit Yahoo's 429 rate limit
+    by fetching a new crumb every minute.
     """
     try:
-        ua = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-              "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-        session = requests.Session()
-        session.headers.update({"User-Agent": ua})
-        session.get("https://fc.yahoo.com/", timeout=8)
-        crumb = session.get(
-            "https://query1.finance.yahoo.com/v1/test/getcrumb", timeout=8
-        ).text.strip()
-
+        session, crumb = _yahoo_session_crumb()
         body = {
             "size": 50,
             "offset": 0,
@@ -165,9 +179,9 @@ def _yahoo_custom_screener() -> list[str]:
             "query": {
                 "operator": "AND",
                 "operands": [
-                    {"operator": "GT",   "operands": ["percentchange",  MIN_CHANGE_PCT]},
-                    {"operator": "BTWN", "operands": ["intradayprice",  MIN_PRICE, MAX_PRICE]},
-                    {"operator": "GT",   "operands": ["dayvolume",      MIN_ABS_VOLUME]},
+                    {"operator": "GT",   "operands": ["percentchange", MIN_CHANGE_PCT]},
+                    {"operator": "BTWN", "operands": ["intradayprice", MIN_PRICE, MAX_PRICE]},
+                    {"operator": "GT",   "operands": ["dayvolume",     MIN_ABS_VOLUME]},
                 ],
             },
             "userId": "",
