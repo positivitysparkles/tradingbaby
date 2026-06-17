@@ -32,7 +32,7 @@ from config import (
     TELEGRAM_TOKEN, TELEGRAM_CHAT_ID,
     MAX_DAILY_TRADES, MAX_POSITIONS, SHARES_PER_TRADE,
     STOP_PCT, T1_PCT, T2_PCT, T3_PCT, T1_SHARES, T2_SHARES, T3_SHARES,
-    MIN_PRICE, MAX_PRICE, MIN_CHANGE_PCT, MIN_ABS_VOLUME, REL_VOL_MIN,
+    MIN_PRICE, MAX_PRICE, MAX_FLOAT, MIN_CHANGE_PCT, MIN_ABS_VOLUME, REL_VOL_MIN,
     SCAN_INTERVAL_MIN, GATE_OPEN_UTC, GATE_CLOSE_UTC,
 )
 from indicators import check_all_entry, check_exit_signal
@@ -182,9 +182,10 @@ def _tradingview_screener() -> list[str]:
     chg_field, vol_field, sess = _tv_session_fields()
     try:
         filters = [
-            {"left": chg_field, "operation": "greater",  "right": MIN_CHANGE_PCT},
-            {"left": "close",   "operation": "in_range", "right": [MIN_PRICE, MAX_PRICE]},
-            {"left": vol_field, "operation": "greater",  "right": MIN_ABS_VOLUME},
+            {"left": chg_field,               "operation": "greater",  "right": MIN_CHANGE_PCT},
+            {"left": "close",                 "operation": "in_range", "right": [MIN_PRICE, MAX_PRICE]},
+            {"left": vol_field,               "operation": "greater",  "right": MIN_ABS_VOLUME},
+            {"left": "float_shares_outstanding", "operation": "less",  "right": MAX_FLOAT},
         ]
         # rel_vol_10d is a regular-session metric — only meaningful 9:30–16:00 ET
         if sess == "regular":
