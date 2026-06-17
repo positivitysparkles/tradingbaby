@@ -454,6 +454,25 @@ def _blocker_bucket(reason: str) -> str:
 
 _first_scan_of_day: str = ""
 _last_summary: dict = {}     # populated each scan, read by the hourly heartbeat
+_watch_sent: dict  = {}      # ticker → timestamp; throttle WATCH alerts to 1 per 10 min
+
+def _send_watch_alert(ticker: str, info: dict) -> None:
+    """Fire a Telegram WATCH alert when a ticker hits 4/5 conditions — manual entry cue."""
+    last = _watch_sent.get(ticker, 0)
+    if time.time() - last < 600:   # don't re-alert same ticker within 10 min
+        return
+    _watch_sent[ticker] = time.time()
+    score    = info["score"]
+    max_     = info["max"]
+    missing  = info.get("fail") or "—"
+    tg(
+        f"👀 <b>WATCH: {ticker}</b> — {score}/{max_} conditions\n"
+        f"Price ${info['price']:.2f}  "
+        f"K={info['k']}  Vol {info['vol_ratio']}x\n"
+        f"Missing: {missing}\n"
+        f"Check chart — manual entry possible"
+    )
+    log.info(f"[WATCH] {ticker}: {score}/{max_} — {missing}")
 
 def heartbeat() -> None:
     """Hourly Telegram pulse — proves the bot is alive and explains why no entry."""
@@ -527,15 +546,24 @@ def scan():
             continue
 
         ok, info = check_all_entry(bars, MIN_PRICE, MAX_PRICE, REL_VOL_MIN)
+        score, max_ = info.get("score", 0), info.get("max", 5)
+
         if ok:
             signals += 1
-            log.info(f"[SIGNAL] {ticker} — ALL 5 PASS: price=${info['price']} K={info['k']}↑ MACD▲ vol={info['vol_ratio']}x")
+            log.info(f"[SIGNAL] {ticker} — ALL PASS: price=${info['price']} K={info['k']}↑ MACD▲ vol={info['vol_ratio']}x")
             execute_buy(ticker, info["price"], info)
             held = get_held()
         else:
-            reason = str(info.get("fail", info))
-            blockers[_blocker_bucket(reason)] += 1
-            log.info(f"[skip] {ticker}: {reason}")
+            # Tally each blocker individually for heartbeat
+            for b in info.get("blockers", [info.get("fail", "unknown")]):
+                blockers[_blocker_bucket(b)] += 1
+
+            if score >= max_ - 1:
+                # 4/5 or 3/4 (when ZLSMA skipped) — alert user, manual entry possible
+                _send_watch_alert(ticker, info)
+            else:
+                # Not close enough — silent debug only, no spam
+                log.debug(f"[skip] {ticker} {score}/{max_}: {info.get('fail')}")
 
         time.sleep(0.15)  # ~6 reqs/sec — well under Alpaca's 200/min free limit
 
