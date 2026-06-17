@@ -30,6 +30,6 @@ MIN_ABS_VOLUME    = 1_000_000 # absolute volume floor (HTLM lesson)
 REL_VOL_MIN       = 4.0       # relative volume minimum
 SCAN_INTERVAL_MIN = 1         # how often to scan in minutes
 
-# ET time gate (UTC offsets — EDT = UTC-4)
-GATE_OPEN_UTC  = 8            # 4:00am ET
-GATE_CLOSE_UTC = 15           # 11:00am ET
+# Time gate (UTC). Summer: MT = UTC-6, ET = UTC-4
+GATE_OPEN_UTC  = 8            # 2:00am MT / 4:00am ET  (premarket start)
+GATE_CLOSE_UTC = 22           # 4:00pm MT / 6:00pm ET  (run all day, end at MT close)
