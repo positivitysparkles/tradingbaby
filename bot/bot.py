@@ -247,12 +247,33 @@ def _manual_watchlist() -> list[str]:
     except Exception:
         return []
 
+# Discovery result cache — the screener endpoints are rate-limited (429 if hit
+# every 1-min scan). A stock gapping 10%+ on 1M+ volume doesn't vanish in 60s,
+# so we refresh the candidate list every DISCOVERY_TTL seconds and reuse it in
+# between. W118 condition checks still run every scan on the cached list.
+DISCOVERY_TTL = 300  # 5 min → screeners hit ~12×/hr instead of 60×/hr
+_disc_cache: list[str] = []
+_disc_cache_ts: float = 0.0
+
 def discover() -> list[str]:
-    manual  = _manual_watchlist()
-    custom  = _yahoo_custom_screener()   # exact filters: price+change+vol
-    predefined = _yahoo_gainers()        # small_cap_gainers + aggressive_small_caps
+    global _disc_cache, _disc_cache_ts
+    manual = _manual_watchlist()  # always fresh — cheap local file read
+
+    if not _disc_cache_ts or (time.time() - _disc_cache_ts) >= DISCOVERY_TTL:
+        _disc_cache_ts = time.time()  # mark attempt so a 429 won't retry next scan
+        custom     = _yahoo_custom_screener()   # exact filters: price+change+vol
+        predefined = _yahoo_gainers()            # small_cap_gainers + aggressive
+        net, seen_net = [], set()
+        for t in (custom + predefined):
+            if t not in seen_net:
+                seen_net.add(t); net.append(t)
+        if net:
+            _disc_cache = net
+        else:
+            log.info("[discovery] screeners empty/rate-limited — keeping last cached list")
+
     seen, result = set(), []
-    for t in (manual + custom + predefined):
+    for t in (manual + _disc_cache):
         if t not in seen:
             seen.add(t); result.append(t)
     return result
