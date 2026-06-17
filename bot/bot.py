@@ -420,7 +420,7 @@ def scan():
     # Send one "I'm alive" Telegram at the first scan of each day
     if _first_scan_of_day != today:
         _first_scan_of_day = today
-        tg(f"⏰ <b>W118 Bot scanning</b> — {now}\nGate open. Running Finviz scanner...")
+        tg(f"⏰ <b>W118 Bot scanning</b> — {now}\nGate open. Running Yahoo scanner...")
 
     held = get_held()
 
@@ -472,7 +472,7 @@ def scan():
 def main():
     log.info("=" * 60)
     log.info("  W118 Curl if Flow — Auto Paper Trading Bot")
-    log.info(f"  Gate: {GATE_OPEN_UTC}:00–{GATE_CLOSE_UTC}:00 UTC  (4am–11am ET)")
+    log.info(f"  Gate: {GATE_OPEN_UTC}:00–{GATE_CLOSE_UTC}:00 UTC  (2am–4pm MT / 4am–6pm ET)")
     log.info(f"  Max {MAX_DAILY_TRADES} trades/day  |  {MAX_POSITIONS} positions max")
     log.info(f"  Scans every {SCAN_INTERVAL_MIN} min")
     log.info("=" * 60)

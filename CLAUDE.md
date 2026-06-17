@@ -87,7 +87,7 @@ Yahoo Finance free screener  ←  auto discovery (no API key needed)
 data/watchlist.json          ←  manual tickers (python bot/add_ticker.py TICKER)
         │
         ▼
-bot/bot.py  (runs every 6 min, 4am–11am ET)
+bot/bot.py  (runs every 1 min, 2am–4pm MT / 4am–6pm ET — all-day observation)
         │  checks all 5 W118 conditions via bot/indicators.py
         │
         ├── ALL PASS → Alpaca paper buy + STOP(-8%) + T1(+15%) + T2(+30%) + T3(+60%)
