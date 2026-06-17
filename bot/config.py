@@ -28,7 +28,7 @@ MAX_PRICE         = 5.00
 MIN_CHANGE_PCT    = 10.0      # minimum % gain to consider
 MIN_ABS_VOLUME    = 1_000_000 # absolute volume floor (HTLM lesson)
 REL_VOL_MIN       = 4.0       # relative volume minimum
-SCAN_INTERVAL_MIN = 6         # how often to scan in minutes
+SCAN_INTERVAL_MIN = 1         # how often to scan in minutes
 
 # ET time gate (UTC offsets — EDT = UTC-4)
 GATE_OPEN_UTC  = 8            # 4:00am ET

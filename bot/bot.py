@@ -15,6 +15,7 @@ No FMP key, no extra signups. Uses Yahoo Finance (free) + Alpaca IEX data.
 import json
 import logging
 import os
+import re
 import sys
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -140,39 +141,68 @@ def tg(msg: str):
 
 # ── Stock discovery ───────────────────────────────────────────────────────────
 
-def _yahoo_gainers() -> list[str]:
-    """Free Yahoo Finance predefined screener — no API key needed."""
+def _finviz_gainers() -> list[str]:
+    """
+    Primary scanner: Finviz screener with exact W118 universe filters applied
+    server-side. Returns NASDAQ stocks, price $0.10-$5, float <10M, change >10%.
+    This is purpose-built for penny stock momentum — Yahoo predefined screeners
+    return large/mid caps that all get filtered out.
+    """
     try:
         r = requests.get(
-            "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved",
-            params={"scrIds": "day_gainers", "count": 50,
-                    "formatted": "false", "lang": "en-US", "region": "US"},
-            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"},
-            timeout=12,
+            "https://finviz.com/screener.ashx",
+            params={
+                "v": "111",
+                "f": "exch_nasd,sh_float_u10,sh_price_u5,ta_change_u10",
+                "o": "-change",
+            },
+            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                                   "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                   "Chrome/120.0.0.0 Safari/537.36"},
+            timeout=15,
         )
-        quotes = r.json()["finance"]["result"][0]["quotes"]
-        tickers = []
-        for q in quotes:
-            price = q.get("regularMarketPrice") or 0
-            chg   = q.get("regularMarketChangePercent") or 0
-            vol   = q.get("regularMarketVolume") or 0
-            exch  = q.get("fullExchangeName") or ""
-            if not (MIN_PRICE <= price <= MAX_PRICE):
-                continue
-            if chg < MIN_CHANGE_PCT:
-                continue
-            if vol < MIN_ABS_VOLUME:
-                continue
-            if not any(x in exch for x in ("NASDAQ", "Nasdaq")):
-                continue
-            tickers.append(q["symbol"])
-            if len(tickers) >= 25:
-                break
-        log.info(f"[discovery] Yahoo: {len(tickers)} candidates")
-        return tickers
+        tickers = re.findall(r'screener-link-primary">([A-Z]{1,6})<', r.text)
+        seen, result = set(), []
+        for t in tickers:
+            if t not in seen and len(result) < 40:
+                seen.add(t); result.append(t)
+        log.info(f"[discovery] Finviz: {len(result)} candidates {result[:10]}")
+        return result
     except Exception as e:
-        log.warning(f"[discovery] Yahoo failed: {e}")
+        log.warning(f"[discovery] Finviz failed: {e}")
         return []
+
+
+def _yahoo_gainers() -> list[str]:
+    """Fallback: Yahoo Finance small_cap_gainers when Finviz is unavailable."""
+    seen: set = set()
+    tickers: list = []
+    for scr_id in ["small_cap_gainers", "aggressive_small_caps"]:
+        if len(tickers) >= 20:
+            break
+        try:
+            r = requests.get(
+                "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved",
+                params={"scrIds": scr_id, "count": 100,
+                        "formatted": "false", "lang": "en-US", "region": "US"},
+                headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"},
+                timeout=12,
+            )
+            for q in r.json()["finance"]["result"][0]["quotes"]:
+                sym   = q.get("symbol", "")
+                price = q.get("regularMarketPrice") or 0
+                chg   = q.get("regularMarketChangePercent") or 0
+                vol   = q.get("regularMarketVolume") or 0
+                if sym in seen or not (MIN_PRICE <= price <= MAX_PRICE):
+                    continue
+                if chg < MIN_CHANGE_PCT or vol < MIN_ABS_VOLUME:
+                    continue
+                seen.add(sym); tickers.append(sym)
+        except Exception as e:
+            log.warning(f"[discovery] Yahoo {scr_id} failed: {e}")
+    if tickers:
+        log.info(f"[discovery] Yahoo fallback: {len(tickers)} candidates {tickers[:8]}")
+    return tickers
 
 def _manual_watchlist() -> list[str]:
     """Tickers added manually via add_ticker.py — today's list only."""
@@ -188,9 +218,9 @@ def _manual_watchlist() -> list[str]:
 
 def discover() -> list[str]:
     manual = _manual_watchlist()
-    auto   = _yahoo_gainers()
+    auto   = _finviz_gainers() or _yahoo_gainers()  # Finviz first, Yahoo if Finviz fails
     seen, result = set(), []
-    for t in (manual + auto):   # manual list gets priority
+    for t in (manual + auto):   # manual always gets priority
         if t not in seen:
             seen.add(t); result.append(t)
     return result
@@ -253,7 +283,7 @@ def execute_buy(ticker: str, price: float, info: dict):
     msg = (
         f"<b>🟢 W118 AUTO BUY — {ticker}</b>\n"
         f"Entry: ${price:.4f}  ×{SHARES_PER_TRADE} shares\n"
-        f"K={info['k']}  D={info['d']}  MACD={info['macd_hist']:.5f}  Vol {info['vol_ratio']}x\n"
+        f"K={info['k']}  D={info['d']}  MACD={'▲' if (info.get('macd_hist') or 0) > 0 else '▽'}  Vol {info['vol_ratio']}x\n"
         f"🛑 Stop:  ${stop}  (-8%)\n"
         f"🎯 T1: ${t1}  (+15%)  ×{T1_SHARES}\n"
         f"   T2: ${t2}  (+30%)  ×{T2_SHARES}\n"
@@ -401,7 +431,7 @@ def scan():
         else:
             log.debug(f"[skip] {ticker}: {info.get('fail', info)}")
 
-        time.sleep(0.4)   # rate limit: ~40 reqs/min for 100 candidates max
+        time.sleep(0.15)  # ~6 reqs/sec — well under Alpaca's 200/min free limit
 
     log.info(f"[scan] done. Positions: {len(get_held())} / {MAX_POSITIONS}")
 
@@ -427,7 +457,7 @@ def main():
         f"🤖 <b>W118 Bot started</b>\n"
         f"Gate: 4am–11am ET  |  Max {MAX_DAILY_TRADES} trades/day\n"
         f"Universe: NASDAQ $0.10–$5, vol>1M, chg>10%, relVol>{REL_VOL_MIN}x\n"
-        f"Conditions: Supertrend ✓ K>D ✓ price>ZLSMA ✓ MACD>0 ✓ vol>4x"
+        f"Conditions: Supertrend ✓  K>D ✓  price>ZLSMA ✓  vol>4x ✓  (MACD logged)"
     )
 
     schedule.every(SCAN_INTERVAL_MIN).minutes.do(scan)
