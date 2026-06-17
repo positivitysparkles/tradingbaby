@@ -145,7 +145,7 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
     if k is None:
         blockers.append("StochRSI error")
     elif k <= d:
-        blockers.append(f"K {k:.1f}≤D {d:.1f}")
+        blockers.append(f"K {k:.1f} below D {d:.1f}")
     elif k_prev is not None and k < k_prev:
         blockers.append(f"Stoch not rising ({k_prev:.1f}→{k:.1f})")
     else:
@@ -179,7 +179,7 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
     if vol_ratio >= rel_vol_min:
         passed += 1
     else:
-        blockers.append(f"vol {vol_ratio:.1f}x<{rel_vol_min}x")
+        blockers.append(f"vol {vol_ratio:.1f}x below {rel_vol_min:.0f}x")
 
     # Max possible is 4 when ZLSMA is skipped, 5 otherwise
     max_possible = 5 if zl is not None else 4
