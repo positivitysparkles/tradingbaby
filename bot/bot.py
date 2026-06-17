@@ -150,24 +150,46 @@ _TV_HEADERS = {
     "Accept":  "application/json",
 }
 
+def _tv_session_fields() -> tuple[str, str, str]:
+    """
+    Pick the right TradingView change/volume columns for the current session.
+    The default 'change'/'volume' columns are REGULAR-session only — useless
+    premarket. Before 9:30 ET use premarket_*, after 16:00 ET use postmarket_*.
+    Returns (change_field, volume_field, session_label).
+    """
+    now_et = datetime.now(ET)
+    hm = now_et.hour * 60 + now_et.minute
+    if hm < 9 * 60 + 30:            # before 9:30 ET → premarket (W118's best window)
+        return "premarket_change", "premarket_volume", "premarket"
+    if hm >= 16 * 60:              # 16:00 ET or later → postmarket
+        return "postmarket_change", "postmarket_volume", "postmarket"
+    return "change", "volume", "regular"
+
+
 def _tradingview_screener() -> list[str]:
     """
     Primary discovery — TradingView's public scanner, the same engine behind the
     Yassss screener. No crumb/login, and (unlike Yahoo) not rate-limited from a
-    data-center IP. Applies the exact W118 filters server-side and keeps NASDAQ.
+    data-center IP. Session-aware so it catches premarket and afterhours gappers.
     """
+    chg_field, vol_field, sess = _tv_session_fields()
     try:
+        filters = [
+            {"left": chg_field, "operation": "greater",  "right": MIN_CHANGE_PCT},
+            {"left": "close",   "operation": "in_range", "right": [MIN_PRICE, MAX_PRICE]},
+            {"left": vol_field, "operation": "greater",  "right": MIN_ABS_VOLUME},
+        ]
+        # rel_vol_10d is a regular-session metric — only meaningful 9:30–16:00 ET
+        if sess == "regular":
+            filters.append(
+                {"left": "relative_volume_10d_calc", "operation": "greater", "right": REL_VOL_MIN}
+            )
         body = {
-            "filter": [
-                {"left": "change",                   "operation": "greater",  "right": MIN_CHANGE_PCT},
-                {"left": "close",                    "operation": "in_range", "right": [MIN_PRICE, MAX_PRICE]},
-                {"left": "relative_volume_10d_calc", "operation": "greater",  "right": REL_VOL_MIN},
-                {"left": "volume",                   "operation": "greater",  "right": MIN_ABS_VOLUME},
-            ],
+            "filter":   filters,
             "options":  {"lang": "en"},
             "symbols":  {"query": {"types": []}, "tickers": []},
-            "columns":  ["name", "close", "change", "volume", "relative_volume_10d_calc"],
-            "sort":     {"sortBy": "change", "sortOrder": "desc"},
+            "columns":  ["name", "close", chg_field, vol_field],
+            "sort":     {"sortBy": chg_field, "sortOrder": "desc"},
             "range":    [0, 50],
             "markets":  ["america"],
         }
@@ -181,10 +203,10 @@ def _tradingview_screener() -> list[str]:
         tickers = [row["s"].split(":", 1)[1]
                    for row in rows
                    if row.get("s", "").startswith("NASDAQ:")][:40]
-        log.info(f"[discovery] TradingView: {len(tickers)} candidates {tickers[:8]}")
+        log.info(f"[discovery] TradingView ({sess}): {len(tickers)} candidates {tickers[:8]}")
         return tickers
     except Exception as e:
-        log.warning(f"[discovery] TradingView screener failed: {e}")
+        log.warning(f"[discovery] TradingView screener ({sess}) failed: {e}")
         return []
 
 
