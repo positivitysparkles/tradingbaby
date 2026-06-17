@@ -344,12 +344,21 @@ def _in_gate() -> bool:
     h = datetime.now(UTC).hour
     return GATE_OPEN_UTC <= h < GATE_CLOSE_UTC
 
+_first_scan_of_day: str = ""
+
 def scan():
+    global _first_scan_of_day
     if not _in_gate():
         return
 
-    now = datetime.now(ET).strftime("%H:%M ET")
+    now    = datetime.now(ET).strftime("%H:%M ET")
+    today  = date.today().isoformat()
     log.info(f"[scan] ── {now} ─────────────────────────────────────")
+
+    # Send one "I'm alive" Telegram at the first scan of each day
+    if _first_scan_of_day != today:
+        _first_scan_of_day = today
+        tg(f"⏰ <b>W118 Bot scanning</b> — {now}\nGate open. Checking Yahoo Finance gainers...")
 
     held = get_held()
 

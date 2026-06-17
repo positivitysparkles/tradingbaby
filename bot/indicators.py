@@ -107,7 +107,8 @@ def supertrend(bars: list, period: int = 10, mult: float = 2.0) -> int | None:
 
 def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min: float) -> tuple[bool, dict]:
     """
-    Run all 5 W118 entry conditions. Returns (passed, details_dict).
+    Run 4 W118 entry conditions. Returns (passed, details_dict).
+    MACD dropped as hard gate (lags, missed real setups) — kept as info only.
     bars: list of dicts with keys h, l, c, v (from Alpaca IEX)
     """
     closes = [b["c"] for b in bars]
@@ -133,25 +134,22 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
         fail = f"price ${price:.4f} below ZLSMA ${zl:.4f}" if zl is not None else "zlsma_error"
         return False, {"fail": fail}
 
-    # 4. MACD histogram > 0
-    hist = macd_hist(closes)
-    if hist is None or hist <= 0:
-        fail = f"MACD hist {hist:.5f}" if hist is not None else "macd_error"
-        return False, {"fail": fail}
-
-    # 5. Volume > rel_vol_min × 20-bar average
+    # 4. Volume > rel_vol_min × 20-bar average
     vols    = [b["v"] for b in bars[-21:-1]]
     avg_vol = sum(vols) / len(vols) if vols else 0
     cur_vol = bars[-1]["v"]
     if cur_vol < avg_vol * rel_vol_min:
         return False, {"fail": f"vol {cur_vol:.0f} < {rel_vol_min}x avg {avg_vol:.0f}"}
 
+    # MACD: informational only (not a hard gate — lags and missed real setups)
+    hist = macd_hist(closes)
+
     return True, {
         "price":      price,
         "k":          round(k, 1),
         "d":          round(d, 1),
         "zlsma":      round(zl, 4),
-        "macd_hist":  round(hist, 6),
+        "macd_hist":  round(hist, 6) if hist is not None else None,
         "vol_ratio":  round(cur_vol / avg_vol, 1) if avg_vol else 0,
     }
 

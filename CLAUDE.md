@@ -23,10 +23,10 @@ data/trades-parsed.json            ← 101 historical trades, 98.0% win rate
 
 **Author:** Weatherman118 | **Universe:** NASDAQ small-caps $0.10–$15, float <10M (tightened 2026-06-05)
 
-### Entry System (updated 2026-06-05 — Supertrend as primary trigger)
+### Entry System (updated 2026-06-17 — MACD dropped as hard gate)
 
 **Step 1 — Stock Discovery (Scanner):**
-- FMP real-time gainers → filter: price $0.10–$5, float < 10M, change > 10%, rel vol > 4x
+- Yahoo Finance free screener → filter: price $0.10–$5, float < 10M, change > 10%, rel vol > 4x
 - Absolute volume > 1M shares (filters out dead stocks like HTLM 69K)
 
 **Step 2 — Chart Confirmation (ALL required):**
@@ -35,9 +35,10 @@ data/trades-parsed.json            ← 101 historical trades, 98.0% win rate
 | 1 | **Supertrend flips bullish (green)** | 5m | PRIMARY trigger |
 | 2 | Price above ZLSMA-50 | 5m | critical — NEVER trade below |
 | 3 | StochRSI K > D | 5m | critical |
-| 4 | MACD histogram > 0 | 5m | confirming — filters fading stocks |
-| 5 | Volume > 4x 20-bar average | 5m | confirming |
-| 6 | Catalyst: Tier 1 (FDA/merger) > Tier 2 (halt-resume) > Tier 3 (China momentum) | — | confirming |
+| 4 | Volume > 4x 20-bar average | 5m | confirming |
+| 5 | Catalyst: Tier 1 (FDA/merger) > Tier 2 (halt-resume) > Tier 3 (China momentum) | — | confirming |
+
+**Note:** MACD removed as hard gate 2026-06-17 — lags behind Supertrend, caused missed entries on real setups that blew up with 4/5 conditions. Still logged in scan output for informational reference.
 
 **Step 3 — Entry:**
 - Enter on 5m Supertrend buy signal, OR zoom to 1m for a better price if signal already fired
