@@ -15,6 +15,7 @@ No FMP key, no extra signups. Uses Yahoo Finance (free) + Alpaca IEX data.
 import json
 import logging
 import os
+import re
 import sys
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -140,18 +141,44 @@ def tg(msg: str):
 
 # ── Stock discovery ───────────────────────────────────────────────────────────
 
+def _finviz_gainers() -> list[str]:
+    """
+    Primary scanner: Finviz screener with exact W118 universe filters applied
+    server-side. Returns NASDAQ stocks, price $0.10-$5, float <10M, change >10%.
+    This is purpose-built for penny stock momentum — Yahoo predefined screeners
+    return large/mid caps that all get filtered out.
+    """
+    try:
+        r = requests.get(
+            "https://finviz.com/screener.ashx",
+            params={
+                "v": "111",
+                "f": "exch_nasd,sh_float_u10,sh_price_u5,ta_change_u10",
+                "o": "-change",
+            },
+            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                                   "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                   "Chrome/120.0.0.0 Safari/537.36"},
+            timeout=15,
+        )
+        tickers = re.findall(r'screener-link-primary">([A-Z]{1,6})<', r.text)
+        seen, result = set(), []
+        for t in tickers:
+            if t not in seen and len(result) < 40:
+                seen.add(t); result.append(t)
+        log.info(f"[discovery] Finviz: {len(result)} candidates {result[:10]}")
+        return result
+    except Exception as e:
+        log.warning(f"[discovery] Finviz failed: {e}")
+        return []
+
+
 def _yahoo_gainers() -> list[str]:
-    """
-    Pull from multiple Yahoo Finance screeners to catch small-cap movers.
-    day_gainers misses penny stocks — small_cap_gainers + aggressive_small_caps
-    are much better for the $0.10–$5 NASDAQ universe we trade.
-    """
-    screener_ids = ["small_cap_gainers", "aggressive_small_caps", "day_gainers"]
+    """Fallback: Yahoo Finance small_cap_gainers when Finviz is unavailable."""
     seen: set = set()
     tickers: list = []
-
-    for scr_id in screener_ids:
-        if len(tickers) >= 25:
+    for scr_id in ["small_cap_gainers", "aggressive_small_caps"]:
+        if len(tickers) >= 20:
             break
         try:
             r = requests.get(
@@ -161,29 +188,20 @@ def _yahoo_gainers() -> list[str]:
                 headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"},
                 timeout=12,
             )
-            quotes = r.json()["finance"]["result"][0]["quotes"]
-            for q in quotes:
+            for q in r.json()["finance"]["result"][0]["quotes"]:
                 sym   = q.get("symbol", "")
                 price = q.get("regularMarketPrice") or 0
                 chg   = q.get("regularMarketChangePercent") or 0
                 vol   = q.get("regularMarketVolume") or 0
-                exch  = q.get("fullExchangeName") or ""
-                if sym in seen:
+                if sym in seen or not (MIN_PRICE <= price <= MAX_PRICE):
                     continue
-                if not (MIN_PRICE <= price <= MAX_PRICE):
+                if chg < MIN_CHANGE_PCT or vol < MIN_ABS_VOLUME:
                     continue
-                if chg < MIN_CHANGE_PCT:
-                    continue
-                if vol < MIN_ABS_VOLUME:
-                    continue
-                seen.add(sym)
-                tickers.append(sym)
-                if len(tickers) >= 25:
-                    break
+                seen.add(sym); tickers.append(sym)
         except Exception as e:
             log.warning(f"[discovery] Yahoo {scr_id} failed: {e}")
-
-    log.info(f"[discovery] Yahoo: {len(tickers)} candidates {tickers[:8]}")
+    if tickers:
+        log.info(f"[discovery] Yahoo fallback: {len(tickers)} candidates {tickers[:8]}")
     return tickers
 
 def _manual_watchlist() -> list[str]:
@@ -200,9 +218,9 @@ def _manual_watchlist() -> list[str]:
 
 def discover() -> list[str]:
     manual = _manual_watchlist()
-    auto   = _yahoo_gainers()
+    auto   = _finviz_gainers() or _yahoo_gainers()  # Finviz first, Yahoo if Finviz fails
     seen, result = set(), []
-    for t in (manual + auto):   # manual list gets priority
+    for t in (manual + auto):   # manual always gets priority
         if t not in seen:
             seen.add(t); result.append(t)
     return result
@@ -413,7 +431,7 @@ def scan():
         else:
             log.debug(f"[skip] {ticker}: {info.get('fail', info)}")
 
-        time.sleep(0.4)   # rate limit: ~40 reqs/min for 100 candidates max
+        time.sleep(0.15)  # ~6 reqs/sec — well under Alpaca's 200/min free limit
 
     log.info(f"[scan] done. Positions: {len(get_held())} / {MAX_POSITIONS}")
 
