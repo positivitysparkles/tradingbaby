@@ -12,6 +12,7 @@ Quick start:
 No FMP key, no extra signups. Uses Yahoo Finance (free) + Alpaca IEX data.
 """
 
+import html
 import json
 import logging
 import os
@@ -445,10 +446,10 @@ def _blocker_bucket(reason: str) -> str:
     """Map a check_all_entry fail string to a human bucket for the heartbeat."""
     r = reason.lower()
     if "supertrend" in r:                     return "Supertrend not green"
-    if r.startswith("k ") or "stoch" in r:    return "StochRSI (K<D / not rising)"
+    if r.startswith("k ") or "stoch" in r:    return "StochRSI (K below D / not rising)"
     if "zlsma" in r:                          return "below ZLSMA"
     if "macd" in r:                           return "MACD not positive"
-    if "vol" in r:                            return "volume < 4x"
+    if "vol" in r:                            return "volume under 4x"
     if "price" in r:                          return "price out of range"
     return "other"
 
@@ -464,15 +465,15 @@ def _send_watch_alert(ticker: str, info: dict) -> None:
     _watch_sent[ticker] = time.time()
     score    = info["score"]
     max_     = info["max"]
-    missing  = info.get("fail") or "—"
+    missing  = html.escape(info.get("fail") or "—")   # escape so '<' can't break Telegram HTML
     tg(
-        f"👀 <b>WATCH: {ticker}</b> — {score}/{max_} conditions\n"
+        f"👀 <b>WATCH: {html.escape(ticker)}</b> — {score}/{max_} conditions\n"
         f"Price ${info['price']:.2f}  "
         f"K={info['k']}  Vol {info['vol_ratio']}x\n"
         f"Missing: {missing}\n"
         f"Check chart — manual entry possible"
     )
-    log.info(f"[WATCH] {ticker}: {score}/{max_} — {missing}")
+    log.info(f"[WATCH] {ticker}: {score}/{max_} — {info.get('fail')}")
 
 def heartbeat() -> None:
     """Hourly Telegram pulse — proves the bot is alive and explains why no entry."""
@@ -558,8 +559,10 @@ def scan():
             for b in info.get("blockers", [info.get("fail", "unknown")]):
                 blockers[_blocker_bucket(b)] += 1
 
-            if score >= max_ - 1:
-                # 4/5 or 3/4 (when ZLSMA skipped) — alert user, manual entry possible
+            # WATCH only when one gate away AND Supertrend is already green —
+            # the primary trigger must be on for it to be a real forming setup.
+            st_green = "Supertrend bearish" not in info.get("blockers", [])
+            if score >= max_ - 1 and st_green:
                 _send_watch_alert(ticker, info)
             else:
                 # Not close enough — silent debug only, no spam
