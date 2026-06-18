@@ -54,3 +54,8 @@ EXT_HOURS_LIMIT_BUFFER = 0.02 # pay up to +2% above last to guarantee a premarke
 # lags; this blocks entries where the 1-min move is already rolling over (no more
 # buying the top like the ATPC $3.43 chase). Fails open on thin 1-min history.
 REQUIRE_1M_FRESH = True
+
+# Supabase — P&L dashboard (supabase.com → project settings → API)
+# Use the SERVICE ROLE key here (bot writes trades); the anon key goes in the dashboard.
+SUPABASE_URL      = "https://suqfqnrxkjhmrzbkzrze.supabase.co"
+SUPABASE_KEY      = "PASTE_YOUR_SERVICE_ROLE_KEY"  # Settings → API → service_role

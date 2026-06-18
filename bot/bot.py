@@ -38,6 +38,12 @@ from config import (
     AVOID_MIDDAY, MIDDAY_START_ET, MIDDAY_END_ET, DEEP_CURL_RESET,
     EXT_HOURS_LIMIT_BUFFER, REQUIRE_1M_FRESH,
 )
+try:
+    from config import SUPABASE_URL, SUPABASE_KEY
+    _SB_ENABLED = bool(SUPABASE_URL and SUPABASE_KEY and "PASTE" not in SUPABASE_KEY)
+except ImportError:
+    SUPABASE_URL = SUPABASE_KEY = ""
+    _SB_ENABLED = False
 from indicators import check_all_entry, check_exit_signal, is_fresh_1m
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -185,6 +191,77 @@ def tg(msg: str):
             log.debug("Telegram OK")
     except Exception as e:
         log.warning(f"Telegram: {e}")
+
+# ── Supabase P&L dashboard ────────────────────────────────────────────────────
+
+_sb_row_id: dict = {}   # ticker → UUID of the open trade row in Supabase
+
+def _sb(method: str, path: str, **kwargs) -> dict | list | None:
+    if not _SB_ENABLED:
+        return None
+    try:
+        r = requests.request(
+            method,
+            SUPABASE_URL + path,
+            headers={
+                "apikey":        SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type":  "application/json",
+                "Prefer":        "return=representation",
+            },
+            timeout=8, **kwargs,
+        )
+        if not r.ok:
+            log.warning(f"[supabase] {method} {path} → {r.status_code}: {r.text[:120]}")
+            return None
+        return r.json() if r.text else None
+    except Exception as e:
+        log.warning(f"[supabase] {e}")
+        return None
+
+def sb_log_trade(ticker: str, price: float, qty: int, info: dict):
+    row = {
+        "date":        date.today().isoformat(),
+        "time_et":     datetime.now(ET).strftime("%H:%M"),
+        "ticker":      ticker,
+        "status":      "open",
+        "entry_price": price,
+        "qty":         qty,
+        "stop_price":  round(price * (1 - STOP_PCT), 4),
+        "t1_price":    round(price * (1 + T1_PCT), 4),
+        "t2_price":    round(price * (1 + T2_PCT), 4),
+        "t3_price":    round(price * (1 + T3_PCT), 4),
+        "setup_score": info.get("score"),
+        "setup_max":   info.get("max"),
+        "deep_curl":   info.get("deep_curl", False),
+        "k_value":     info.get("k"),
+        "d_value":     info.get("d"),
+        "vol_ratio":   info.get("vol_ratio"),
+        "macd_hist":   info.get("macd_hist"),
+        "macd_line":   info.get("macd_line"),
+        "zlsma":       info.get("zlsma"),
+        "blockers":    info.get("fail"),
+    }
+    result = _sb("POST", "/rest/v1/w118_trades", json=row)
+    if result and isinstance(result, list) and result:
+        _sb_row_id[ticker] = result[0].get("id")
+        log.info(f"[supabase] logged {ticker} → id {_sb_row_id.get(ticker)}")
+
+def sb_close_trade(ticker: str, exit_price: float, exit_reason: str, entry_price: float):
+    row_id = _sb_row_id.pop(ticker, None)
+    realized = round((exit_price - entry_price) * 1, 4) if entry_price else None
+    patch = {
+        "status":       "closed",
+        "exit_price":   exit_price,
+        "exit_reason":  exit_reason,
+        "realized_pnl": realized,
+    }
+    if row_id:
+        _sb("PATCH", f"/rest/v1/w118_trades?id=eq.{row_id}", json=patch)
+    else:
+        # fallback: update by ticker + today's date
+        _sb("PATCH", f"/rest/v1/w118_trades?ticker=eq.{ticker}&date=eq.{date.today().isoformat()}&status=eq.open", json=patch)
+    log.info(f"[supabase] closed {ticker} exit={exit_price} pnl={realized}")
 
 # ── Stock discovery ───────────────────────────────────────────────────────────
 
@@ -478,6 +555,7 @@ def execute_buy(ticker: str, price: float, info: dict):
         stop_note = "partial OCO + bot backup"
 
     log_trade(ticker, price, info)
+    sb_log_trade(ticker, price, qty, info)
 
     msg = (
         f"<b>🟢 W118 AUTO BUY — {html.escape(ticker)}</b>{' ⭐ DEEP CURL' if info.get('deep_curl') else ''}\n"
@@ -494,10 +572,18 @@ def execute_buy(ticker: str, price: float, info: dict):
     return True
 
 def execute_exit(ticker: str, reason: str):
+    # Grab entry price before selling so we can compute realized P&L for Supabase
+    entry_price = None
+    for p in get_positions():
+        if p["symbol"] == ticker:
+            entry_price = float(p.get("avg_entry_price") or 0) or None
+            break
     sold = market_sell_position(ticker)
     if sold:
+        exit_price = get_latest_price(ticker) or 0.0
         tg(f"<b>🔴 W118 EXIT — {ticker}</b>\nReason: {reason}")
         log.info(f"[exit] {ticker}: {reason}")
+        sb_close_trade(ticker, exit_price, reason, entry_price or 0.0)
 
 # ── Self-audit ────────────────────────────────────────────────────────────────
 
