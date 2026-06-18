@@ -52,3 +52,8 @@ DEEP_CURL_RESET = 20.0        # K dipped below this in the lookback = deep curl
 # This buffer sets the limit price above last (last × 1.02) so the order is
 # "marketable" and actually fills in thin premarket — W118's best window.
 EXT_HOURS_LIMIT_BUFFER = 0.02 # pay up to +2% above last to guarantee a premarket fill
+
+# Entry timing — 1-minute freshness gate (W118's "zoom to 1m"). The 5-min signal
+# lags; this blocks entries where the 1-min move is already rolling over (no more
+# buying the top like the ATPC $3.43 chase). Fails open on thin 1-min history.
+REQUIRE_1M_FRESH = True

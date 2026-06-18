@@ -36,9 +36,9 @@ from config import (
     MIN_PRICE, MAX_PRICE, MAX_FLOAT, MIN_CHANGE_PCT, MIN_ABS_VOLUME, REL_VOL_MIN,
     SCAN_INTERVAL_MIN, GATE_OPEN_UTC, GATE_CLOSE_UTC,
     AVOID_MIDDAY, MIDDAY_START_ET, MIDDAY_END_ET, DEEP_CURL_RESET,
-    EXT_HOURS_LIMIT_BUFFER,
+    EXT_HOURS_LIMIT_BUFFER, REQUIRE_1M_FRESH,
 )
-from indicators import check_all_entry, check_exit_signal
+from indicators import check_all_entry, check_exit_signal, is_fresh_1m
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -94,18 +94,18 @@ def cancel_ticker_orders(ticker: str):
             except Exception:
                 pass
 
-def get_bars(ticker: str, limit: int = 100) -> list | None:
+def get_bars(ticker: str, limit: int = 100, timeframe: str = "5Min") -> list | None:
     try:
         data = _alpaca("GET", f"/v2/stocks/{ticker}/bars",
-                       params={"timeframe": "5Min", "limit": limit,
+                       params={"timeframe": timeframe, "limit": limit,
                                "feed": "sip", "adjustment": "raw"})
         bars = data.get("bars") or []
         if len(bars) < 30:
-            log.debug(f"bars {ticker}: only {len(bars)} bars (need 30), skip")
+            log.debug(f"bars {ticker} ({timeframe}): only {len(bars)} bars (need 30), skip")
             return None
         return bars
     except Exception as e:
-        log.debug(f"bars {ticker}: {e}")
+        log.debug(f"bars {ticker} ({timeframe}): {e}")
         return None
 
 def place_order(ticker: str, qty: int, side: str, otype: str,
@@ -354,6 +354,29 @@ def _confirm_position(ticker: str, timeout: int = 30) -> bool:
     return False
 
 
+def _place_oco_exit(ticker: str, qty: int, target: float, stop: float) -> bool:
+    """
+    Attach an OCO (one-cancels-other) exit on `qty` held shares: a take-profit
+    limit at `target` AND a protective stop at `stop`, linked so when one fills
+    the other auto-cancels. This puts a REAL broker-side stop on Alpaca that
+    survives bot/VPS downtime. OCO is NOT allowed outside regular hours — caller
+    falls back to a plain limit + the scan-loop software stop when this returns False.
+    """
+    body = {
+        "symbol": ticker, "qty": qty, "side": "sell",
+        "type": "limit", "time_in_force": "gtc",
+        "order_class": "oco",
+        "take_profit": {"limit_price": str(round(target, 2))},
+        "stop_loss":   {"stop_price":  str(round(stop, 2))},
+    }
+    try:
+        _alpaca("POST", "/v2/orders", json=body)
+        return True
+    except Exception as e:
+        log.warning(f"[oco] {ticker} x{qty} tp={target}/sl={stop} rejected: {e}")
+        return False
+
+
 def execute_buy(ticker: str, price: float, info: dict):
     stop = round(price * (1 - STOP_PCT), 2)
     t1   = round(price * (1 + T1_PCT), 2)
@@ -377,8 +400,8 @@ def execute_buy(ticker: str, price: float, info: dict):
     # Poll until Alpaca confirms the position exists. A fixed sleep can still race;
     # polling is deterministic — targets land exactly when the fill is settled.
     if not _confirm_position(ticker, timeout=30):
-        log.error(f"[buy] {ticker} position not confirmed after 15s — targets NOT placed")
-        tg(f"<b>⚠️ {html.escape(ticker)}: fill unconfirmed after 15s</b>\nSet T1/T2/T3 manually on Alpaca!")
+        log.error(f"[buy] {ticker} position not confirmed after 30s — targets NOT placed")
+        tg(f"<b>⚠️ {html.escape(ticker)}: fill unconfirmed after 30s</b>\nSet T1/T2/T3 manually on Alpaca!")
         log_trade(ticker, price, info)
         tg(
             f"<b>🟢 W118 AUTO BUY — {html.escape(ticker)}</b>\n"
@@ -388,11 +411,26 @@ def execute_buy(ticker: str, price: float, info: dict):
         )
         return
 
-    # T1+T2+T3 quantities sum to exactly SHARES_PER_TRADE so Alpaca never sees an
-    # oversell. Stop is enforced each scan via P&L check (execute_exit → cancel + sell).
-    r1 = place_order(ticker, T1_SHARES, "sell", "limit", limit_price=t1)
-    r2 = place_order(ticker, T2_SHARES, "sell", "limit", limit_price=t2)
-    r3 = place_order(ticker, T3_SHARES, "sell", "limit", limit_price=t3)
+    # Attach exits as 3 OCO bracket legs (3+3+4 = exactly SHARES_PER_TRADE, no
+    # oversell). Each leg = take-profit + protective stop, linked. This puts a REAL
+    # broker stop on every share, live on Alpaca, surviving bot/VPS downtime.
+    # OCO is rejected outside RTH, so per leg we fall back to a plain resting limit;
+    # the scan-loop -8% software stop still backstops those until RTH.
+    legs = [("T1", T1_SHARES, t1), ("T2", T2_SHARES, t2), ("T3", T3_SHARES, t3)]
+    res, oco_ok = {}, 0
+    for name, qty, tgt in legs:
+        if _place_oco_exit(ticker, qty, tgt, stop):
+            res[name] = True
+            oco_ok += 1
+        else:
+            res[name] = place_order(ticker, qty, "sell", "limit", limit_price=tgt)
+
+    if oco_ok == len(legs):
+        stop_note = "live on Alpaca (OCO bracket)"
+    elif oco_ok == 0:
+        stop_note = "bot-enforced every minute (premarket — OCO opens at 9:30)"
+    else:
+        stop_note = "partial OCO + bot backup"
 
     log_trade(ticker, price, info)
 
@@ -400,13 +438,14 @@ def execute_buy(ticker: str, price: float, info: dict):
         f"<b>🟢 W118 AUTO BUY — {html.escape(ticker)}</b>{' ⭐ DEEP CURL' if info.get('deep_curl') else ''}\n"
         f"Entry: ${price:.4f}  ×{SHARES_PER_TRADE} shares\n"
         f"K={info['k']}↑  D={info['d']}  MACD(5,10,16)={'▲' if info['macd_hist'] > 0 else '▽'}  Vol {info['vol_ratio']}x\n"
-        f"🛑 Stop: ${stop}  (-8%) — scan-enforced\n"
-        f"🎯 T1: ${t1}  (+15%)  ×{T1_SHARES} — {'✓' if r1 else '❌ FAILED'}\n"
-        f"   T2: ${t2}  (+30%)  ×{T2_SHARES} — {'✓' if r2 else '❌ FAILED'}\n"
-        f"   T3: ${t3}  (+60%)  ×{T3_SHARES} — {'✓' if r3 else '❌ FAILED'}"
+        f"🛑 Stop: ${stop}  (-8%) — {stop_note}\n"
+        f"🎯 T1: ${t1}  (+15%)  ×{T1_SHARES} — {'✓' if res['T1'] else '❌ FAILED'}\n"
+        f"   T2: ${t2}  (+30%)  ×{T2_SHARES} — {'✓' if res['T2'] else '❌ FAILED'}\n"
+        f"   T3: ${t3}  (+60%)  ×{T3_SHARES} — {'✓' if res['T3'] else '❌ FAILED'}"
     )
     tg(msg)
-    log.info(f"[buy] {ticker} @ ${price}  stop=${stop}  T1=${t1}({'✓' if r1 else '✗'})  T2=${t2}({'✓' if r2 else '✗'})  T3=${t3}({'✓' if r3 else '✗'})")
+    log.info(f"[buy] {ticker} @ ${price}  stop=${stop} ({stop_note})  "
+             f"T1={'✓' if res['T1'] else '✗'} T2={'✓' if res['T2'] else '✗'} T3={'✓' if res['T3'] else '✗'}")
 
 def execute_exit(ticker: str, reason: str):
     sold = market_sell_position(ticker)
@@ -659,6 +698,19 @@ def scan():
         score, max_ = info.get("score", 0), info.get("max", 5)
 
         if ok:
+            # Micro-timeframe freshness — W118's "zoom to 1m". The 5-min signal lags;
+            # block it if the 1-min move is already rolling over (the ATPC $3.43 top
+            # chase). Fails open when 1-min history is thin so young names aren't blocked.
+            if REQUIRE_1M_FRESH:
+                bars_1m = get_bars(ticker, limit=60, timeframe="1Min")
+                if bars_1m:
+                    fresh, why_stale = is_fresh_1m(bars_1m)
+                    if not fresh:
+                        log.info(f"[skip-stale] {ticker} 5/5 on 5m but {why_stale}")
+                        blockers["1m rolling over (stale)"] += 1
+                        time.sleep(0.15)
+                        continue
+
             signals += 1
             curl = " ⭐deep-curl" if info.get("deep_curl") else ""
             # Can we actually auto-buy? Re-check live caps each pass so a buy made
