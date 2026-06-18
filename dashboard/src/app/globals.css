@@ -2,10 +2,34 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600;1,700&family=Inter:wght@300;400;500;600&display=swap');
+
+:root {
+  --gold:     #c9a96e;
+  --gold-dim: #8b6e3c;
+  --rose:     #c4789b;
+  --cream:    #f0ebe0;
+  --taupe:    #7a6a5a;
+  --bg:       #080807;
+  --surface:  #100f0e;
+  --card:     #141210;
+  --border:   rgba(201, 169, 110, 0.14);
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
 
 body {
-  background: #0a0a0f;
-  color: #e2e8f0;
-  font-family: 'JetBrains Mono', monospace;
+  background: var(--bg);
+  color: var(--cream);
+  font-family: 'Inter', sans-serif;
+  font-weight: 300;
+  -webkit-font-smoothing: antialiased;
 }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(201,169,110,0.2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(201,169,110,0.4); }

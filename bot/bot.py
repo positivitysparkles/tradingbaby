@@ -247,9 +247,9 @@ def sb_log_trade(ticker: str, price: float, qty: int, info: dict):
         _sb_row_id[ticker] = result[0].get("id")
         log.info(f"[supabase] logged {ticker} → id {_sb_row_id.get(ticker)}")
 
-def sb_close_trade(ticker: str, exit_price: float, exit_reason: str, entry_price: float):
+def sb_close_trade(ticker: str, exit_price: float, exit_reason: str, entry_price: float, qty: int = 1):
     row_id = _sb_row_id.pop(ticker, None)
-    realized = round((exit_price - entry_price) * 1, 4) if entry_price else None
+    realized = round((exit_price - entry_price) * qty, 2) if entry_price else None
     patch = {
         "status":       "closed",
         "exit_price":   exit_price,
@@ -572,18 +572,20 @@ def execute_buy(ticker: str, price: float, info: dict):
     return True
 
 def execute_exit(ticker: str, reason: str):
-    # Grab entry price before selling so we can compute realized P&L for Supabase
+    # Grab entry price + qty before selling so we can compute realized P&L for Supabase
     entry_price = None
+    pos_qty = 1
     for p in get_positions():
         if p["symbol"] == ticker:
             entry_price = float(p.get("avg_entry_price") or 0) or None
+            pos_qty = max(1, int(float(p.get("qty") or 1)))
             break
     sold = market_sell_position(ticker)
     if sold:
         exit_price = get_latest_price(ticker) or 0.0
         tg(f"<b>🔴 W118 EXIT — {ticker}</b>\nReason: {reason}")
         log.info(f"[exit] {ticker}: {reason}")
-        sb_close_trade(ticker, exit_price, reason, entry_price or 0.0)
+        sb_close_trade(ticker, exit_price, reason, entry_price or 0.0, pos_qty)
 
 # ── Self-audit ────────────────────────────────────────────────────────────────
 
