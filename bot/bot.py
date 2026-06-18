@@ -125,6 +125,15 @@ def place_order(ticker: str, qty: int, side: str, otype: str,
     try:
         _alpaca("POST", "/v2/orders", json=body)
         return True
+    except requests.HTTPError as e:
+        # Log the full Alpaca error body so we know the exact rejection reason
+        # (e.g. "asset not active", "insufficient buying power", "account restricted")
+        try:
+            detail = e.response.json().get("message", e.response.text[:200])
+        except Exception:
+            detail = str(e)
+        log.error(f"order {ticker} {side} {otype}: {e.response.status_code} — {detail}")
+        return False
     except Exception as e:
         log.error(f"order {ticker} {side} {otype}: {e}")
         return False
