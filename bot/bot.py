@@ -501,6 +501,55 @@ def execute_exit(ticker: str, reason: str):
 
 # ── Self-audit ────────────────────────────────────────────────────────────────
 
+def _realized_pnl_today() -> tuple[dict, float, int, int]:
+    """
+    Pull Alpaca FILL activities for today, FIFO-match buys↔sells per symbol,
+    return (per_symbol_dict, net_pnl, wins, losses).
+    per_symbol_dict: {ticker: {"pnl": float, "qty": int, "avg_buy": float, "avg_sell": float}}
+    """
+    today = date.today().isoformat()
+    try:
+        acts = _alpaca("GET", "/v2/account/activities/FILL",
+                       params={"after": f"{today}T00:00:00Z", "direction": "asc", "page_size": 500})
+    except Exception:
+        return {}, 0.0, 0, 0
+
+    # Group fills by symbol
+    by_sym: dict = {}
+    for a in acts:
+        sym = a.get("symbol", "")
+        if not sym:
+            continue
+        by_sym.setdefault(sym, {"buys": [], "sells": []})
+        entry = {"qty": float(a.get("qty", 0)), "price": float(a.get("price", 0))}
+        if a.get("side") == "buy":
+            by_sym[sym]["buys"].append(entry)
+        else:
+            by_sym[sym]["sells"].append(entry)
+
+    result: dict = {}
+    net = 0.0
+    wins = losses = 0
+    for sym, sides in by_sym.items():
+        buy_q  = sum(e["qty"]   for e in sides["buys"])
+        buy_$  = sum(e["qty"] * e["price"] for e in sides["buys"])
+        sell_q = sum(e["qty"]   for e in sides["sells"])
+        sell_$ = sum(e["qty"] * e["price"] for e in sides["sells"])
+        matched = min(buy_q, sell_q)
+        if matched <= 0 or buy_q <= 0:
+            continue
+        avg_buy  = buy_$ / buy_q
+        avg_sell = sell_$ / sell_q if sell_q else 0
+        pnl = (avg_sell - avg_buy) * matched
+        result[sym] = {"pnl": pnl, "qty": int(matched), "avg_buy": avg_buy, "avg_sell": avg_sell}
+        net += pnl
+        if pnl > 0:
+            wins += 1
+        else:
+            losses += 1
+    return result, net, wins, losses
+
+
 def daily_audit():
     today = date.today().isoformat()
     log_data = _load_log()
@@ -519,20 +568,26 @@ def daily_audit():
         pl = float(p.get("unrealized_pl") or 0)
         pos_lines += f"  {p['symbol']}: {p['qty']} shares  P&L ${pl:+.2f}\n"
 
-    trades_lines = ""
-    for t in today_trades:
-        trades_lines += f"  {t['time']} {t['ticker']} @ ${t['entry']}  stop ${t['stop']}  T1 ${t['t1']}\n"
+    # Realized P&L from closed trades today
+    pnl_map, net_pnl, wins, losses = _realized_pnl_today()
+    pnl_lines = ""
+    for sym, s in sorted(pnl_map.items(), key=lambda x: -abs(x[1]["pnl"])):
+        arrow = "🟢" if s["pnl"] >= 0 else "🔴"
+        pnl_lines += (f"  {arrow} {sym}: {s['qty']}sh  "
+                      f"avg in ${s['avg_buy']:.3f} → out ${s['avg_sell']:.3f}  "
+                      f"P&L ${s['pnl']:+.2f}\n")
 
     msg = (
         f"<b>📊 W118 Daily Audit — {today}</b>\n"
-        f"Trades fired: {len(today_trades)} / {MAX_DAILY_TRADES} limit\n"
+        f"Entries today: {len(today_trades)}  |  Positions open: {len(positions)}\n"
         f"Buy fills: {len(buys)}  |  Sell fills: {len(sells)}\n"
-        f"Open positions: {len(positions)}\n"
     )
+    if pnl_lines:
+        win_rate = f"{wins/(wins+losses)*100:.0f}%" if (wins + losses) > 0 else "—"
+        msg += (f"\n<b>Closed P&L today:</b>\n{pnl_lines}"
+                f"Net: <b>${net_pnl:+.2f}</b>  ({wins}W / {losses}L  {win_rate})\n")
     if pos_lines:
-        msg += f"\n<b>Open now:</b>\n{pos_lines}"
-    if trades_lines:
-        msg += f"\n<b>Today's entries:</b>\n{trades_lines}"
+        msg += f"\n<b>Open now (unrealized):</b>\n{pos_lines}"
 
     tg(msg)
     log.info("[audit] Daily audit sent to Telegram")
@@ -668,8 +723,8 @@ def heartbeat() -> None:
     mode_line = "" if mode == "live" else f"\n⚠️ Auto-entries paused ({mode}) — manual setup alerts still firing"
     tg(
         f"💓 <b>W118 alive</b> — {s['time']}\n"
-        f"Checked {s['candidates']} candidates · {s['positions']} open · "
-        f"{s['trades']}/{MAX_DAILY_TRADES} trades today\n"
+        f"Checked {s['candidates']} candidates · {s['positions']}/{MAX_POSITIONS} open · "
+        f"{s['trades']} trades today\n"
         f"Setups passing all 5: <b>{s['signals']}</b>{mode_line}\n"
         f"Why no entry → {blk}"
     )
@@ -712,10 +767,16 @@ def scan():
         bars = get_bars(ticker, limit=100)
         if not bars:
             continue
-        reason = check_exit_signal(bars)
-        if reason:
-            execute_exit(ticker, reason)
-            held.discard(ticker)
+        # Signal exits (Supertrend flip, ZLSMA break) only fire during RTH.
+        # Premarket small-caps swing 6%+ on routine noise — firing on a single
+        # bearish 5m candle at 07:41 stops us out of runners before the open
+        # (see ATPC: bought $3.23, exited $3.03 premarket, ran to $6.00 at open).
+        # The -8% hard stop above is always active; that's the only premarket exit.
+        if _is_rth():
+            reason = check_exit_signal(bars)
+            if reason:
+                execute_exit(ticker, reason)
+                held.discard(ticker)
 
     # Decide whether AUTO entries are allowed right now. Even when they are NOT —
     # daily cap hit, position cap hit, or midday chop — we still scan and alert.
