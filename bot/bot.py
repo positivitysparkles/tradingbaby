@@ -31,8 +31,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 from config import (
     ALPACA_KEY_ID, ALPACA_SECRET_KEY, ALPACA_BASE_URL, ALPACA_DATA_URL,
     TELEGRAM_TOKEN, TELEGRAM_CHAT_ID,
-    MAX_DAILY_TRADES, MAX_POSITIONS, SHARES_PER_TRADE,
-    STOP_PCT, T1_PCT, T2_PCT, T3_PCT, T1_SHARES, T2_SHARES, T3_SHARES,
+    MAX_DAILY_TRADES, MAX_POSITIONS, DOLLARS_PER_TRADE,
+    STOP_PCT, T1_PCT, T2_PCT, T3_PCT,
     MIN_PRICE, MAX_PRICE, MAX_FLOAT, MIN_CHANGE_PCT, MIN_ABS_VOLUME, REL_VOL_MIN,
     SCAN_INTERVAL_MIN, GATE_OPEN_UTC, GATE_CLOSE_UTC,
     AVOID_MIDDAY, MIDDAY_START_ET, MIDDAY_END_ET, DEEP_CURL_RESET,
@@ -378,6 +378,13 @@ def _place_oco_exit(ticker: str, qty: int, target: float, stop: float) -> bool:
 
 
 def execute_buy(ticker: str, price: float, info: dict):
+    # Dynamic sizing: spend ~$100, split T1/T2/T3 proportionally (30%/30%/40%).
+    # At least 3 shares so each leg gets at least 1.
+    qty    = max(3, int(DOLLARS_PER_TRADE / price))
+    t1_qty = qty // 3
+    t2_qty = qty // 3
+    t3_qty = qty - t1_qty - t2_qty   # remainder to T3 so total = qty exactly
+
     stop = round(price * (1 - STOP_PCT), 2)
     t1   = round(price * (1 + T1_PCT), 2)
     t2   = round(price * (1 + T2_PCT), 2)
@@ -387,10 +394,10 @@ def execute_buy(ticker: str, price: float, info: dict):
     # → marketable LIMIT (last × 1.02) + extended_hours, because Alpaca will NOT fill
     # a market order outside 9:30-16:00 ET (it parks at "new" forever).
     if _is_rth():
-        ok = place_order(ticker, SHARES_PER_TRADE, "buy", "market", tif="day")
+        ok = place_order(ticker, qty, "buy", "market", tif="day")
     else:
         buy_lim = round(price * (1 + EXT_HOURS_LIMIT_BUFFER), 2)
-        ok = place_order(ticker, SHARES_PER_TRADE, "buy", "limit",
+        ok = place_order(ticker, qty, "buy", "limit",
                          limit_price=buy_lim, tif="day", extended_hours=True)
         log.info(f"[buy] {ticker} extended-hours limit @ ${buy_lim} (last ${price:.4f})")
     if not ok:
@@ -405,25 +412,25 @@ def execute_buy(ticker: str, price: float, info: dict):
         log_trade(ticker, price, info)
         tg(
             f"<b>🟢 W118 AUTO BUY — {html.escape(ticker)}</b>\n"
-            f"Entry: ${price:.4f}  ×{SHARES_PER_TRADE} shares\n"
+            f"Entry: ${price:.4f}  ×{qty} shares (~${qty*price:.0f})\n"
             f"🛑 Stop: ${stop}  (-8%) — scan-enforced\n"
             f"🎯 T1: ${t1}  T2: ${t2}  T3: ${t3}  — SET MANUALLY"
         )
         return
 
-    # Attach exits as 3 OCO bracket legs (3+3+4 = exactly SHARES_PER_TRADE, no
+    # Attach exits as 3 OCO bracket legs (t1_qty+t2_qty+t3_qty = qty exactly, no
     # oversell). Each leg = take-profit + protective stop, linked. This puts a REAL
     # broker stop on every share, live on Alpaca, surviving bot/VPS downtime.
     # OCO is rejected outside RTH, so per leg we fall back to a plain resting limit;
     # the scan-loop -8% software stop still backstops those until RTH.
-    legs = [("T1", T1_SHARES, t1), ("T2", T2_SHARES, t2), ("T3", T3_SHARES, t3)]
+    legs = [("T1", t1_qty, t1), ("T2", t2_qty, t2), ("T3", t3_qty, t3)]
     res, oco_ok = {}, 0
-    for name, qty, tgt in legs:
-        if _place_oco_exit(ticker, qty, tgt, stop):
+    for name, lqty, tgt in legs:
+        if _place_oco_exit(ticker, lqty, tgt, stop):
             res[name] = True
             oco_ok += 1
         else:
-            res[name] = place_order(ticker, qty, "sell", "limit", limit_price=tgt)
+            res[name] = place_order(ticker, lqty, "sell", "limit", limit_price=tgt)
 
     if oco_ok == len(legs):
         stop_note = "live on Alpaca (OCO bracket)"
@@ -436,15 +443,15 @@ def execute_buy(ticker: str, price: float, info: dict):
 
     msg = (
         f"<b>🟢 W118 AUTO BUY — {html.escape(ticker)}</b>{' ⭐ DEEP CURL' if info.get('deep_curl') else ''}\n"
-        f"Entry: ${price:.4f}  ×{SHARES_PER_TRADE} shares\n"
+        f"Entry: ${price:.4f}  ×{qty} shares (~${qty*price:.0f})\n"
         f"K={info['k']}↑  D={info['d']}  MACD(5,10,16)={'▲' if info['macd_hist'] > 0 else '▽'}  Vol {info['vol_ratio']}x\n"
         f"🛑 Stop: ${stop}  (-8%) — {stop_note}\n"
-        f"🎯 T1: ${t1}  (+15%)  ×{T1_SHARES} — {'✓' if res['T1'] else '❌ FAILED'}\n"
-        f"   T2: ${t2}  (+30%)  ×{T2_SHARES} — {'✓' if res['T2'] else '❌ FAILED'}\n"
-        f"   T3: ${t3}  (+60%)  ×{T3_SHARES} — {'✓' if res['T3'] else '❌ FAILED'}"
+        f"🎯 T1: ${t1}  (+15%)  ×{t1_qty} — {'✓' if res['T1'] else '❌ FAILED'}\n"
+        f"   T2: ${t2}  (+30%)  ×{t2_qty} — {'✓' if res['T2'] else '❌ FAILED'}\n"
+        f"   T3: ${t3}  (+60%)  ×{t3_qty} — {'✓' if res['T3'] else '❌ FAILED'}"
     )
     tg(msg)
-    log.info(f"[buy] {ticker} @ ${price}  stop=${stop} ({stop_note})  "
+    log.info(f"[buy] {ticker} @ ${price} ×{qty}sh (~${qty*price:.0f})  stop=${stop} ({stop_note})  "
              f"T1={'✓' if res['T1'] else '✗'} T2={'✓' if res['T2'] else '✗'} T3={'✓' if res['T3'] else '✗'}")
 
 def execute_exit(ticker: str, reason: str):
@@ -566,6 +573,7 @@ def _send_setup_alert(ticker: str, info: dict, why: str) -> None:
         return
     _setup_sent[ticker] = time.time()
     price = info["price"]
+    qty   = max(3, int(DOLLARS_PER_TRADE / price))
     stop  = round(price * (1 - STOP_PCT), 2)
     t1    = round(price * (1 + T1_PCT), 2)
     t2    = round(price * (1 + T2_PCT), 2)
@@ -575,7 +583,7 @@ def _send_setup_alert(ticker: str, info: dict, why: str) -> None:
     tg(
         f"🔔 <b>MANUAL SETUP — {html.escape(ticker)}</b>{curl}\n"
         f"<i>Bot can't auto-buy ({html.escape(why)}) — you can paper-trade it:</i>\n"
-        f"Entry ~${price:.4f}  ×{SHARES_PER_TRADE} shares\n"
+        f"Entry ~${price:.4f}  ×{qty} shares (~${qty*price:.0f})\n"
         f"K={info['k']}↑ D={info['d']}  MACD {macd}  Vol {info['vol_ratio']}x\n"
         f"🛑 Stop ${stop}  (-8%)\n"
         f"🎯 T1 ${t1} (+15%)   T2 ${t2} (+30%)   T3 ${t3} (+60%)"
