@@ -215,6 +215,43 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
     return (passed >= max_possible), info
 
 
+def is_fresh_1m(bars_1m: list) -> tuple[bool, str]:
+    """
+    Micro-timeframe freshness gate — W118's "zoom to 1m" step.
+
+    The 5-min checks lag: by the time all 5 confirm on 5-min, the 1-min move is
+    often already rolling over (e.g. ATPC bought at the $3.43 top as it faded).
+    After a 5/5 pass we pull 1-min bars and only allow the entry if the 1-min
+    trend is STILL alive:
+      • 1-min MACD histogram > 0   (momentum still positive, not fading) — primary
+      • 1-min Stoch K not falling   (micro-curl hasn't rolled over yet)
+
+    We deliberately DON'T require 1m K>D: on a strong push StochRSI saturates at
+    100 (K==D==100), which is the strongest momentum, not a stale signal. The
+    decisive "rolling over" tell is MACD going negative and K turning DOWN — that
+    is what caught the ATPC $3.43 top-chase (MACD already red, Stoch falling).
+
+    Fails OPEN (returns fresh=True) when there isn't enough 1-min history to
+    compute the indicators — new/halted-and-resumed names shouldn't be blocked
+    just for being young. Returns (fresh, reason_if_stale).
+    """
+    closes = [b["c"] for b in bars_1m]
+
+    hist = macd_hist(closes)
+    if hist is None:
+        return True, ""                      # not enough 1m history → don't block
+    if hist <= 0:
+        return False, f"1m MACD {hist:.4f} not positive (fading)"
+
+    k, d, k_prev, _ = stochrsi(closes)
+    if k is None or k_prev is None:
+        return True, ""                      # not enough 1m history → don't block
+    if k < k_prev:
+        return False, f"1m Stoch falling ({k_prev:.1f}->{k:.1f})"
+
+    return True, ""
+
+
 def check_exit_signal(bars: list) -> str | None:
     """
     Check W118 signal-based exits. Returns reason string or None.
