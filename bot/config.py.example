@@ -11,8 +11,8 @@ ALPACA_BASE_URL = "https://paper-api.alpaca.markets"
 ALPACA_DATA_URL = "https://data.alpaca.markets"
 
 # Trade rules (W118 system)
-MAX_DAILY_TRADES  = 5         # hard cap — bot stops entering new trades after this
-MAX_POSITIONS     = 3         # max simultaneous open positions
+MAX_DAILY_TRADES  = 9999      # effectively unlimited — MAX_POSITIONS=3 is the real risk control
+MAX_POSITIONS     = 3         # max simultaneous open positions (the real guard)
 DOLLARS_PER_TRADE = 100       # ~$100 per trade; shares = int(100 / price) at entry time
 STOP_PCT          = 0.08      # -8% hard stop
 T1_PCT            = 0.15      # +15% first target

@@ -200,15 +200,18 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
     else:
         passed += 1
 
-    # 5. Volume > rel_vol_min × 20-bar average
-    vols    = [b["v"] for b in bars[-21:-1]]
+    # 5. Volume > rel_vol_min × 20-bar average.
+    #    Use the last CLOSED bar (bars[-2]), not the forming one (bars[-1]).
+    #    A freshly-opened 5m bar has near-zero volume for most of its life and
+    #    produces "Vol 0.0x" false rejections that block real setups.
+    vols    = [b["v"] for b in bars[-22:-2]]  # 20 completed bars before the last closed
     avg_vol = sum(vols) / len(vols) if vols else 0
-    cur_vol = bars[-1]["v"]
+    cur_vol = bars[-2]["v"]                   # last CLOSED bar
     vol_ratio = cur_vol / avg_vol if avg_vol else 0
     if vol_ratio >= rel_vol_min:
         passed += 1
     else:
-        blockers.append(f"vol {vol_ratio:.1f}x below {rel_vol_min:.0f}x")
+        blockers.append(f"vol {vol_ratio:.1f}x below {rel_vol_min:.1f}x")
 
     # Max possible is 4 when ZLSMA is skipped, 5 otherwise
     max_possible = 5 if zl is not None else 4
