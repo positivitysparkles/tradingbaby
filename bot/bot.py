@@ -513,8 +513,35 @@ def _blocker_bucket(reason: str) -> str:
 _first_scan_of_day: str = ""
 _last_summary: dict = {}     # populated each scan, read by the hourly heartbeat
 _watch_sent: dict  = {}      # ticker → timestamp; throttle WATCH alerts to 1 per 10 min
+_setup_sent: dict  = {}      # ticker → timestamp; throttle MANUAL SETUP alerts to 1 per 10 min
 _bought_today: set = set()   # tickers already bought today — never double-buy the same name
 _bought_day: str   = ""      # date the set above belongs to (reset on rollover)
+
+
+def _send_setup_alert(ticker: str, info: dict, why: str) -> None:
+    """A full 5/5 setup the bot could NOT auto-buy (daily cap / position cap /
+    midday / already bought). Sends the COMPLETE manual trade plan — entry, stop,
+    T1/T2/T3 — so the user can still paper-trade it by hand. Throttled 1/10 min."""
+    last = _setup_sent.get(ticker, 0)
+    if time.time() - last < 600:
+        return
+    _setup_sent[ticker] = time.time()
+    price = info["price"]
+    stop  = round(price * (1 - STOP_PCT), 2)
+    t1    = round(price * (1 + T1_PCT), 2)
+    t2    = round(price * (1 + T2_PCT), 2)
+    t3    = round(price * (1 + T3_PCT), 2)
+    curl  = " ⭐ DEEP CURL" if info.get("deep_curl") else ""
+    macd  = "▲" if (info.get("macd_hist") or 0) > 0 else "▽"
+    tg(
+        f"🔔 <b>MANUAL SETUP — {html.escape(ticker)}</b>{curl}\n"
+        f"<i>Bot can't auto-buy ({html.escape(why)}) — you can paper-trade it:</i>\n"
+        f"Entry ~${price:.4f}  ×{SHARES_PER_TRADE} shares\n"
+        f"K={info['k']}↑ D={info['d']}  MACD {macd}  Vol {info['vol_ratio']}x\n"
+        f"🛑 Stop ${stop}  (-8%)\n"
+        f"🎯 T1 ${t1} (+15%)   T2 ${t2} (+30%)   T3 ${t3} (+60%)"
+    )
+    log.info(f"[MANUAL] {ticker} full 5/5 setup — alert only ({why})")
 
 def _send_watch_alert(ticker: str, info: dict) -> None:
     """Fire a Telegram WATCH alert when a ticker hits 4/5 conditions — manual entry cue."""
@@ -548,11 +575,13 @@ def heartbeat() -> None:
         blk = " · ".join(f"{name} ({n})" for name, n in top)
     else:
         blk = "—"
+    mode = s.get("mode", "live")
+    mode_line = "" if mode == "live" else f"\n⚠️ Auto-entries paused ({mode}) — manual setup alerts still firing"
     tg(
         f"💓 <b>W118 alive</b> — {s['time']}\n"
         f"Checked {s['candidates']} candidates · {s['positions']} open · "
         f"{s['trades']}/{MAX_DAILY_TRADES} trades today\n"
-        f"Setups passing all 5: <b>{s['signals']}</b>\n"
+        f"Setups passing all 5: <b>{s['signals']}</b>{mode_line}\n"
         f"Why no entry → {blk}"
     )
     log.info("[heartbeat] sent")
@@ -599,39 +628,28 @@ def scan():
             execute_exit(ticker, reason)
             held.discard(ticker)
 
-    # Check trade + position caps before scanning for new entries
+    # Decide whether AUTO entries are allowed right now. Even when they are NOT —
+    # daily cap hit, position cap hit, or midday chop — we still scan and alert.
+    # A tapped-out bot must not go silent: the user paper-trades the full plan by
+    # hand off a "MANUAL SETUP" alert (entry + stop + T1/T2/T3).
+    entries_open = True
+    pause_reason = None
     if trades_today() >= MAX_DAILY_TRADES:
-        log.info(f"[scan] Daily limit reached ({MAX_DAILY_TRADES}). No new entries.")
-        return
-    if len(held) >= MAX_POSITIONS:
-        log.info(f"[scan] Position cap reached ({MAX_POSITIONS}). No new entries.")
-        return
-
-    # Midday chop (10:30am-3pm ET): exits already ran above; pause NEW entries.
-    # 56% of W118 wins are premarket — midday only chops out good setups.
-    if _in_midday_chop():
-        log.info("[scan] midday chop (10:30am-3pm ET) — exits managed, new entries paused")
-        _last_summary = {
-            "time": now, "candidates": 0, "positions": len(held),
-            "trades": trades_today(), "signals": 0,
-            "blockers": {"midday chop — entries paused": 1},
-        }
-        return
+        entries_open, pause_reason = False, f"daily cap {MAX_DAILY_TRADES} reached"
+    elif len(held) >= MAX_POSITIONS:
+        entries_open, pause_reason = False, f"{MAX_POSITIONS} positions open"
+    elif _in_midday_chop():
+        entries_open, pause_reason = False, "midday chop (10:30am-3pm ET)"
 
     candidates = discover()
-    log.info(f"[scan] {len(candidates)} candidates → checking W118 conditions")
+    log.info(f"[scan] {len(candidates)} candidates → checking W118 conditions"
+             + ("" if entries_open else f"  (ALERT-ONLY: {pause_reason})"))
 
     blockers: Counter = Counter()
     signals = 0
     for ticker in candidates:
         if ticker in held:
             continue
-        # Never buy the same ticker twice in one day. Without this, a slow/uncertain
-        # fill (premarket) makes the next scan think we don't own it → repeat buys.
-        if ticker in _bought_today:
-            continue
-        if trades_today() >= MAX_DAILY_TRADES or len(get_held()) >= MAX_POSITIONS:
-            break
 
         bars = get_bars(ticker)
         if not bars:
@@ -643,10 +661,27 @@ def scan():
         if ok:
             signals += 1
             curl = " ⭐deep-curl" if info.get("deep_curl") else ""
-            log.info(f"[SIGNAL] {ticker} — ALL PASS: price=${info['price']} K={info['k']}↑ MACD▲ vol={info['vol_ratio']}x{curl}")
-            _bought_today.add(ticker)   # mark BEFORE the order so a slow fill can't trigger a repeat
-            execute_buy(ticker, info["price"], info)
-            held = get_held()
+            # Can we actually auto-buy? Re-check live caps each pass so a buy made
+            # earlier in THIS loop correctly flips later passes to alert-only.
+            if ticker in _bought_today:
+                why = "already bought today"
+            elif not entries_open:
+                why = pause_reason
+            elif trades_today() >= MAX_DAILY_TRADES:
+                why = f"daily cap {MAX_DAILY_TRADES} reached"
+            elif len(get_held()) >= MAX_POSITIONS:
+                why = f"{MAX_POSITIONS} positions open"
+            else:
+                why = None   # clear to buy
+
+            if why is None:
+                log.info(f"[SIGNAL] {ticker} — ALL PASS (auto-buy): price=${info['price']} K={info['k']}↑ MACD▲ vol={info['vol_ratio']}x{curl}")
+                _bought_today.add(ticker)   # mark BEFORE the order so a slow fill can't trigger a repeat
+                execute_buy(ticker, info["price"], info)
+                held = get_held()
+            else:
+                log.info(f"[SIGNAL] {ticker} — ALL PASS (manual, {why}){curl}")
+                _send_setup_alert(ticker, info, why)
         else:
             # Tally each blocker individually for heartbeat
             for b in info.get("blockers", [info.get("fail", "unknown")]):
@@ -670,8 +705,10 @@ def scan():
         "trades":     trades_today(),
         "signals":    signals,
         "blockers":   dict(blockers),
+        "mode":       pause_reason or "live",
     }
-    log.info(f"[scan] done. Positions: {len(get_held())} / {MAX_POSITIONS}")
+    log.info(f"[scan] done. Positions: {len(get_held())} / {MAX_POSITIONS}"
+             + ("" if entries_open else f"  (alert-only: {pause_reason})"))
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
