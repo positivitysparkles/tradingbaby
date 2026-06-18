@@ -104,6 +104,19 @@ def get_latest_price(ticker: str) -> float | None:
     except Exception:
         return None
 
+def is_tradeable(ticker: str) -> bool:
+    """Check Alpaca asset status before buying. Returns False when the stock is
+    halted, not listed, or otherwise untradeable — prevents wasted 422 attempts."""
+    try:
+        asset = _alpaca("GET", f"/v2/assets/{ticker}")
+        if not asset.get("tradable"):
+            log.info(f"[skip] {ticker} not tradeable on Alpaca (status={asset.get('status')})")
+            return False
+        return True
+    except Exception as e:
+        log.warning(f"[asset-check] {ticker}: {e} — allowing buy attempt")
+        return True   # fail open: don't block on API errors
+
 def get_bars(ticker: str, limit: int = 100, timeframe: str = "5Min") -> list | None:
     try:
         data = _alpaca("GET", f"/v2/stocks/{ticker}/bars",
@@ -408,6 +421,12 @@ def execute_buy(ticker: str, price: float, info: dict):
     t1   = round(price * (1 + T1_PCT), 2)
     t2   = round(price * (1 + T2_PCT), 2)
     t3   = round(price * (1 + T3_PCT), 2)
+
+    # Guard: skip halted / non-exchange stocks before even trying the order.
+    # Alpaca returns 422 on halted stocks with no clear message — this check makes
+    # the skip explicit and avoids burning the _bought_today slot on a bad order.
+    if not is_tradeable(ticker):
+        return False
 
     # Session-aware entry. RTH → market order (fills instantly). Premarket/afterhours
     # → marketable LIMIT (last × 1.02) + extended_hours, because Alpaca will NOT fill
