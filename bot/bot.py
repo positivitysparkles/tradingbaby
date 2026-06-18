@@ -94,6 +94,16 @@ def cancel_ticker_orders(ticker: str):
             except Exception:
                 pass
 
+def get_latest_price(ticker: str) -> float | None:
+    """Real-time last trade price from Alpaca IEX feed. Used to show a live quote
+    in MANUAL SETUP alerts instead of the (potentially stale) bar close."""
+    try:
+        data = _alpaca("GET", f"/v2/stocks/{ticker}/trades/latest",
+                       params={"feed": "iex"})
+        return float(data["trade"]["p"])
+    except Exception:
+        return None
+
 def get_bars(ticker: str, limit: int = 100, timeframe: str = "5Min") -> list | None:
     try:
         data = _alpaca("GET", f"/v2/stocks/{ticker}/bars",
@@ -411,7 +421,7 @@ def execute_buy(ticker: str, price: float, info: dict):
         log.info(f"[buy] {ticker} extended-hours limit @ ${buy_lim} (last ${price:.4f})")
     if not ok:
         log.error(f"[buy] BUY order failed for {ticker}")
-        return
+        return False
 
     # Poll until Alpaca confirms the position exists. A fixed sleep can still race;
     # polling is deterministic — targets land exactly when the fill is settled.
@@ -425,7 +435,7 @@ def execute_buy(ticker: str, price: float, info: dict):
             f"🛑 Stop: ${stop}  (-8%) — scan-enforced\n"
             f"🎯 T1: ${t1}  T2: ${t2}  T3: ${t3}  — SET MANUALLY"
         )
-        return
+        return False
 
     # Attach exits as 3 OCO bracket legs (t1_qty+t2_qty+t3_qty = qty exactly, no
     # oversell). Each leg = take-profit + protective stop, linked. This puts a REAL
@@ -462,6 +472,7 @@ def execute_buy(ticker: str, price: float, info: dict):
     tg(msg)
     log.info(f"[buy] {ticker} @ ${price} ×{qty}sh (~${qty*price:.0f})  stop=${stop} ({stop_note})  "
              f"T1={'✓' if res['T1'] else '✗'} T2={'✓' if res['T2'] else '✗'} T3={'✓' if res['T3'] else '✗'}")
+    return True
 
 def execute_exit(ticker: str, reason: str):
     sold = market_sell_position(ticker)
@@ -581,7 +592,10 @@ def _send_setup_alert(ticker: str, info: dict, why: str) -> None:
     if time.time() - last < 600:
         return
     _setup_sent[ticker] = time.time()
-    price = info["price"]
+    bar_price  = info["price"]                 # last 5-min bar close (signal fired here)
+    live_price = get_latest_price(ticker)      # real-time last trade
+    price = live_price if live_price else bar_price
+    price_note = "live" if live_price else "last 5m bar"
     qty   = max(3, int(DOLLARS_PER_TRADE / price))
     stop  = round(price * (1 - STOP_PCT), 2)
     t1    = round(price * (1 + T1_PCT), 2)
@@ -592,7 +606,7 @@ def _send_setup_alert(ticker: str, info: dict, why: str) -> None:
     tg(
         f"🔔 <b>MANUAL SETUP — {html.escape(ticker)}</b>{curl}\n"
         f"<i>Bot can't auto-buy ({html.escape(why)}) — you can paper-trade it:</i>\n"
-        f"Entry ~${price:.4f}  ×{qty} shares (~${qty*price:.0f})\n"
+        f"Entry ~${price:.4f} ({price_note})  ×{qty} shares (~${qty*price:.0f})\n"
         f"K={info['k']}↑ D={info['d']}  MACD {macd}  Vol {info['vol_ratio']}x\n"
         f"🛑 Stop ${stop}  (-8%)\n"
         f"🎯 T1 ${t1} (+15%)   T2 ${t2} (+30%)   T3 ${t3} (+60%)"
@@ -746,7 +760,9 @@ def scan():
             if why is None:
                 log.info(f"[SIGNAL] {ticker} — ALL PASS (auto-buy): price=${info['price']} K={info['k']}↑ MACD▲ vol={info['vol_ratio']}x{curl}")
                 _bought_today.add(ticker)   # mark BEFORE the order so a slow fill can't trigger a repeat
-                execute_buy(ticker, info["price"], info)
+                bought = execute_buy(ticker, info["price"], info)
+                if not bought:
+                    _bought_today.discard(ticker)  # order failed (e.g. halted) — allow retry next scan
                 held = get_held()
             else:
                 log.info(f"[SIGNAL] {ticker} — ALL PASS (manual, {why}){curl}")
