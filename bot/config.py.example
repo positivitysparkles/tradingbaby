@@ -11,7 +11,7 @@ ALPACA_BASE_URL = "https://paper-api.alpaca.markets"
 ALPACA_DATA_URL = "https://data.alpaca.markets"
 
 # Trade rules (W118 system)
-MAX_DAILY_TRADES  = 3         # hard cap — bot stops entering new trades after this
+MAX_DAILY_TRADES  = 5         # hard cap — bot stops entering new trades after this
 MAX_POSITIONS     = 3         # max simultaneous open positions
 SHARES_PER_TRADE  = 10        # fixed lot size for paper trading
 STOP_PCT          = 0.08      # -8% hard stop
@@ -46,3 +46,9 @@ MIDDAY_END_ET   = 15.0        # 3:00pm ET  — entries resume (power hour)
 # recently dipped near 0 then curled up = stronger reload (Colab grader's ⭐).
 # Shown in alerts + logged so the audit can learn if deep curls win more often.
 DEEP_CURL_RESET = 20.0        # K dipped below this in the lookback = deep curl
+
+# Extended-hours fills — Alpaca CANNOT fill market orders outside 9:30am-4pm ET.
+# In premarket/afterhours the bot must use a LIMIT order + extended_hours=True.
+# This buffer sets the limit price above last (last × 1.02) so the order is
+# "marketable" and actually fills in thin premarket — W118's best window.
+EXT_HOURS_LIMIT_BUFFER = 0.02 # pay up to +2% above last to guarantee a premarket fill

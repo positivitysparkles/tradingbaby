@@ -36,6 +36,7 @@ from config import (
     MIN_PRICE, MAX_PRICE, MAX_FLOAT, MIN_CHANGE_PCT, MIN_ABS_VOLUME, REL_VOL_MIN,
     SCAN_INTERVAL_MIN, GATE_OPEN_UTC, GATE_CLOSE_UTC,
     AVOID_MIDDAY, MIDDAY_START_ET, MIDDAY_END_ET, DEEP_CURL_RESET,
+    EXT_HOURS_LIMIT_BUFFER,
 )
 from indicators import check_all_entry, check_exit_signal
 
@@ -109,13 +110,18 @@ def get_bars(ticker: str, limit: int = 100) -> list | None:
 
 def place_order(ticker: str, qty: int, side: str, otype: str,
                 limit_price: float = None, stop_price: float = None,
-                tif: str = "gtc") -> bool:
+                tif: str = "gtc", extended_hours: bool = False) -> bool:
     body: dict = {"symbol": ticker, "qty": qty, "side": side,
                   "type": otype, "time_in_force": tif}
     if limit_price:
         body["limit_price"] = str(round(limit_price, 2))
     if stop_price:
         body["stop_price"] = str(round(stop_price, 2))
+    # Alpaca only accepts extended_hours on LIMIT + DAY orders. Premarket/afterhours
+    # market orders silently sit at "new" and never fill — this is the flag that
+    # makes premarket entries actually execute.
+    if extended_hours:
+        body["extended_hours"] = True
     try:
         _alpaca("POST", "/v2/orders", json=body)
         return True
@@ -327,7 +333,18 @@ def log_trade(ticker: str, price: float, info: dict):
 
 # ── Trade execution ───────────────────────────────────────────────────────────
 
-def _confirm_position(ticker: str, timeout: int = 15) -> bool:
+def _is_rth() -> bool:
+    """True only during regular trading hours (Mon-Fri 9:30am-4:00pm ET).
+    Outside this window Alpaca rejects/parks market orders — we must use a
+    limit order with extended_hours=True instead."""
+    et = datetime.now(ET)
+    if et.weekday() >= 5:          # Sat/Sun
+        return False
+    hours = et.hour + et.minute / 60.0
+    return 9.5 <= hours < 16.0
+
+
+def _confirm_position(ticker: str, timeout: int = 30) -> bool:
     """Poll Alpaca until the buy fill appears as a confirmed position."""
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -343,14 +360,23 @@ def execute_buy(ticker: str, price: float, info: dict):
     t2   = round(price * (1 + T2_PCT), 2)
     t3   = round(price * (1 + T3_PCT), 2)
 
-    ok = place_order(ticker, SHARES_PER_TRADE, "buy", "market", tif="day")
+    # Session-aware entry. RTH → market order (fills instantly). Premarket/afterhours
+    # → marketable LIMIT (last × 1.02) + extended_hours, because Alpaca will NOT fill
+    # a market order outside 9:30-16:00 ET (it parks at "new" forever).
+    if _is_rth():
+        ok = place_order(ticker, SHARES_PER_TRADE, "buy", "market", tif="day")
+    else:
+        buy_lim = round(price * (1 + EXT_HOURS_LIMIT_BUFFER), 2)
+        ok = place_order(ticker, SHARES_PER_TRADE, "buy", "limit",
+                         limit_price=buy_lim, tif="day", extended_hours=True)
+        log.info(f"[buy] {ticker} extended-hours limit @ ${buy_lim} (last ${price:.4f})")
     if not ok:
         log.error(f"[buy] BUY order failed for {ticker}")
         return
 
     # Poll until Alpaca confirms the position exists. A fixed sleep can still race;
     # polling is deterministic — targets land exactly when the fill is settled.
-    if not _confirm_position(ticker, timeout=15):
+    if not _confirm_position(ticker, timeout=30):
         log.error(f"[buy] {ticker} position not confirmed after 15s — targets NOT placed")
         tg(f"<b>⚠️ {html.escape(ticker)}: fill unconfirmed after 15s</b>\nSet T1/T2/T3 manually on Alpaca!")
         log_trade(ticker, price, info)
@@ -487,6 +513,8 @@ def _blocker_bucket(reason: str) -> str:
 _first_scan_of_day: str = ""
 _last_summary: dict = {}     # populated each scan, read by the hourly heartbeat
 _watch_sent: dict  = {}      # ticker → timestamp; throttle WATCH alerts to 1 per 10 min
+_bought_today: set = set()   # tickers already bought today — never double-buy the same name
+_bought_day: str   = ""      # date the set above belongs to (reset on rollover)
 
 def _send_watch_alert(ticker: str, info: dict) -> None:
     """Fire a Telegram WATCH alert when a ticker hits 4/5 conditions — manual entry cue."""
@@ -530,13 +558,18 @@ def heartbeat() -> None:
     log.info("[heartbeat] sent")
 
 def scan():
-    global _first_scan_of_day, _last_summary
+    global _first_scan_of_day, _last_summary, _bought_today, _bought_day
     if not _in_gate():
         return
 
     now    = datetime.now(ET).strftime("%H:%M ET")
     today  = date.today().isoformat()
     log.info(f"[scan] ── {now} ─────────────────────────────────────")
+
+    # Reset the once-per-day "already bought" guard when the date rolls over.
+    if _bought_day != today:
+        _bought_day = today
+        _bought_today = set()
 
     # Send one "I'm alive" Telegram at the first scan of each day
     if _first_scan_of_day != today:
@@ -593,6 +626,10 @@ def scan():
     for ticker in candidates:
         if ticker in held:
             continue
+        # Never buy the same ticker twice in one day. Without this, a slow/uncertain
+        # fill (premarket) makes the next scan think we don't own it → repeat buys.
+        if ticker in _bought_today:
+            continue
         if trades_today() >= MAX_DAILY_TRADES or len(get_held()) >= MAX_POSITIONS:
             break
 
@@ -607,6 +644,7 @@ def scan():
             signals += 1
             curl = " ⭐deep-curl" if info.get("deep_curl") else ""
             log.info(f"[SIGNAL] {ticker} — ALL PASS: price=${info['price']} K={info['k']}↑ MACD▲ vol={info['vol_ratio']}x{curl}")
+            _bought_today.add(ticker)   # mark BEFORE the order so a slow fill can't trigger a repeat
             execute_buy(ticker, info["price"], info)
             held = get_held()
         else:
