@@ -54,18 +54,31 @@ def stochrsi(closes: list, curl_lookback: int = 12
     return sk[-1], sd[-1], sk[-2], recent_low
 
 
-def macd_hist(closes: list) -> float | None:
+def macd(closes: list) -> tuple[float | None, float | None]:
     """
-    MACD(5,10,16) histogram. Blue line (MACD) must be above red line (signal).
-    Faster settings than standard 12,26,9 — fires earlier, in sync with Supertrend.
+    MACD(5,10,16). Returns (macd_line, histogram).
+
+    • macd_line > 0  → fast EMA above slow EMA = SUSTAINED uptrend. This is the
+      "blue line above the zero baseline" seen on every A+ runner (CDT +102%,
+      ADTX +211%, CAST +118%). It separates real trends from dead-cat bounces
+      inside a downtrend (the ATPC chase blipped histogram-green with the line
+      still below/at zero).
+    • histogram > 0  → macd_line above signal = momentum turning up right now.
+
+    Faster than standard 12,26,9 — fires in sync with Supertrend, not lagging.
     """
     if len(closes) < 32:
-        return None
+        return None, None
     e5  = _ema(closes, 5)
     e10 = _ema(closes, 10)
     macd_line = [a - b for a, b in zip(e5, e10)]
     sig_line  = _ema(macd_line, 16)
-    return macd_line[-1] - sig_line[-1]
+    return macd_line[-1], macd_line[-1] - sig_line[-1]
+
+
+def macd_hist(closes: list) -> float | None:
+    """Back-compat helper — just the histogram from macd()."""
+    return macd(closes)[1]
 
 
 def supertrend(bars: list, period: int = 10, mult: float = 2.0) -> int | None:
@@ -174,14 +187,18 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
     else:
         blockers.append(f"below ZLSMA ${zl:.3f}")
 
-    # 4. MACD(5,10,16) histogram > 0
-    hist = macd_hist(closes)
-    if hist is None:
+    # 4. MACD(5,10,16): blue line above ZERO (sustained uptrend) AND histogram > 0
+    #    (momentum turning up). Both = the A+ runner structure. Line-above-zero is
+    #    what the histogram-only check was missing — it rejects dead-cat bounces.
+    m_line, hist = macd(closes)
+    if hist is None or m_line is None:
         blockers.append("MACD error")
-    elif hist > 0:
-        passed += 1
+    elif m_line <= 0:
+        blockers.append(f"MACD line {m_line:.4f} below zero (not in uptrend)")
+    elif hist <= 0:
+        blockers.append(f"MACD hist {hist:.4f} (momentum fading)")
     else:
-        blockers.append(f"MACD {hist:.4f}")
+        passed += 1
 
     # 5. Volume > rel_vol_min × 20-bar average
     vols    = [b["v"] for b in bars[-21:-1]]
@@ -206,7 +223,8 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
         "k_low":     round(k_low, 1)  if k_low is not None else None,
         "deep_curl": deep_curl,
         "zlsma":     round(zl, 4)     if zl   is not None else None,
-        "macd_hist": round(hist, 5)   if hist  is not None else None,
+        "macd_hist": round(hist, 5)   if hist   is not None else None,
+        "macd_line": round(m_line, 5) if m_line is not None else None,
         "vol_ratio": round(vol_ratio, 1),
         "blockers":  blockers,
         "fail":      " | ".join(blockers) if blockers else None,
