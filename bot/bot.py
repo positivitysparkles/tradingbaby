@@ -75,9 +75,10 @@ log = logging.getLogger("w118")
 ET  = timezone(timedelta(hours=-4))   # EDT. Change to -5 after Nov daylight saving.
 UTC = timezone.utc
 
-DATA_DIR   = Path(__file__).parent.parent / "data"
-TRADE_LOG  = DATA_DIR / "trade_log.json"
-MANUAL_WL  = DATA_DIR / "watchlist.json"
+DATA_DIR     = Path(__file__).parent.parent / "data"
+TRADE_LOG    = DATA_DIR / "trade_log.json"
+MANUAL_WL    = DATA_DIR / "watchlist.json"
+EXIT_PENDING = DATA_DIR / "exit_pending.json"  # survives restarts — no re-alert on stuck exits
 
 # ── Alpaca REST helpers ───────────────────────────────────────────────────────
 
@@ -201,19 +202,31 @@ def market_sell_position(ticker: str) -> bool:
                 continue
             if _is_rth():
                 return place_order(ticker, qty, "sell", "market", tif="day")
-            # Outside RTH (premarket / afterhours): Alpaca cancels market+day orders —
-            # they park at "new" and never fill. A marketable limit with extended_hours=True
-            # actually executes (same pattern as the premarket buy entry).
+            # Outside RTH: submit a market-on-open (opg) order — executes at the 9:30am
+            # opening auction, guaranteed fill no matter where the stock opens.
+            # This prevents a limit from missing if the stock gaps down further overnight.
+            log.info(f"[exit] {ticker} premarket — submitting market-on-open (opg) stop exit")
+            ok = place_order(ticker, qty, "sell", "market", tif="opg")
+            if ok:
+                return True
+            # Fallback: ext-hours marketable limit if opg is rejected by Alpaca
             cur = float(p.get("current_price") or 0) or (get_latest_price(ticker) or 0.0)
             if cur > 0:
-                lim = round(cur * 0.97, 4)   # 3% slippage buffer — fills in thin tape
-                log.info(f"[exit] {ticker} ext-hours limit sell @ ${lim} (cur=${cur:.4f})")
+                lim = round(cur * 0.97, 4)
+                log.info(f"[exit] {ticker} opg rejected — ext-hours limit @ ${lim}")
                 return place_order(ticker, qty, "sell", "limit",
                                    limit_price=lim, tif="day", extended_hours=True)
             return place_order(ticker, qty, "sell", "market", tif="day")
     return False
 
 # ── Telegram ──────────────────────────────────────────────────────────────────
+
+def _save_exit_pending():
+    """Write _exiting_now to disk so bot restarts don't re-alert on in-flight exits."""
+    try:
+        EXIT_PENDING.write_text(json.dumps({"tickers": list(_exiting_now)}))
+    except Exception:
+        pass
 
 def tg(msg: str):
     try:
@@ -684,6 +697,7 @@ def execute_exit(ticker: str, reason: str):
             # sent the alert and logged to Supabase. Suppress the duplicate.
             return
         _exiting_now.add(ticker)
+        _save_exit_pending()
         exit_price = get_latest_price(ticker) or 0.0
         # Build a self-audit note. Losers get tagged LOSS AUTOPSY so the dashboard
         # can mine them for patterns (which session / which exit reason leaks money).
@@ -921,19 +935,25 @@ def heartbeat() -> None:
     if not s:
         tg("💓 <b>Bot alive</b> — first scan still pending.")
         return
-    if s.get("blockers"):
-        top = sorted(s["blockers"].items(), key=lambda x: -x[1])
-        blk = " · ".join(f"{name} ({n})" for name, n in top)
-    else:
-        blk = "—"
     mode = s.get("mode", "live")
     mode_line = "" if mode == "live" else f"\n⚠️ Auto-entries paused ({mode}) — manual setup alerts still firing"
+
+    # Top 3 blockers so the user knows what conditions are failing most
+    if s.get("blockers"):
+        top = sorted(s["blockers"].items(), key=lambda x: -x[1])[:3]
+        blk = "\n".join(f"  • {name}: {n} stock(s)" for name, n in top)
+    else:
+        blk = "  • No candidates found this scan"
+
+    # Pending exits get a callout so position status is always visible
+    exits = list(_exiting_now)
+    exit_line = f"\n⏳ Pending exits: {', '.join(exits)}" if exits else ""
+
     tg(
         f"💓 <b>Bot alive</b> — {s['time']}\n"
-        f"Checked {s['candidates']} candidates · {s['positions']}/{MAX_POSITIONS} open · "
-        f"{s['trades']} trades today\n"
-        f"Setups passing all 5: <b>{s['signals']}</b>{mode_line}\n"
-        f"Why no entry → {blk}"
+        f"Scanned {s['candidates']} stocks · {s['positions']}/{MAX_POSITIONS} open · {s['trades']} trades today\n"
+        f"Full 5/5 setups found: <b>{s['signals']}</b>{mode_line}{exit_line}\n\n"
+        f"<b>Why no alert</b> (top blockers):\n{blk}"
     )
     log.info("[heartbeat] sent")
 
@@ -958,7 +978,10 @@ def scan():
 
     held = get_held()
     # Release the exit guard for any ticker whose position is now fully gone (fill confirmed).
+    before = set(_exiting_now)
     _exiting_now.intersection_update(held)
+    if before != _exiting_now:
+        _save_exit_pending()   # position filled — clear from disk too
 
     # Check exits on existing positions first (signal exits + hard P&L stop backup)
     positions = get_positions()
@@ -1118,6 +1141,32 @@ def main():
     if "PASTE" in TELEGRAM_TOKEN:
         log.error("Fill in TELEGRAM_TOKEN in bot/config.py first.")
         sys.exit(1)
+
+    # Supabase health check — warn immediately if tables are missing or URL is wrong
+    if _SB_ENABLED:
+        t_check = _sb("GET", "/rest/v1/w118_trades?limit=1&select=id")
+        e_check = _sb("GET", "/rest/v1/w118_edge?limit=1&select=id")
+        if t_check is None:
+            log.warning("⚠️  [supabase] w118_trades unreachable — check SUPABASE_URL + SUPABASE_KEY in config.py")
+        elif e_check is None:
+            log.warning("⚠️  [supabase] w118_edge table missing — run the SQL in supabase/schema.sql on your trading project")
+        else:
+            log.info("[supabase] ✓ connected — w118_trades + w118_edge ready")
+    else:
+        log.warning("[supabase] disabled — add SUPABASE_URL + SUPABASE_KEY to config.py to enable P&L tracking")
+
+    # Reload exit guard from last session — if the bot restarted while an exit order
+    # was pending (e.g. during a premarket crash), don't re-send the Telegram alert.
+    held_now = get_held()
+    try:
+        if EXIT_PENDING.exists():
+            saved = json.loads(EXIT_PENDING.read_text()).get("tickers", [])
+            for t in saved:
+                if t in held_now:
+                    _exiting_now.add(t)
+                    log.info(f"[exit] restored pending exit guard for {t} from last session")
+    except Exception:
+        pass
 
     # Warm the edge profile from prior closed trades before the first scan.
     try:
