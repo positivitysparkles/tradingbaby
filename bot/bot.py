@@ -957,6 +957,27 @@ def heartbeat() -> None:
     )
     log.info("[heartbeat] sent")
 
+def market_open_alert():
+    """Fire once at 9:30am ET (market open) — status snapshot so you always know what's in play."""
+    positions = get_positions()
+    pos_lines = ""
+    for p in positions:
+        pl_pct = float(p.get("unrealized_plpc", 0)) * 100
+        pos_lines += f"  {p['symbol']}: {p['qty']}sh  {pl_pct:+.1f}%\n"
+    s = _last_summary
+    blk = "—"
+    if s.get("blockers"):
+        top = sorted(s["blockers"].items(), key=lambda x: -x[1])[:3]
+        blk = " · ".join(f"{name} ({n}x)" for name, n in top)
+    tg(
+        f"🔔 <b>Market Open — 9:30am ET</b>\n"
+        f"Positions: {len(positions)}/{MAX_POSITIONS}  |  RTH started — signal exits + OCO brackets now active\n"
+        + (f"\n<b>Holding:</b>\n{pos_lines}" if pos_lines else "\nNo open positions — scanning for entries\n")
+        + f"\n<b>Premarket blockers were:</b> {blk}"
+    )
+    log.info("[market-open] 9:30am ET bell notification sent")
+
+
 def scan():
     global _first_scan_of_day, _last_summary, _bought_today, _bought_day
     if not _in_gate():
@@ -1107,8 +1128,7 @@ def scan():
             if score >= max_ - 1 and st_green:
                 _send_watch_alert(ticker, info)
             else:
-                # Not close enough — silent debug only, no spam
-                log.debug(f"[skip] {ticker} {score}/{max_}: {info.get('fail')}")
+                log.info(f"[skip] {ticker} {score}/{max_}: {info.get('fail', 'unknown')}")
 
         time.sleep(0.15)  # ~6 reqs/sec — well under Alpaca's 200/min free limit
 
@@ -1183,7 +1203,8 @@ def main():
     )
 
     schedule.every(SCAN_INTERVAL_MIN).minutes.do(scan)
-    schedule.every().hour.do(heartbeat)                  # hourly "alive + why no entry" pulse
+    schedule.every(30).minutes.do(heartbeat)             # every 30 min — alive + top blockers
+    schedule.every().day.at("13:30").do(market_open_alert)  # 9:30am ET = 13:30 UTC
     schedule.every().day.at("20:30").do(daily_audit)     # 4:30pm ET = 20:30 UTC
     schedule.every().monday.at("21:00").do(weekly_audit) # Monday 5pm ET
 
