@@ -962,7 +962,7 @@ def _save_watch_sent():
         pass
 
 def _send_watch_alert(ticker: str, info: dict) -> None:
-    """Fire a Telegram WATCH alert when a ticker hits 4/5 conditions — manual entry cue.
+    """Fire a Telegram WATCH alert when a ticker hits ≥3 conditions — manual entry cue.
     K must be under 85: at K≥85 the stoch is overbought/extended, not a fresh curl setup."""
     k_val = info.get("k") or 0
     if k_val >= OVERBOUGHT_K:
@@ -977,12 +977,19 @@ def _send_watch_alert(ticker: str, info: dict) -> None:
     max_     = info["max"]
     missing  = html.escape(info.get("fail") or "—")   # escape so '<' can't break Telegram HTML
     curl = " ⭐deep-curl" if info.get("deep_curl") else ""
+    bar_price  = info["price"]
+    live_price = get_latest_price(ticker)
+    price      = live_price if live_price else bar_price
+    stop = round(price * (1 - STOP_PCT), 2)
+    t1   = round(price * (1 + T1_PCT),   2)
+    t2   = round(price * (1 + T2_PCT),   2)
+    t3   = round(price * (1 + T3_PCT),   2)
     tg(
         f"👀 <b>WATCH: {html.escape(ticker)}</b> — {score}/{max_} conditions{curl}\n"
-        f"Price ${info['price']:.2f}  "
+        f"Price ${price:.2f}  "
         f"K={info['k']}  Vol {info['vol_ratio']}x  VWAP {_vwap_tag(info)}\n"
         f"Missing: {missing}\n"
-        f"Check chart — manual entry possible"
+        f"🛑 Stop ${stop} (-8%)   🎯 T1 ${t1} (+15%)  T2 ${t2} (+30%)  T3 ${t3} (+60%)"
     )
     log.info(f"[WATCH] {ticker}: {score}/{max_} — {info.get('fail')}")
 
@@ -1008,11 +1015,23 @@ def heartbeat() -> None:
     exits = list(_exiting_now)
     exit_line = f"\n⏳ Pending exits: {', '.join(exits)}" if exits else ""
 
+    # Top setups digest — shows best scanner candidates even when nothing auto-bought
+    top_line = ""
+    top_setups = s.get("top_setups") or []
+    if top_setups:
+        items = []
+        for sc, mx, tk, inf in top_setups:
+            star = "⭐" if inf.get("deep_curl") else ""
+            vtag = " V✓" if inf.get("above_vwap") else (" V✗" if inf.get("above_vwap") is False else "")
+            items.append(f"{star}{html.escape(tk)} {sc}/{mx}{vtag}")
+        top_line = "\n\n📊 <b>Top setups this scan:</b>\n" + "  ".join(items)
+
     tg(
         f"💓 <b>Bot alive</b> — {s['time']}\n"
         f"Scanned {s['candidates']} stocks · {s['positions']}/{MAX_POSITIONS} open · {s['trades']} trades today\n"
         f"Full 5/5 setups found: <b>{s['signals']}</b>{mode_line}{exit_line}\n\n"
         f"<b>Why no alert</b> (top blockers):\n{blk}"
+        f"{top_line}"
     )
     log.info("[heartbeat] sent")
 
@@ -1194,10 +1213,10 @@ def scan():
             for b in (blk or [info.get("fail", "unknown")]):
                 blockers[_blocker_bucket(b)] += 1
 
-            # WATCH only when one gate away AND Supertrend is already green —
-            # the primary trigger must be on for it to be a real forming setup.
+            # WATCH when ≥3 conditions AND within 2 of full score AND Supertrend green —
+            # catches the 3/6, 4/6, 5/6 forming setups without noising up 1-2/6 names.
             st_green = "Supertrend bearish" not in blk
-            if score >= max_ - 1 and st_green:
+            if score >= max(3, max_ - 2) and st_green:
                 _send_watch_alert(ticker, info)
             else:
                 log.info(f"[skip] {ticker} {score}/{max_}: {info.get('fail', 'unknown')}")
@@ -1224,6 +1243,7 @@ def scan():
         "signals":    signals,
         "blockers":   dict(blockers),
         "mode":       pause_reason or "live",
+        "top_setups": worthy,   # (score, max, ticker, info) list for heartbeat digest
     }
     log.info(f"[scan] done. Positions: {len(get_held())} / {MAX_POSITIONS}"
              + ("" if entries_open else f"  (alert-only: {pause_reason})"))
