@@ -42,6 +42,14 @@ data/trades-parsed.json            ← 101 historical trades, 98.0% win rate
 
 **Note:** MACD settings changed to (5,10,16) on 2026-06-17 — faster than standard 12,26,9, fires in sync with Supertrend rather than lagging. Blue line above red = histogram > 0 = hard gate. StochRSI now requires K rising (K > K_prev) in addition to K > D. **MACD stays 5/10/16 — confirmed by owner 2026-06-19** (charts also show 12/26/9 but the bot uses the faster one).
 
+### Condition priority tiers (which of the 6 are MUST vs soft)
+Not all 6 carry equal weight. From the chart study:
+- **Tier 1 — Structure (hard MUST, never trade without):** Supertrend green (5m) · Price > VWAP · Price > ZLSMA-50. These define "is this even an uptrend." Every June-19 runner had all three; the WKSP chop broke VWAP.
+- **Tier 2 — Ignition (the entry timing):** StochRSI K>D & rising (the *hook* = the trigger) · MACD hist > 0.
+- **Tier 3 — Quality/context (soft):** Volume > 1.5× · MACD line > 0. **Volume is the soft one** — by design it DRIES UP during the coil; the surge prints on the breakout candle, so a hard volume gate can make us enter late.
+- **Supertrend is a hard gate to BUY, not to WATCH.** Red-supertrend scanner names STAY on the watchlist — the flip back to green IS the entry. 5m = the gun; 1m = entry-price fine-tuning (`REQUIRE_1M_FRESH`, off).
+- **Coil near-miss alert (2026-06-19):** when Tier-1 + Stoch hook + MACD all pass and ONLY volume is short, the bot fires a `🌀 COIL` manual alert (does not auto-buy). Lets us take the dry-coil entry by hand and let the edge engine learn whether volume is truly a must. Auto-buy still requires the full pass — we keep clean learning data.
+
 ### ⭐ The A+ "Shelf Bounce" pattern (codified from June-19 chart study)
 The highest-probability entry is the **second-leg continuation**, not the first vertical spike:
 1. **Anchor spike** breaks above Session VWAP + pushes the Curl cloud solid green
