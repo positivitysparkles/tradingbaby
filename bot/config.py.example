@@ -41,10 +41,13 @@ CATALYST_PROXY     = True      # price-action catalyst detection (gap / halt-res
 # Scanner filters (W118 universe — matches Colab scanner exactly)
 MIN_PRICE         = 0.10
 MAX_PRICE         = 15.00     # matches TradingView Yassss screen
-MAX_FLOAT         = 20_000_000 # float < 20M shares — low float = explosive moves
+MAX_FLOAT         = 10_000_000 # float < 10M shares — true low-float W118 universe
 MIN_CHANGE_PCT    = 10.0      # minimum % gain to consider
 MIN_ABS_VOLUME    = 1_000_000 # absolute volume floor (HTLM lesson)
-REL_VOL_MIN       = 1.5       # relative volume minimum — matches Colab grader (was 4.0, too strict, blocked nearly every entry)
+# TWO different "relative volume" knobs — do NOT conflate them:
+SCANNER_REL_VOL_MIN = 3.0     # TradingView DISCOVERY floor — which stocks even get scanned
+REL_VOL_MIN       = 1.5       # 5-MIN BAR confirmation (vol > 1.5x 20-bar avg). KEEP at 1.5 —
+                              # this being 4.0 blocked nearly every entry. NOT the scanner knob.
 SCAN_INTERVAL_MIN = 1         # how often to scan in minutes
 
 # Time gate (UTC). Summer: MT = UTC-6, ET = UTC-4
@@ -58,10 +61,25 @@ AVOID_MIDDAY    = False
 MIDDAY_START_ET = 10.5        # 10:30am ET — entries pause
 MIDDAY_END_ET   = 15.0        # 3:00pm ET  — entries resume (power hour)
 
-# Entry quality — deep-curl flag (informational only, no gate). StochRSI K that
-# recently dipped near 0 then curled up = stronger reload (Colab grader's ⭐).
-# Shown in alerts + logged so the audit can learn if deep curls win more often.
-DEEP_CURL_RESET = 20.0        # K dipped below this in the lookback = deep curl
+# Entry quality — deep-curl flag. StochRSI K that recently dipped low then curled up
+# = stronger reload (Colab grader's ⭐). Raised 20→30 on 2026-06-19: the user's own A+
+# CDT entry was K=33.9, so a strict ≤20 (or ≤25) reset would have BLOCKED the best trade.
+# The hook (K>D and rising) is the trigger, not the absolute floor.
+DEEP_CURL_RESET = 30.0        # K dipped below this in the lookback = reset/deep curl
+
+# ── VWAP shelf gate (A+ Shelf Bounce) ─────────────────────────────────────────
+# Session VWAP (Anchor=Session, Source=HL2) is the line every June-19 runner held
+# above and the WKSP chop did not. Hard gate WITH tolerance: a coil sitting ON the
+# line (a sub-tolerance wick below) still counts, so the bounce entry isn't blocked.
+VWAP_GATE      = True         # require price ≥ VWAP×(1−tol) to auto-buy; also feeds the grade
+VWAP_TOLERANCE = 0.005        # 0.5% — how far below VWAP still counts as "holding the shelf"
+
+# ── Chandelier Exit (CE 10/2) — additional trailing exit ──────────────────────
+# Ride the runner until a full candle CLOSES below the Chandelier line. Fires
+# alongside the Supertrend/ZLSMA/-8% exits (does not replace them). RTH-only.
+CHANDELIER_EXIT = True
+CE_ATR_PERIOD   = 10
+CE_ATR_MULT     = 2.0
 
 # Extended-hours fills — Alpaca CANNOT fill market orders outside 9:30am-4pm ET.
 # In premarket/afterhours the bot must use a LIMIT order + extended_hours=True.

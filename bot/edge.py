@@ -27,9 +27,13 @@ def grade_setup(info: dict, catalyst_tier: str | None) -> str:
     """
     A+/A/B/C from entry-time data (mirrors the scanner/audit.py A+ scale).
 
-      A+ = full technical pass + deep curl + strong catalyst (tier 1/2)
-      A  = full technical pass + (deep curl OR any catalyst)
-      B  = full technical pass only (5/5 but no extra edge)
+    The A+ "Shelf Bounce" DNA (from the June-19 chart study): a deep StochRSI reset
+    that curls up while price holds above Session VWAP. So a clean VWAP reclaim counts
+    as an edge signal alongside the catalyst — every June-19 runner held above VWAP.
+
+      A+ = full pass + deep curl + (strong catalyst tier 1/2 OR clean above VWAP)
+      A  = full pass + (deep curl OR any catalyst OR above VWAP)
+      B  = full technical pass only (no extra edge)
       C  = below full pass (won't normally reach auto-buy)
     """
     score = info.get("score", 0) or 0
@@ -37,11 +41,12 @@ def grade_setup(info: dict, catalyst_tier: str | None) -> str:
     if score < mx:
         return "C"
     deep       = bool(info.get("deep_curl"))
+    above_vwap = info.get("above_vwap") is True
     strong_cat = catalyst_tier in ("tier_1", "tier_2")
     has_cat    = catalyst_tier is not None
-    if deep and strong_cat:
+    if deep and (strong_cat or above_vwap):
         return "A+"
-    if deep or has_cat:
+    if deep or has_cat or above_vwap:
         return "A"
     return "B"
 
