@@ -40,7 +40,16 @@ type Trade = {
   exit_reason: string | null
   blockers: string | null
   notes: string | null
+  grade: string | null
+  catalyst: string | null
+  session: string | null
 }
+
+// Closed trades before the bot stops "learning" and starts "tightening"
+// (mirrors LEARN_THRESHOLD in bot/edge config).
+const LEARN_THRESHOLD = 30
+const GRADES = ['A+', 'A', 'B', 'C'] as const
+const SESSIONS = ['premarket', 'open', 'midday', 'power hour', 'after-hours'] as const
 
 // ── Midnight Rosé palette ─────────────────────────────────────────────────────
 const C = {
@@ -82,6 +91,13 @@ function topKey(counts: Record<string, number>): [string, number] | null {
 }
 
 // ── Atoms ─────────────────────────────────────────────────────────────────────
+function GradeBadge({ grade }: { grade: string | null }) {
+  if (!grade) return <span style={{ color: C.inkSoft }} className="mono text-xs">—</span>
+  const color = grade.startsWith('A') ? C.pink : grade === 'B' ? C.gold : C.inkSoft
+  const glow  = grade === 'A+' ? { textShadow: '0 0 12px rgba(255,95,162,0.7)' } : {}
+  return <span style={{ color, ...glow }} className="font-bold mono text-xs tracking-wide">{grade}</span>
+}
+
 function ScoreDots({ score, max }: { score: number; max: number }) {
   return (
     <span className="flex gap-1 items-center">
@@ -226,6 +242,22 @@ export default function Dashboard() {
   const exitReasons: Record<string, number> = {}
   closed.forEach(t => { const k = t.exit_reason ?? 'unknown'; exitReasons[k] = (exitReasons[k] ?? 0) + 1 })
 
+  // ── Edge Report (learn → tighten) ────────────────────────────────────────────
+  const phase = closed.length < LEARN_THRESHOLD ? 'Learning' : 'Tightening'
+  const learnPct = Math.min(100, Math.round((closed.length / LEARN_THRESHOLD) * 100))
+  const gradeStats = GRADES.map(g => {
+    const ts = closed.filter(t => t.grade === g)
+    const w  = ts.filter(t => (t.realized_pnl ?? 0) > 0).length
+    const pnl = ts.reduce((s, t) => s + (t.realized_pnl ?? 0), 0)
+    return { g, count: ts.length, win: ts.length ? Math.round((w / ts.length) * 100) : null, pnl }
+  }).filter(s => s.count > 0)
+  const sessionStats = SESSIONS.map(s => {
+    const ts = closed.filter(t => (t.session ?? sessionOf(t.time_et)) === s)
+    const w  = ts.filter(t => (t.realized_pnl ?? 0) > 0).length
+    return { s, count: ts.length, win: ts.length ? Math.round((w / ts.length) * 100) : null }
+  }).filter(x => x.count > 0)
+  const bestGrade = gradeStats.filter(s => s.count >= 2).sort((a, b) => (b.win ?? 0) - (a.win ?? 0))[0]
+
   return (
     <div className="min-h-screen px-4 py-10 md:px-10 max-w-6xl mx-auto" style={{ color: C.ink }}>
 
@@ -234,11 +266,26 @@ export default function Dashboard() {
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
             <p style={{ color: C.pink }} className="text-[10px] tracking-[0.32em] uppercase font-semibold mono mb-2">
-              W118 · Curl if Flow · Strategic Alpha
+              Curl if Flow · Strategic Alpha
             </p>
             <h1 className="font-display text-5xl md:text-6xl font-bold leading-none tracking-tight" style={{ color: C.ink }}>
               <span style={{ color: C.pink }} className="glow-pink">Olya&rsquo;s</span> Dashboard
             </h1>
+            <div className="mt-3 inline-flex items-center gap-2">
+              <span
+                style={{
+                  background: phase === 'Tightening' ? 'rgba(87,224,160,0.12)' : 'rgba(255,95,162,0.12)',
+                  color:      phase === 'Tightening' ? C.win : C.pink,
+                  border:     `1px solid ${phase === 'Tightening' ? 'rgba(87,224,160,0.3)' : C.line}`,
+                }}
+                className="text-[10px] px-2.5 py-1 rounded-full mono tracking-wider uppercase font-semibold"
+              >
+                {phase === 'Tightening' ? '◆ Tightening' : `◇ Learning ${closed.length}/${LEARN_THRESHOLD}`}
+              </span>
+              <span style={{ color: C.inkSoft }} className="text-[10px] mono">
+                self-improving
+              </span>
+            </div>
           </div>
           <div className="flex items-center gap-2 mt-1">
             {([7, 30, 90] as const).map(r => (
@@ -387,6 +434,71 @@ export default function Dashboard() {
         )}
       </Card>
 
+      {/* ── Edge Report — what's working ── */}
+      <Card className="p-5 mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <Label>Edge Report — What&rsquo;s Working</Label>
+          <span style={{ color: phase === 'Tightening' ? C.win : C.pink }} className="text-xs mono">
+            {phase === 'Tightening' ? 'tightening live' : `learning ${closed.length}/${LEARN_THRESHOLD}`}
+          </span>
+        </div>
+
+        {/* Learn → tighten progress */}
+        <div className="mb-5">
+          <div className="flex justify-between text-[11px] mono mb-1.5" style={{ color: C.inkSoft }}>
+            <span>Data gathered toward auto-tighten</span>
+            <span>{learnPct}%</span>
+          </div>
+          <div style={{ background: C.surface2 }} className="h-2 rounded-full overflow-hidden">
+            <div style={{
+              width: `${learnPct}%`,
+              background: phase === 'Tightening'
+                ? `linear-gradient(90deg, ${C.win}, #8af0c0)`
+                : `linear-gradient(90deg, ${C.pinkDim}, ${C.pink}, ${C.pinkSoft})`,
+            }} className="h-full rounded-full transition-all duration-700" />
+          </div>
+          <p className="text-xs mt-2" style={{ color: C.inkSoft }}>
+            {phase === 'Tightening'
+              ? 'The bot now auto-buys only grades proven to win; weaker setups drop to manual alerts.'
+              : `Still taking every valid signal to learn. At ${LEARN_THRESHOLD} closed trades it auto-restricts to what wins.`}
+            {bestGrade && ` Best grade so far: ${bestGrade.g} (${bestGrade.win}% over ${bestGrade.count}).`}
+          </p>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-6 text-sm">
+          {/* By grade */}
+          <div>
+            <p style={{ color: C.ink }} className="text-xs font-semibold tracking-wide uppercase mb-3 mono">Win Rate by Grade</p>
+            {gradeStats.length ? gradeStats.map(s => (
+              <div key={s.g} className="flex items-center gap-3 mb-2">
+                <span className="w-7"><GradeBadge grade={s.g} /></span>
+                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: C.surface2 }}>
+                  <div style={{ width: `${s.win ?? 0}%`, background: (s.win ?? 0) >= 50 ? C.win : C.pink }} className="h-full rounded-full" />
+                </div>
+                <span className="text-xs mono shrink-0" style={{ color: C.inkSoft }}>{s.win}% · {s.count}</span>
+                <span className="text-xs mono shrink-0 w-16 text-right" style={{ color: s.pnl >= 0 ? C.win : C.loss }}>
+                  {s.pnl >= 0 ? '+' : ''}${s.pnl.toFixed(0)}
+                </span>
+              </div>
+            )) : <span style={{ color: C.inkSoft }} className="text-xs">No graded closed trades yet.</span>}
+          </div>
+
+          {/* By session */}
+          <div>
+            <p style={{ color: C.ink }} className="text-xs font-semibold tracking-wide uppercase mb-3 mono">Win Rate by Session</p>
+            {sessionStats.length ? sessionStats.map(s => (
+              <div key={s.s} className="flex items-center gap-3 mb-2">
+                <span className="text-xs w-24 shrink-0" style={{ color: C.ink }}>{s.s}</span>
+                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: C.surface2 }}>
+                  <div style={{ width: `${s.win ?? 0}%`, background: (s.win ?? 0) >= 50 ? C.win : C.pink }} className="h-full rounded-full" />
+                </div>
+                <span className="text-xs mono shrink-0" style={{ color: C.inkSoft }}>{s.win}% · {s.count}</span>
+              </div>
+            )) : <span style={{ color: C.inkSoft }} className="text-xs">No closed trades yet.</span>}
+          </div>
+        </div>
+      </Card>
+
       {/* ── Trade log ── */}
       <Card className="overflow-hidden mb-8">
         <div style={{ borderBottom: `1px solid ${C.line}` }} className="px-5 py-3 flex items-center justify-between">
@@ -399,7 +511,7 @@ export default function Dashboard() {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ borderBottom: `1px solid ${C.line}` }}>
-                {['Date', 'Ticker', 'Status', 'Entry', 'Exit', 'P&L', 'Setup', 'K/D', 'Vol', 'Note'].map(h => (
+                {['Date', 'Ticker', 'Grade', 'Status', 'Entry', 'Exit', 'P&L', 'Setup', 'K/D', 'Vol', 'Note'].map(h => (
                   <th key={h} style={{ color: C.inkSoft }} className="px-4 py-2 text-left text-[10px] tracking-[0.15em] uppercase mono">{h}</th>
                 ))}
               </tr>
@@ -414,6 +526,7 @@ export default function Dashboard() {
                   <td className="px-4 py-3 font-semibold" style={{ color: C.ink }}>
                     {t.ticker}{t.deep_curl && <span style={{ color: C.pink }} className="ml-1 text-xs">⭐</span>}
                   </td>
+                  <td className="px-4 py-3"><GradeBadge grade={t.grade} /></td>
                   <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
                   <td className="px-4 py-3 mono" style={{ color: C.ink }}>${t.entry_price?.toFixed(3)}</td>
                   <td className="px-4 py-3 mono" style={{ color: C.inkSoft }}>{t.exit_price ? `$${t.exit_price.toFixed(3)}` : '—'}</td>
@@ -427,7 +540,7 @@ export default function Dashboard() {
                 </tr>
               ))}
               {!loading && trades.length === 0 && (
-                <tr><td colSpan={10} className="px-4 py-12 text-center font-display text-lg" style={{ color: C.inkSoft }}>
+                <tr><td colSpan={11} className="px-4 py-12 text-center font-display text-lg" style={{ color: C.inkSoft }}>
                   No trades in the last {range} days. The patient win.
                 </td></tr>
               )}
@@ -443,6 +556,7 @@ export default function Dashboard() {
                 <div className="flex items-center gap-2">
                   <span className="font-semibold" style={{ color: C.ink }}>{t.ticker}</span>
                   {t.deep_curl && <span style={{ color: C.pink }}>⭐</span>}
+                  <GradeBadge grade={t.grade} />
                   <StatusBadge status={t.status} />
                 </div>
                 <span className="font-semibold mono" style={pnlStyle(t.realized_pnl)}>

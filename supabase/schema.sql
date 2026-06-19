@@ -36,11 +36,21 @@ create table if not exists public.w118_trades (
   macd_line    numeric(10,6),
   zlsma        numeric(10,4),
 
+  -- Edge Engine (A+/A/B/C grade, catalyst tier, session bucket)
+  grade        text,
+  catalyst     text,
+  session      text,
+
   -- Audit
   exit_reason  text,
   blockers     text,
   notes        text
 );
+
+-- If the table already existed before the Edge Engine, add the new columns:
+alter table public.w118_trades add column if not exists grade    text;
+alter table public.w118_trades add column if not exists catalyst text;
+alter table public.w118_trades add column if not exists session  text;
 
 -- Indexes
 create index if not exists w118_trades_date_idx   on public.w118_trades (date desc);
@@ -57,5 +67,25 @@ create policy "anon read"
   to anon
   using (true);
 
+-- ── Edge memory — the bot's learned "what's working" snapshots ────────────────
+create table if not exists public.w118_edge (
+  id          uuid primary key default gen_random_uuid(),
+  computed_at timestamptz not null default now(),
+  n_closed    integer,
+  phase       text,          -- 'learning' | 'tightening'
+  summary     text,          -- one-line headline for Telegram + dashboard
+  profile     jsonb          -- per-bucket win-rate / avg-pnl / count map
+);
+
+create index if not exists w118_edge_computed_idx on public.w118_edge (computed_at desc);
+
+alter table public.w118_edge enable row level security;
+drop policy if exists "anon read edge" on public.w118_edge;
+create policy "anon read edge"
+  on public.w118_edge
+  for select
+  to anon
+  using (true);
+
 -- Verify
-select 'w118_trades table ready' as status;
+select 'w118_trades + w118_edge ready' as status;

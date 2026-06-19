@@ -108,9 +108,21 @@ bot/bot.py  (runs every 1 min, 2am–4pm MT / 4am–6pm ET — all-day observati
 |------|---------|
 | `bot/config.py` | API keys + trade rules (edit this once) |
 | `bot/bot.py` | Main loop — run this |
-| `bot/indicators.py` | Supertrend, StochRSI, ZLSMA, MACD |
+| `bot/indicators.py` | Supertrend, StochRSI, ZLSMA, MACD, catalyst proxy |
+| `bot/edge.py` | Edge Engine — A+/A/B/C grading, grade-scaled sizing, learn→tighten gate |
 | `bot/add_ticker.py` | `python bot/add_ticker.py AHMA JRSH` |
 | `bot/status.py` | Quick positions/P&L check |
+
+### Edge Engine (self-improving, caged) — added 2026-06-19
+Every entry is graded **A+/A/B/C** (full 5/5 + deep-curl + price-action catalyst =
+A+). Sizing is **grade-scaled** ($150 A+ → $50 C) but hard-clamped to
+`[DOLLARS_MIN, DOLLARS_MAX]`. The bot **learns then tightens**: it takes every valid
+signal until `LEARN_THRESHOLD` (30) closed trades exist, then auto-buys only grades
+proven to win (≥`EDGE_WINRATE_FLOOR` over ≥`EDGE_MIN_SAMPLE`) — restrict-only, never
+loosens a cap. Edge profile recomputed on startup + daily audit, cached to
+`data/edge_profile.json` + `w118_edge` (Supabase) for the dashboard. `MAX_POSITIONS`
+raised 3→5 for the paper learning phase. All new knobs default in-code (no config.py
+edit needed). Concurrency knob aside, a plain `git pull` + restart picks it all up.
 
 ### Quick start
 ```bash

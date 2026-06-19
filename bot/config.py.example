@@ -11,13 +11,32 @@ ALPACA_BASE_URL = "https://paper-api.alpaca.markets"
 ALPACA_DATA_URL = "https://data.alpaca.markets"
 
 # Trade rules (W118 system)
-MAX_DAILY_TRADES  = 9999      # effectively unlimited — MAX_POSITIONS=3 is the real risk control
-MAX_POSITIONS     = 3         # max simultaneous open positions (the real guard)
-DOLLARS_PER_TRADE = 100       # ~$100 per trade; shares = int(100 / price) at entry time
+MAX_DAILY_TRADES  = 9999      # effectively unlimited — MAX_POSITIONS is the real risk control
+MAX_POSITIONS     = 5         # max simultaneous open positions (the real guard; 5 = wider net for the paper learning phase, drop to 3 for "realistic money")
+DOLLARS_PER_TRADE = 100       # base trade size; the Edge Engine scales this by grade (below)
 STOP_PCT          = 0.08      # -8% hard stop
 T1_PCT            = 0.15      # +15% first target
 T2_PCT            = 0.30      # +30% second target
 T3_PCT            = 0.60      # +60% third target
+
+# ── Edge Engine — self-improving "learn, then tighten" loop ───────────────────
+# OPTIONAL: the bot bakes in identical defaults, so you do NOT need to add these to
+# your live config.py — they're here only if you want to tune later.
+#
+# Grade-scaled sizing: A+ presses harder, weaker setups risk less, ALWAYS clamped to
+# [DOLLARS_MIN, DOLLARS_MAX] so a single trade can never exceed the ceiling.
+DOLLARS_BY_GRADE   = {"A+": 150, "A": 100, "B": 60, "C": 50}
+DOLLARS_MIN        = 50        # hard floor per trade
+DOLLARS_MAX        = 200       # hard ceiling per trade — never exceeded, whatever the table says
+#
+# Learn → tighten: take every valid signal until LEARN_THRESHOLD closed trades exist
+# (gathering data), then auto-buy only grades proven to win (win-rate ≥
+# EDGE_WINRATE_FLOOR over ≥ EDGE_MIN_SAMPLE trades). Restrict-only — it can drop a
+# weak setup to a manual alert but never loosens a rule or raises a cap.
+LEARN_THRESHOLD    = 30        # closed trades before the bot starts tightening
+EDGE_WINRATE_FLOOR = 0.45      # a grade must win ≥45% (over enough trades) to stay auto-buy
+EDGE_MIN_SAMPLE    = 8         # need ≥8 closed trades on a grade before judging it
+CATALYST_PROXY     = True      # price-action catalyst detection (gap / halt-resume / runner)
 
 # Scanner filters (W118 universe — matches Colab scanner exactly)
 MIN_PRICE         = 0.10

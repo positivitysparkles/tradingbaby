@@ -273,6 +273,64 @@ def is_fresh_1m(bars_1m: list) -> tuple[bool, str]:
     return True, ""
 
 
+def catalyst_score(bars_5m: list, daily_bars: list | None = None) -> tuple[str | None, str]:
+    """
+    Price-action catalyst proxy — the W118 6th condition without a news feed.
+    Returns (tier, reason) where tier ∈ {"tier_1","tier_2","tier_3", None}.
+
+      tier_1 — news-scale gap: today's open ≥20% above prior daily close
+               (FDA / merger / earnings profile).
+      tier_2 — halt-resume signature (an intrabar jump ≥5% on a volume spike) OR a
+               day-2/3 runner (prior daily bar green with an expanding range).
+      tier_3 — a mover in our universe but none of the above (weaker catalyst).
+      None   — nothing notable.
+
+    Uses Alpaca bar dicts (keys o,h,l,c,v). `daily_bars` is optional; without it the
+    gap/runner checks are skipped and only the intraday halt-resume + tier_3 fallback
+    apply. Pure price/volume — no API keys, nothing for the user to wire up.
+    """
+    if not bars_5m:
+        return None, "no data"
+
+    # 1. News-scale daily gap (needs ≥2 daily bars)
+    if daily_bars and len(daily_bars) >= 2:
+        prior_close = daily_bars[-2].get("c")
+        today_open  = daily_bars[-1].get("o")
+        if prior_close and today_open and prior_close > 0:
+            gap = (today_open - prior_close) / prior_close
+            if gap >= 0.20:
+                return "tier_1", f"gap +{gap*100:.0f}% (news-scale)"
+
+    # 2a. Halt-resume signature on recent 5m bars: a bar that opened far from the
+    #     prior bar's close on a volume spike (the LULD resume re-print).
+    recent = bars_5m[-12:]
+    vols    = [b.get("v", 0) for b in recent]
+    med_vol = sorted(vols)[len(vols) // 2] if vols else 0
+    for i in range(1, len(recent)):
+        prev_c = recent[i - 1].get("c")
+        cur_o  = recent[i].get("o")
+        cur_v  = recent[i].get("v", 0)
+        if prev_c and cur_o and prev_c > 0:
+            jump = abs(cur_o - prev_c) / prev_c
+            if jump >= 0.05 and med_vol and cur_v >= 2 * med_vol:
+                return "tier_2", f"halt-resume jump {jump*100:.0f}% on {cur_v/med_vol:.1f}x vol"
+
+    # 2b. Day-2/3 runner: prior daily bar closed green with an expanding range.
+    if daily_bars and len(daily_bars) >= 3:
+        d1, d2 = daily_bars[-2], daily_bars[-3]
+        rng1 = d1.get("h", 0) - d1.get("l", 0)
+        rng2 = d2.get("h", 0) - d2.get("l", 0)
+        if d1.get("c", 0) > d1.get("o", 0) and rng1 > rng2 > 0:
+            return "tier_2", "day-2/3 runner (prior day green, range expanding)"
+
+    # 3. Still a mover intraday → weak catalyst
+    first_c, last_c = bars_5m[0].get("c"), bars_5m[-1].get("c")
+    if first_c and last_c and first_c > 0 and (last_c - first_c) / first_c >= 0.05:
+        return "tier_3", "in-momentum (intraday +5%)"
+
+    return None, "no catalyst signal"
+
+
 def check_exit_signal(bars: list) -> str | None:
     """
     Check W118 signal-based exits. Returns reason string or None.

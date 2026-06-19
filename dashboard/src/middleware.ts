@@ -119,7 +119,7 @@ export function middleware(req: NextRequest) {
 </head>
 <body>
   <div class="wrap">
-    <div class="ornament">✦ &nbsp; W118 · Curl if Flow &nbsp; ✦</div>
+    <div class="ornament">✦ &nbsp; Curl if Flow &nbsp; ✦</div>
     <h1><em>Olya&rsquo;s</em> Dashboard</h1>
     <p class="sub">Private access</p>
     <div class="divider">
