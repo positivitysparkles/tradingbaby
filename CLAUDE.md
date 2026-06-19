@@ -38,8 +38,18 @@ data/trades-parsed.json            ← 101 historical trades, 98.0% win rate
 | 3 | StochRSI K > D | 5m | critical |
 | 4 | Volume > 1.5x 20-bar average | 5m | confirming (was 4x — too strict, matched to Colab grader 2026-06-17) |
 | 5 | Catalyst: Tier 1 (FDA/merger) > Tier 2 (halt-resume) > Tier 3 (China momentum) | — | confirming |
+| 6 | **Price holds above Session VWAP** | 5m | hard gate w/ 0.5% tolerance (added 2026-06-19) |
 
-**Note:** MACD settings changed to (5,10,16) on 2026-06-17 — faster than standard 12,26,9, fires in sync with Supertrend rather than lagging. Blue line above red = histogram > 0 = hard gate. StochRSI now requires K rising (K > K_prev) in addition to K > D.
+**Note:** MACD settings changed to (5,10,16) on 2026-06-17 — faster than standard 12,26,9, fires in sync with Supertrend rather than lagging. Blue line above red = histogram > 0 = hard gate. StochRSI now requires K rising (K > K_prev) in addition to K > D. **MACD stays 5/10/16 — confirmed by owner 2026-06-19** (charts also show 12/26/9 but the bot uses the faster one).
+
+### ⭐ The A+ "Shelf Bounce" pattern (codified from June-19 chart study)
+The highest-probability entry is the **second-leg continuation**, not the first vertical spike:
+1. **Anchor spike** breaks above Session VWAP + pushes the Curl cloud solid green
+2. **Shelf compression** — price pulls back and trades flat ON the ZLSMA-50 / VWAP, volume dries up
+3. **Reset + hook** — StochRSI K resets low (≲30) then hooks up (K>D and **rising**); MACD hist flips dark-red→green near zero
+4. **Trigger** — Supertrend prints a fresh green flip
+- **VWAP is the divider:** every June-19 runner (ATPC +42%, CRVO, CDT +47%) held above VWAP; the WKSP chop did not.
+- **Reset zone = ≤30, NOT <25.** The owner's own A+ CDT entry was K=33.9 — a stricter floor would have blocked the best trade. The *hook* is the trigger, not the absolute low.
 
 **Step 3 — Entry:**
 - Enter on 5m Supertrend buy signal, OR zoom to 1m for a better price if signal already fired
@@ -50,7 +60,9 @@ data/trades-parsed.json            ← 101 historical trades, 98.0% win rate
 - **Supertrend:** ATR Period=10, Source=(H+L)/2, ATR Multiplier=2, Change ATR Calc=✓
 - **Stoch RSI:** RSI=14, Stoch=14, K_smooth=3, D_smooth=3, Source=Close
 - **ZLSMA-50:** 2×EMA(close,50) − EMA(EMA(close,50),50) | color: yellow
-- **MACD:** 12, 26, 9 | histogram > 0 = momentum building, not fading
+- **MACD:** 5, 10, 16 (bot uses this — faster, fires with Supertrend) | line>0 AND hist>0 = hard gate
+- **VWAP:** Anchor=Session, Source=HL2, Bands ×1 (added 2026-06-19) — `vwap_session()` in indicators.py
+- **Chandelier Exit (CE):** ATR Period=10, Multiplier=2, Use Close for Extremums=✓ (added 2026-06-19)
 - **SHA:** Double EMA(10,10) on Heikin Ashi values (visual reference only)
 
 ### Why Supertrend > W118 Buy Signal as trigger
@@ -67,6 +79,7 @@ at the trend change itself. Use W118 indicators as confirmation filters, Supertr
 | SHA exit | SHA red 2+ consecutive candles | Exit |
 | ZLSMA exit | Price closes below ZLSMA-50 | Exit |
 | Stoch exit | K crosses back below 20 | Exit |
+| **Chandelier exit** | Full candle closes below CE line (ATR 10/2) | Exit — ride the runner until this prints (added 2026-06-19, RTH-only) |
 
 ### Session Priority
 - **Premarket 4am–9:30am EST** = highest priority (56% of wins)
@@ -201,6 +214,19 @@ One click, then it connects without re-asking within the same session.
 | [skip] logging at INFO level + 9:30am bell + 30min heartbeat | #63 | ✅ merged |
 | AVOID_MIDDAY disabled for data collection phase | #67 | ✅ merged |
 | get_bars silent failure: `feed=sip` + min 10 bars + visible logging | #67 | ✅ merged |
+| yfinance bars (Alpaca SIP unavailable on paper) + vol-0 fix | #70 | ✅ merged |
+
+## System upgrade shipped (2026-06-19) — VWAP + Chandelier + tighter scanner
+From the June-19 chart study (`june 19 2026/` folder). All knobs default in-code — a plain
+`git pull` + restart picks it up, no config.py edit needed.
+| Change | Detail |
+|--------|--------|
+| **Session VWAP entry gate** | New condition #6. `price ≥ VWAP×(1−0.5%)` to auto-buy. Fail-open when no bars/volume. Feeds the A+ grade. `VWAP_GATE`, `VWAP_TOLERANCE`. |
+| **Chandelier Exit** | New trailing exit (ATR 10/2). Fires alongside Supertrend/ZLSMA/-8%, RTH-only. `CHANDELIER_EXIT`, `CE_ATR_PERIOD`, `CE_ATR_MULT`. |
+| **Scanner tightened** | `MAX_FLOAT` 20M→10M. New `SCANNER_REL_VOL_MIN=3.0` for TradingView discovery — **separate** from `REL_VOL_MIN=1.5` (the 5-min bar volume check, which must stay 1.5). |
+| **Reset zone** | `DEEP_CURL_RESET` 20→30 (owner's A+ CDT entry was K=33.9; ≤25 would block it). |
+| **Grade** | A+ now = full pass + deep curl + (strong catalyst OR clean above-VWAP). |
+| `get_bars` carries `"t"` | ISO timestamp added per bar so session VWAP can reset daily. |
 
 ## Critical lessons learned (2026-06-19) — DO NOT REPEAT
 1. **`feed=sip` is correct** for Alpaca paper trading. SIP covers all exchanges incl. NASDAQ.
@@ -215,6 +241,12 @@ One click, then it connects without re-asking within the same session.
    The VPS bot does not auto-update. Silence after a merge = old code still running.
 6. **Heartbeat "No candidates found this scan"** = blockers Counter is empty = get_bars()
    returning None for every ticker (feed issue or bars < minimum). Not a conditions problem.
+7. **TWO relative-volume knobs — never conflate them.** `SCANNER_REL_VOL_MIN` (3.0) is the
+   TradingView *discovery* filter (which stocks get scanned). `REL_VOL_MIN` (1.5) is the
+   *5-min bar* volume confirmation (vol > 1.5× 20-bar avg). The bar one being 4.0 is what
+   blocked every entry — KEEP it at 1.5. Tighten discovery via `SCANNER_REL_VOL_MIN` only.
+8. **VWAP gate fails open.** If a name has no timestamps/volume, the VWAP condition is
+   skipped (max drops 6→5), not failed — a thin/halted name isn't blocked just for that.
 
 ## What "no alerts" means
 The **30-min heartbeat** (💓) shows TOP BLOCKERS — exact condition failing most.

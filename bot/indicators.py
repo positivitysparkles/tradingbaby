@@ -126,8 +126,63 @@ def supertrend(bars: list, period: int = 10, mult: float = 2.0) -> int | None:
     return d[-1]
 
 
+def vwap_session(bars: list) -> float | None:
+    """
+    Session-anchored VWAP (matches the user's TradingView VWAP: Anchor=Session,
+    Source=HL2). Resets each trading day, so we average only the bars that share the
+    LAST bar's date. Source = (high+low)/2, weighted by volume.
+
+    Returns None (fail-open, like ZLSMA) when bars carry no timestamp ("t") or have
+    zero volume — a young/halted name should not be blocked just for thin data.
+    """
+    if not bars or "t" not in bars[-1]:
+        return None
+    last_day = str(bars[-1]["t"])[:10]            # YYYY-MM-DD of the latest bar
+    num = den = 0.0
+    for b in bars:
+        if str(b.get("t", ""))[:10] != last_day:
+            continue
+        v = b.get("v", 0) or 0
+        hl2 = (b["h"] + b["l"]) / 2
+        num += hl2 * v
+        den += v
+    return (num / den) if den else None
+
+
+def chandelier_exit(bars: list, period: int = 10, mult: float = 2.0) -> dict | None:
+    """
+    Chandelier Exit (ATR=10, mult=2, use-close for extremums) — the user's CE 10 2.
+    Long-stop = highest_close(period) − mult × ATR(period). State is bullish while
+    close holds above the long-stop, and flips bearish on a close below it.
+
+    Returns {"long_stop": float, "state": 1|-1} or None when history is too thin.
+    Mirrors the Wilder-ATR used in supertrend().
+    """
+    if len(bars) < period + 2:
+        return None
+
+    highs  = [b["h"] for b in bars]
+    lows   = [b["l"] for b in bars]
+    closes = [b["c"] for b in bars]
+
+    trs = [
+        max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1]))
+        for i in range(1, len(bars))
+    ]
+    atr = sum(trs[:period]) / period
+    for i in range(period, len(trs)):
+        atr = (atr * (period - 1) + trs[i]) / period
+
+    # "Use close price for extremums" = highest CLOSE over the lookback, not highest high
+    highest_close = max(closes[-period:])
+    long_stop = highest_close - mult * atr
+    state = 1 if closes[-1] >= long_stop else -1
+    return {"long_stop": long_stop, "state": state}
+
+
 def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min: float,
-                    deep_curl_reset: float = 20.0) -> tuple[bool, dict]:
+                    deep_curl_reset: float = 20.0, vwap_tol: float = 0.005,
+                    vwap_gate: bool = True) -> tuple[bool, dict]:
     """
     Run all W118 entry conditions. Returns (passed, details_dict).
 
@@ -211,8 +266,27 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
     else:
         blockers.append(f"vol {vol_ratio:.1f}x below {rel_vol_min:.1f}x")
 
-    # Max possible is 4 when ZLSMA is skipped, 5 otherwise
-    max_possible = 5 if zl is not None else 4
+    # 6. VWAP shelf gate — price holding above Session VWAP (the A+ Shelf Bounce's
+    #    absolute support; it's what separated every runner from the WKSP chop). Hard
+    #    gate WITH tolerance: a coil sitting ON the line (a sub-tolerance wick below)
+    #    still counts. Fail-open (skip, not block) when VWAP can't be computed.
+    vw = vwap_session(bars) if vwap_gate else None
+    above_vwap = None
+    if vw is None:
+        pass   # no timestamps / no volume → don't block (like ZLSMA)
+    elif price >= vw * (1 - vwap_tol):
+        above_vwap = True
+        passed += 1
+    else:
+        above_vwap = False
+        blockers.append(f"below VWAP ${vw:.3f}")
+
+    # Max possible: start at 5, +1 if VWAP was evaluated, −1 if ZLSMA was skipped
+    max_possible = 5
+    if vw is not None:
+        max_possible += 1
+    if zl is None:
+        max_possible -= 1
 
     info = {
         "price":     price,
@@ -224,6 +298,8 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
         "k_low":     round(k_low, 1)  if k_low is not None else None,
         "deep_curl": deep_curl,
         "zlsma":     round(zl, 4)     if zl   is not None else None,
+        "vwap":      round(vw, 4)     if vw   is not None else None,
+        "above_vwap": above_vwap,
         "macd_hist": round(hist, 5)   if hist   is not None else None,
         "macd_line": round(m_line, 5) if m_line is not None else None,
         "vol_ratio": round(vol_ratio, 1),
@@ -329,7 +405,8 @@ def catalyst_score(bars_5m: list, daily_bars: list | None = None) -> tuple[str |
     return None, "no catalyst signal"
 
 
-def check_exit_signal(bars: list) -> str | None:
+def check_exit_signal(bars: list, chandelier: bool = True,
+                      ce_period: int = 10, ce_mult: float = 2.0) -> str | None:
     """
     Check W118 signal-based exits. Returns reason string or None.
     Called on every scan cycle for each open position.
@@ -338,7 +415,9 @@ def check_exit_signal(bars: list) -> str | None:
     uptrend is HEALTHY consolidation — the oscillator reloading for the next
     leg — not a reason to bail. We only exit when the trend STRUCTURE breaks:
       • Supertrend flips bearish (trend reversed), or
-      • Price loses ZLSMA-50 (uptrend support gone).
+      • Price loses ZLSMA-50 (uptrend support gone), or
+      • Price closes below the Chandelier Exit line (CE 10/2 trailing stop) — the
+        W118 "ride it until a full candle closes under the green CE line" rule.
     K<20 on its own = hold. This avoids whipsaw exits during consolidation.
     The -8% hard stop (scan loop) and T1/T2/T3 targets still cap risk/reward.
     """
@@ -354,6 +433,12 @@ def check_exit_signal(bars: list) -> str | None:
     zl = zlsma(closes)
     if zl and price < zl:
         return f"below_ZLSMA (price={price:.4f} ZLSMA={zl:.4f})"
+
+    # Structure exit 3 — Chandelier Exit trailing stop (additional exit)
+    if chandelier:
+        ce = chandelier_exit(bars, ce_period, ce_mult)
+        if ce and ce["state"] == -1:
+            return f"chandelier_stop (close {price:.4f} < {ce['long_stop']:.4f})"
 
     # StochRSI K<20 deliberately does NOT trigger an exit while structure holds.
     # When K resets and then curls back up with structure intact, the scanner

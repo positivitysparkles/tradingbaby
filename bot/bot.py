@@ -65,6 +65,14 @@ DOLLARS_MIN        = getattr(_cfg, "DOLLARS_MIN", 50)           # hard floor per
 DOLLARS_MAX        = getattr(_cfg, "DOLLARS_MAX", 200)          # hard ceiling per trade (never exceeded)
 CATALYST_PROXY     = getattr(_cfg, "CATALYST_PROXY", True)      # price-action catalyst detection
 
+# ── Scanner / VWAP / Chandelier (defaults baked in — no config.py edit needed) ──
+SCANNER_REL_VOL_MIN = getattr(_cfg, "SCANNER_REL_VOL_MIN", 3.0) # TV discovery rel-vol floor
+VWAP_GATE           = getattr(_cfg, "VWAP_GATE", True)          # require price ≥ VWAP×(1−tol)
+VWAP_TOLERANCE      = getattr(_cfg, "VWAP_TOLERANCE", 0.005)    # 0.5% shelf tolerance
+CHANDELIER_EXIT     = getattr(_cfg, "CHANDELIER_EXIT", True)    # CE trailing exit on/off
+CE_ATR_PERIOD       = getattr(_cfg, "CE_ATR_PERIOD", 10)
+CE_ATR_MULT         = getattr(_cfg, "CE_ATR_MULT", 2.0)
+
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -157,8 +165,9 @@ def get_bars(ticker: str, limit: int = 100, timeframe: str = "5Min") -> list | N
         bars = [
             {"o": float(row["Open"]), "h": float(row["High"]),
              "l": float(row["Low"]),  "c": float(row["Close"]),
-             "v": max(0, int(row["Volume"]))}
-            for _, row in df.tail(limit).iterrows()
+             "v": max(0, int(row["Volume"])),
+             "t": idx.isoformat()}                # session VWAP needs the bar's date
+            for idx, row in df.tail(limit).iterrows()
             if not (row["Open"] != row["Open"])  # skip NaN rows
         ]
         if len(bars) < 10:
@@ -425,7 +434,7 @@ def _tradingview_screener() -> list[str]:
         # rel_vol_10d is a regular-session metric — only meaningful 9:30–16:00 ET
         if sess == "regular":
             filters.append(
-                {"left": "relative_volume_10d_calc", "operation": "greater", "right": REL_VOL_MIN}
+                {"left": "relative_volume_10d_calc", "operation": "greater", "right": SCANNER_REL_VOL_MIN}
             )
         body = {
             "filter":   filters,
@@ -683,6 +692,7 @@ def execute_buy(ticker: str, price: float, info: dict):
         f"<b>🟢 AUTO BUY — {html.escape(ticker)}</b>  <b>[{grade}]</b>{' ⭐ DEEP CURL' if info.get('deep_curl') else ''}\n"
         f"Entry: ${price:.4f}  ×{qty} shares (~${qty*price:.0f})  ·  grade {grade}\n"
         f"K={info['k']}↑  D={info['d']}  MACD(5,10,16)={'▲' if info['macd_hist'] > 0 else '▽'}  Vol {info['vol_ratio']}x\n"
+        f"VWAP {_vwap_tag(info)}  ·  ZLSMA ${info.get('zlsma')}\n"
         f"🛑 Stop: ${stop}  (-8%) — {stop_note}\n"
         f"🎯 T1: ${t1}  (+15%)  ×{t1_qty} — {'✓' if res['T1'] else '❌ FAILED'}\n"
         f"   T2: ${t2}  (+30%)  ×{t2_qty} — {'✓' if res['T2'] else '❌ FAILED'}\n"
@@ -899,6 +909,15 @@ _bought_day: str   = ""      # date the set above belongs to (reset on rollover)
 _exiting_now: set  = set()   # tickers with a submitted exit order — prevents duplicate Telegram alerts
 
 
+def _vwap_tag(info: dict) -> str:
+    """Compact VWAP status for alerts: '✓ $1.234', '✗ below $1.234', or 'n/a'."""
+    av = info.get("above_vwap")
+    vw = info.get("vwap")
+    if av is None or vw is None:
+        return "n/a"
+    return f"{'✓' if av else '✗ below'} ${vw}"
+
+
 def _send_setup_alert(ticker: str, info: dict, why: str) -> None:
     """A full 5/5 setup the bot could NOT auto-buy (daily cap / position cap /
     midday / already bought). Sends the COMPLETE manual trade plan — entry, stop,
@@ -926,6 +945,7 @@ def _send_setup_alert(ticker: str, info: dict, why: str) -> None:
         f"<i>Bot can't auto-buy ({html.escape(why)}) — you can paper-trade it:</i>\n"
         f"Entry ~${price:.4f} ({price_note})  ×{qty} shares (~${qty*price:.0f})\n"
         f"K={info['k']}↑ D={info['d']}  MACD {macd}  Vol {info['vol_ratio']}x\n"
+        f"VWAP {_vwap_tag(info)}\n"
         f"🛑 Stop ${stop}  (-8%)\n"
         f"🎯 T1 ${t1} (+15%)   T2 ${t2} (+30%)   T3 ${t3} (+60%)"
     )
@@ -956,7 +976,7 @@ def _send_watch_alert(ticker: str, info: dict) -> None:
     tg(
         f"👀 <b>WATCH: {html.escape(ticker)}</b> — {score}/{max_} conditions{curl}\n"
         f"Price ${info['price']:.2f}  "
-        f"K={info['k']}  Vol {info['vol_ratio']}x\n"
+        f"K={info['k']}  Vol {info['vol_ratio']}x  VWAP {_vwap_tag(info)}\n"
         f"Missing: {missing}\n"
         f"Check chart — manual entry possible"
     )
@@ -1061,7 +1081,8 @@ def scan():
         # (see ATPC: bought $3.23, exited $3.03 premarket, ran to $6.00 at open).
         # The -8% hard stop above is always active; that's the only premarket exit.
         if _is_rth():
-            reason = check_exit_signal(bars)
+            reason = check_exit_signal(bars, chandelier=CHANDELIER_EXIT,
+                                       ce_period=CE_ATR_PERIOD, ce_mult=CE_ATR_MULT)
             if reason:
                 execute_exit(ticker, reason)
                 held.discard(ticker)
@@ -1093,7 +1114,8 @@ def scan():
         if not bars:
             continue
 
-        ok, info = check_all_entry(bars, MIN_PRICE, MAX_PRICE, REL_VOL_MIN, DEEP_CURL_RESET)
+        ok, info = check_all_entry(bars, MIN_PRICE, MAX_PRICE, REL_VOL_MIN, DEEP_CURL_RESET,
+                                   vwap_tol=VWAP_TOLERANCE, vwap_gate=VWAP_GATE)
         score, max_ = info.get("score", 0), info.get("max", 5)
 
         if ok:
