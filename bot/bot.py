@@ -247,7 +247,8 @@ def sb_log_trade(ticker: str, price: float, qty: int, info: dict):
         _sb_row_id[ticker] = result[0].get("id")
         log.info(f"[supabase] logged {ticker} → id {_sb_row_id.get(ticker)}")
 
-def sb_close_trade(ticker: str, exit_price: float, exit_reason: str, entry_price: float, qty: int = 1):
+def sb_close_trade(ticker: str, exit_price: float, exit_reason: str, entry_price: float,
+                   qty: int = 1, note: str | None = None):
     row_id = _sb_row_id.pop(ticker, None)
     realized = round((exit_price - entry_price) * qty, 2) if entry_price else None
     patch = {
@@ -256,6 +257,8 @@ def sb_close_trade(ticker: str, exit_price: float, exit_reason: str, entry_price
         "exit_reason":  exit_reason,
         "realized_pnl": realized,
     }
+    if note:
+        patch["notes"] = note
     if row_id:
         _sb("PATCH", f"/rest/v1/w118_trades?id=eq.{row_id}", json=patch)
     else:
@@ -571,6 +574,17 @@ def execute_buy(ticker: str, price: float, info: dict):
              f"T1={'✓' if res['T1'] else '✗'} T2={'✓' if res['T2'] else '✗'} T3={'✓' if res['T3'] else '✗'}")
     return True
 
+def _session_label(et_dt: datetime | None = None) -> str:
+    """Which W118 session a timestamp falls in — used to autopsy WHEN losses cluster."""
+    et_dt = et_dt or datetime.now(ET)
+    h = et_dt.hour + et_dt.minute / 60.0
+    if h < 9.5:  return "premarket"
+    if h < 10.5: return "open"
+    if h < 15.0: return "midday"
+    if h < 16.0: return "power hour"
+    return "after-hours"
+
+
 def execute_exit(ticker: str, reason: str):
     # Grab entry price + qty before selling so we can compute realized P&L for Supabase
     entry_price = None
@@ -583,9 +597,16 @@ def execute_exit(ticker: str, reason: str):
     sold = market_sell_position(ticker)
     if sold:
         exit_price = get_latest_price(ticker) or 0.0
-        tg(f"<b>🔴 W118 EXIT — {ticker}</b>\nReason: {reason}")
-        log.info(f"[exit] {ticker}: {reason}")
-        sb_close_trade(ticker, exit_price, reason, entry_price or 0.0, pos_qty)
+        # Build a self-audit note. Losers get tagged LOSS AUTOPSY so the dashboard
+        # can mine them for patterns (which session / which exit reason leaks money).
+        pct  = ((exit_price - entry_price) / entry_price * 100) if entry_price else 0.0
+        sess = _session_label()
+        note = f"{sess} · {reason} · {pct:+.1f}%"
+        if entry_price and exit_price < entry_price:
+            note = "LOSS AUTOPSY — " + note
+        tg(f"<b>🔴 W118 EXIT — {ticker}</b>\nReason: {reason}  ({pct:+.1f}%)")
+        log.info(f"[exit] {ticker}: {reason} ({pct:+.1f}%)")
+        sb_close_trade(ticker, exit_price, reason, entry_price or 0.0, pos_qty, note)
 
 # ── Self-audit ────────────────────────────────────────────────────────────────
 

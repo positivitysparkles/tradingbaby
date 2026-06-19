@@ -8,9 +8,8 @@ import {
 import { format, parseISO, subDays } from 'date-fns'
 import { GOALS, AFFIRMATIONS } from '../goals'
 
-// Fallback placeholders keep the production build from throwing during
-// prerender when env vars aren't present (e.g. CI). On Vercel the real
-// NEXT_PUBLIC_* values are inlined at build and used in the browser.
+// Fallback placeholders keep the production build from throwing during prerender
+// when env vars aren't present. On Vercel the real NEXT_PUBLIC_* values are used.
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL  || 'https://placeholder.supabase.co',
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key',
@@ -40,36 +39,55 @@ type Trade = {
   macd_line: number
   exit_reason: string | null
   blockers: string | null
+  notes: string | null
 }
 
-// ── Light luxury palette ──────────────────────────────────────────────────────
+// ── Midnight Rosé palette ─────────────────────────────────────────────────────
 const C = {
-  bg:      '#f4efe6',
-  surface: '#fffdf8',
-  ink:     '#2b2620',
-  inkSoft: '#6b6256',
-  gold:    '#b08d4f',
-  goldSoft:'#c9a96e',
-  line:    'rgba(176,141,79,0.22)',
-  win:     '#3f8f63',
-  loss:    '#b4524a',
-  rose:    '#b06087',
+  bg:       '#0b0910',
+  surface:  '#15111f',
+  surface2: '#1c1729',
+  ink:      '#f3eef7',
+  inkSoft:  '#9c90ad',
+  pink:     '#ff5fa2',
+  pinkSoft: '#ffa6cd',
+  pinkDim:  '#b8407a',
+  gold:     '#e7c79c',
+  line:     'rgba(255,95,162,0.16)',
+  win:      '#57e0a0',
+  loss:     '#ff6b81',
 }
 
-function pnlColor(v: number | null) {
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function sessionOf(timeEt: string): string {
+  // timeEt like "07:42" or "07:42 ET"
+  const m = /(\d{1,2}):(\d{2})/.exec(timeEt || '')
+  if (!m) return 'unknown'
+  const h = parseInt(m[1], 10) + parseInt(m[2], 10) / 60
+  if (h < 9.5)  return 'premarket'
+  if (h < 10.5) return 'open'
+  if (h < 15)   return 'midday'
+  if (h < 16)   return 'power hour'
+  return 'after-hours'
+}
+
+function pnlStyle(v: number | null) {
   if (v === null) return { color: C.inkSoft }
   return { color: v >= 0 ? C.win : C.loss }
 }
 
+function topKey(counts: Record<string, number>): [string, number] | null {
+  const e = Object.entries(counts).sort(([, a], [, b]) => b - a)
+  return e.length ? e[0] : null
+}
+
+// ── Atoms ─────────────────────────────────────────────────────────────────────
 function ScoreDots({ score, max }: { score: number; max: number }) {
   return (
     <span className="flex gap-1 items-center">
       {Array.from({ length: max }).map((_, i) => (
-        <span
-          key={i}
-          style={{ background: i < score ? C.gold : 'rgba(176,141,79,0.2)' }}
-          className="w-1.5 h-1.5 rounded-full inline-block"
-        />
+        <span key={i} style={{ background: i < score ? C.pink : 'rgba(255,95,162,0.18)' }}
+          className="w-1.5 h-1.5 rounded-full inline-block" />
       ))}
     </span>
   )
@@ -77,63 +95,53 @@ function ScoreDots({ score, max }: { score: number; max: number }) {
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { bg: string; text: string }> = {
-    open:    { bg: 'rgba(176,96,135,0.12)', text: C.rose },
-    closed:  { bg: 'rgba(176,141,79,0.12)', text: C.gold },
-    stopped: { bg: 'rgba(180,82,74,0.12)',  text: C.loss },
+    open:    { bg: 'rgba(255,95,162,0.14)', text: C.pink },
+    closed:  { bg: 'rgba(156,144,173,0.14)', text: C.inkSoft },
+    stopped: { bg: 'rgba(255,107,129,0.14)', text: C.loss },
   }
   const s = map[status] ?? map.closed
   return (
-    <span
-      style={{ background: s.bg, color: s.text }}
-      className="text-[10px] px-2 py-0.5 rounded-full font-medium tracking-wider uppercase"
-    >
+    <span style={{ background: s.bg, color: s.text }}
+      className="text-[10px] px-2 py-0.5 rounded-md font-medium tracking-wider uppercase mono">
       {status}
     </span>
   )
 }
 
-function GoldDivider() {
-  return (
-    <div className="flex items-center gap-3 my-7">
-      <div style={{ background: `linear-gradient(to right, transparent, ${C.line})` }} className="flex-1 h-px" />
-      <span style={{ color: C.gold }} className="text-xs tracking-[0.3em]">✦</span>
-      <div style={{ background: `linear-gradient(to left, transparent, ${C.line})` }} className="flex-1 h-px" />
-    </div>
-  )
-}
-
 function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <div
-      style={{ background: C.surface, border: `1px solid ${C.line}`, boxShadow: '0 1px 2px rgba(43,38,32,0.04), 0 8px 24px rgba(43,38,32,0.05)' }}
-      className={`rounded-2xl ${className}`}
-    >
+    <div style={{ background: C.surface, border: `1px solid ${C.line}`, boxShadow: '0 0 0 1px rgba(255,95,162,0.06), 0 18px 50px rgba(0,0,0,0.5)' }}
+      className={`rounded-2xl ${className}`}>
       {children}
     </div>
   )
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+function Label({ children }: { children: React.ReactNode }) {
   return (
-    <p style={{ color: C.gold }} className="text-[10px] tracking-[0.25em] uppercase font-sans font-semibold mb-3">
+    <p style={{ color: C.pink }} className="text-[10px] tracking-[0.28em] uppercase font-semibold mono mb-3">
       {children}
     </p>
   )
 }
 
-function KpiCard({ label, value, sub, color }: {
-  label: string; value: string; sub: string; color: string
-}) {
+function Kpi({ label, value, sub, color }: { label: string; value: string; sub: string; color: string }) {
   return (
     <Card className="p-5 flex flex-col gap-1">
-      <p style={{ color: C.inkSoft }} className="text-[10px] tracking-[0.2em] uppercase font-sans font-medium">
-        {label}
-      </p>
-      <p style={{ color }} className="font-display text-3xl font-semibold leading-none mt-1">
-        {value}
-      </p>
-      <p style={{ color: C.inkSoft }} className="text-xs font-sans mt-1">{sub}</p>
+      <p style={{ color: C.inkSoft }} className="text-[10px] tracking-[0.2em] uppercase mono">{label}</p>
+      <p style={{ color }} className="font-display text-3xl font-bold leading-none mt-1 mono">{value}</p>
+      <p style={{ color: C.inkSoft }} className="text-xs mt-1">{sub}</p>
     </Card>
+  )
+}
+
+function Divider() {
+  return (
+    <div className="flex items-center gap-3 my-7">
+      <div style={{ background: `linear-gradient(to right, transparent, ${C.line})` }} className="flex-1 h-px" />
+      <span style={{ color: C.pink }} className="text-xs tracking-[0.3em]">✦</span>
+      <div style={{ background: `linear-gradient(to left, transparent, ${C.line})` }} className="flex-1 h-px" />
+    </div>
   )
 }
 
@@ -157,142 +165,125 @@ export default function Dashboard() {
 
   useEffect(() => { load() }, [load])
 
-  // ── Derived stats ──────────────────────────────────────────────────────────
-  const closed   = trades.filter(t => t.status !== 'open' && t.realized_pnl !== null)
-  const open     = trades.filter(t => t.status === 'open')
-  const netPnl   = closed.reduce((s, t) => s + (t.realized_pnl ?? 0), 0)
-  const wins     = closed.filter(t => (t.realized_pnl ?? 0) > 0).length
-  const losers   = closed.filter(t => (t.realized_pnl ?? 0) < 0)
-  const winRate  = closed.length ? Math.round((wins / closed.length) * 100) : 0
-  const avgWin   = wins
-    ? closed.filter(t => (t.realized_pnl ?? 0) > 0).reduce((s, t) => s + (t.realized_pnl ?? 0), 0) / wins
-    : 0
-  const avgLoss  = losers.length
-    ? losers.reduce((s, t) => s + (t.realized_pnl ?? 0), 0) / losers.length
-    : 0
-
-  // Total booked across ALL time-filtered closed trades = goal fuel (never below 0)
+  // ── Stats ──────────────────────────────────────────────────────────────────
+  const closed  = trades.filter(t => t.status !== 'open' && t.realized_pnl !== null)
+  const open    = trades.filter(t => t.status === 'open')
+  const netPnl  = closed.reduce((s, t) => s + (t.realized_pnl ?? 0), 0)
+  const winners = closed.filter(t => (t.realized_pnl ?? 0) > 0)
+  const losers  = closed.filter(t => (t.realized_pnl ?? 0) < 0)
+  const winRate = closed.length ? Math.round((winners.length / closed.length) * 100) : 0
+  const avgWin  = winners.length ? winners.reduce((s, t) => s + (t.realized_pnl ?? 0), 0) / winners.length : 0
+  const avgLoss = losers.length ? losers.reduce((s, t) => s + (t.realized_pnl ?? 0), 0) / losers.length : 0
   const goalFuel = Math.max(0, netPnl)
 
-  // Cumulative P&L by date for chart
+  // Cumulative P&L chart
   const byDate: Record<string, number> = {}
-  ;[...closed].reverse().forEach(t => {
-    byDate[t.date] = (byDate[t.date] ?? 0) + (t.realized_pnl ?? 0)
-  })
+  ;[...closed].reverse().forEach(t => { byDate[t.date] = (byDate[t.date] ?? 0) + (t.realized_pnl ?? 0) })
   let running = 0
   const chartData = Object.entries(byDate).map(([d, v]) => {
     running += v
     return { date: format(parseISO(d), 'MMM d'), pnl: parseFloat(running.toFixed(2)) }
   })
 
-  // Daily affirmation (rotates by day-of-year)
-  const dayIdx = Math.floor(Date.now() / 86400000) % AFFIRMATIONS.length
-  const affirmation = AFFIRMATIONS[dayIdx]
+  // Daily affirmation
+  const affirmation = AFFIRMATIONS[Math.floor(Date.now() / 86400000) % AFFIRMATIONS.length]
 
-  // ── Audit helpers ──────────────────────────────────────────────────────────
-  const deepCurlTrades = closed.filter(t => t.deep_curl)
-  const dcWins  = deepCurlTrades.filter(t => (t.realized_pnl ?? 0) > 0).length
-  const dcRate  = deepCurlTrades.length ? Math.round((dcWins / deepCurlTrades.length) * 100) : null
-  const stdTrades = closed.filter(t => !t.deep_curl)
-  const stdWins = stdTrades.filter(t => (t.realized_pnl ?? 0) > 0).length
-  const stdRate = stdTrades.length ? Math.round((stdWins / stdTrades.length) * 100) : null
+  // ── Loss Autopsy ───────────────────────────────────────────────────────────
+  const lossReasons: Record<string, number> = {}
+  const lossSessions: Record<string, number> = {}
+  losers.forEach(t => {
+    const r = t.exit_reason ?? 'unknown'
+    lossReasons[r] = (lossReasons[r] ?? 0) + 1
+    const s = sessionOf(t.time_et)
+    lossSessions[s] = (lossSessions[s] ?? 0) + 1
+  })
+  const topLossReason  = topKey(lossReasons)
+  const topLossSession = topKey(lossSessions)
+  const avgLoserScore  = losers.length ? losers.reduce((s, t) => s + (t.setup_score ?? 0), 0) / losers.length : 0
+  const avgWinnerScore = winners.length ? winners.reduce((s, t) => s + (t.setup_score ?? 0), 0) / winners.length : 0
+
+  // Informational corrective insight (never auto-applied — for the human only)
+  let corrective = 'Not enough losing trades yet to find a pattern. Keep the sample growing.'
+  if (losers.length >= 3) {
+    const bits: string[] = []
+    if (topLossReason)  bits.push(`most losses exit via “${topLossReason[0]}” (${topLossReason[1]}×)`)
+    if (topLossSession) bits.push(`cluster in the ${topLossSession[0]} session`)
+    if (avgLoserScore + 0.4 < avgWinnerScore)
+      bits.push(`losers average a weaker setup (${avgLoserScore.toFixed(1)} vs ${avgWinnerScore.toFixed(1)} dots)`)
+    corrective = bits.length
+      ? `Pattern: ${bits.join('; ')}. Tighten entries there.`
+      : 'Losses look evenly spread — no single leak to plug yet.'
+  }
+
+  // ── Setup quality / deep curl / exit reasons ─────────────────────────────────
+  const dc      = closed.filter(t => t.deep_curl)
+  const dcWins  = dc.filter(t => (t.realized_pnl ?? 0) > 0).length
+  const dcRate  = dc.length ? Math.round((dcWins / dc.length) * 100) : null
+  const std     = closed.filter(t => !t.deep_curl)
+  const stdWins = std.filter(t => (t.realized_pnl ?? 0) > 0).length
+  const stdRate = std.length ? Math.round((stdWins / std.length) * 100) : null
 
   const exitReasons: Record<string, number> = {}
-  closed.forEach(t => {
-    const k = t.exit_reason ?? 'unknown'
-    exitReasons[k] = (exitReasons[k] ?? 0) + 1
-  })
+  closed.forEach(t => { const k = t.exit_reason ?? 'unknown'; exitReasons[k] = (exitReasons[k] ?? 0) + 1 })
 
   return (
     <div className="min-h-screen px-4 py-10 md:px-10 max-w-6xl mx-auto" style={{ color: C.ink }}>
 
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      {/* ── Header ── */}
       <header>
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
-            <p style={{ color: C.gold, letterSpacing: '0.3em' }} className="text-[10px] uppercase font-sans font-semibold mb-2">
-              W118 · Curl if Flow · Private
+            <p style={{ color: C.pink }} className="text-[10px] tracking-[0.32em] uppercase font-semibold mono mb-2">
+              W118 · Curl if Flow · Strategic Alpha
             </p>
-            <h1 className="font-display text-5xl md:text-6xl font-semibold leading-none" style={{ color: C.ink }}>
-              <span style={{ color: C.gold }} className="italic">Olya&rsquo;s</span> Dashboard
+            <h1 className="font-display text-5xl md:text-6xl font-bold leading-none tracking-tight" style={{ color: C.ink }}>
+              <span style={{ color: C.pink }} className="glow-pink">Olya&rsquo;s</span> Dashboard
             </h1>
           </div>
-
           <div className="flex items-center gap-2 mt-1">
             {([7, 30, 90] as const).map(r => (
-              <button
-                key={r}
-                onClick={() => setRange(r)}
+              <button key={r} onClick={() => setRange(r)}
                 style={{
-                  background: range === r ? C.gold : C.surface,
-                  color:      range === r ? C.surface : C.inkSoft,
-                  border:     `1px solid ${range === r ? C.gold : C.line}`,
+                  background: range === r ? C.pink : 'transparent',
+                  color:      range === r ? C.bg : C.inkSoft,
+                  border:     `1px solid ${range === r ? C.pink : C.line}`,
                 }}
-                className="px-3 py-1 rounded-full text-xs font-sans transition-all duration-200"
-              >
+                className="px-3 py-1 rounded-lg text-xs mono transition-all duration-200">
                 {r}d
               </button>
             ))}
-            <button
-              onClick={load}
-              style={{ color: C.inkSoft, background: C.surface, border: `1px solid ${C.line}` }}
-              className="px-3 py-1 rounded-full text-xs font-sans hover:opacity-80 transition-opacity"
-            >
-              ↻
-            </button>
+            <button onClick={load} style={{ color: C.inkSoft, border: `1px solid ${C.line}` }}
+              className="px-3 py-1 rounded-lg text-xs mono hover:opacity-80 transition-opacity">↻</button>
           </div>
         </div>
 
-        {/* Mantra banner */}
-        <div
-          style={{ background: C.surface, border: `1px solid ${C.line}` }}
-          className="mt-5 rounded-2xl px-5 py-4 flex items-center justify-between flex-wrap gap-2"
-        >
-          <p className="font-display italic text-lg md:text-xl" style={{ color: C.ink }}>
-            “{affirmation}”
-          </p>
-          <p style={{ color: C.gold }} className="text-[10px] tracking-[0.3em] uppercase font-sans font-semibold">
-            Discipline = Freedom
-          </p>
+        {/* Mantra */}
+        <div style={{ background: C.surface, border: `1px solid ${C.line}` }}
+          className="mt-5 rounded-2xl px-5 py-4 flex items-center justify-between flex-wrap gap-2">
+          <p className="font-display text-lg md:text-xl font-medium" style={{ color: C.ink }}>“{affirmation}”</p>
+          <p style={{ color: C.gold }} className="text-[10px] tracking-[0.3em] uppercase font-semibold mono">Discipline = Freedom</p>
         </div>
       </header>
 
-      <GoldDivider />
+      <Divider />
 
-      {/* ── KPI cards ──────────────────────────────────────────────────────── */}
+      {/* ── KPIs ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <KpiCard
-          label="Net P&L"
-          value={`${netPnl >= 0 ? '+' : ''}$${netPnl.toFixed(2)}`}
-          color={netPnl >= 0 ? C.win : C.loss}
-          sub={`${closed.length} closed trades`}
-        />
-        <KpiCard
-          label="Win Rate"
-          value={`${winRate}%`}
-          color={winRate >= 70 ? C.win : winRate >= 50 ? C.gold : C.loss}
-          sub={`${wins}W / ${losers.length}L`}
-        />
-        <KpiCard
-          label="Avg Win"
-          value={`+$${avgWin.toFixed(2)}`}
-          color={C.win}
-          sub={`Avg Loss: $${avgLoss.toFixed(2)}`}
-        />
-        <KpiCard
-          label="Live Positions"
-          value={`${open.length}`}
-          color={C.rose}
-          sub={open.length > 0 ? open.map(t => t.ticker).join(', ') : 'No open trades'}
-        />
+        <Kpi label="Net P&L" value={`${netPnl >= 0 ? '+' : ''}$${netPnl.toFixed(2)}`}
+          color={netPnl >= 0 ? C.win : C.loss} sub={`${closed.length} closed`} />
+        <Kpi label="Win Rate" value={`${winRate}%`}
+          color={winRate >= 70 ? C.win : winRate >= 50 ? C.pink : C.loss} sub={`${winners.length}W / ${losers.length}L`} />
+        <Kpi label="Avg Win" value={`+$${avgWin.toFixed(2)}`} color={C.win} sub={`Avg Loss $${avgLoss.toFixed(2)}`} />
+        <Kpi label="Live" value={`${open.length}`} color={C.pink}
+          sub={open.length ? open.map(t => t.ticker).join(', ') : 'flat'} />
       </div>
 
-      {/* ── Goal progress ──────────────────────────────────────────────────── */}
+      {/* ── Goals ── */}
       <Card className="p-5 mb-8">
         <div className="flex items-center justify-between mb-4">
-          <SectionLabel>Building Toward</SectionLabel>
-          <p style={{ color: C.inkSoft }} className="text-xs font-sans">
-            Fuel: <span style={{ color: C.win }} className="font-semibold">${goalFuel.toFixed(2)}</span>
+          <Label>Building Toward</Label>
+          <p style={{ color: C.inkSoft }} className="text-xs mono">
+            Fuel <span style={{ color: C.win }} className="font-semibold">${goalFuel.toFixed(2)}</span>
           </p>
         </div>
         <div className="space-y-5">
@@ -302,28 +293,26 @@ export default function Dashboard() {
             return (
               <div key={g.label}>
                 <div className="flex items-baseline justify-between mb-1.5">
-                  <p className="font-sans text-sm font-medium" style={{ color: C.ink }}>
+                  <p className="text-sm font-medium" style={{ color: C.ink }}>
                     <span className="mr-1.5">{g.emoji}</span>{g.label}
-                    {reached && <span style={{ color: C.win }} className="ml-2 text-xs">✓ reached</span>}
+                    {reached && <span style={{ color: C.win }} className="ml-2 text-xs mono">✓ reached</span>}
                   </p>
-                  <p className="font-sans text-xs" style={{ color: C.inkSoft }}>
+                  <p className="text-xs mono" style={{ color: C.inkSoft }}>
                     ${goalFuel.toFixed(0)} <span className="opacity-50">/ ${g.target.toLocaleString()}</span>
                   </p>
                 </div>
-                <div style={{ background: C.bg }} className="h-2.5 rounded-full overflow-hidden">
-                  <div
-                    style={{
-                      width: `${pct}%`,
-                      background: reached
-                        ? `linear-gradient(90deg, ${C.win}, #5fae84)`
-                        : `linear-gradient(90deg, ${C.gold}, ${C.goldSoft})`,
-                    }}
-                    className="h-full rounded-full transition-all duration-700"
-                  />
+                <div style={{ background: C.surface2 }} className="h-2.5 rounded-full overflow-hidden">
+                  <div style={{
+                    width: `${pct}%`,
+                    background: reached
+                      ? `linear-gradient(90deg, ${C.win}, #8af0c0)`
+                      : `linear-gradient(90deg, ${C.pinkDim}, ${C.pink}, ${C.pinkSoft})`,
+                    boxShadow: reached ? 'none' : '0 0 14px rgba(255,95,162,0.5)',
+                  }} className="h-full rounded-full transition-all duration-700" />
                 </div>
                 <div className="flex items-center justify-between mt-1.5">
-                  <p className="font-display italic text-xs" style={{ color: C.inkSoft }}>{g.note}</p>
-                  <p className="font-sans text-[11px] font-semibold" style={{ color: C.gold }}>{pct.toFixed(0)}%</p>
+                  <p className="text-xs" style={{ color: C.inkSoft }}>{g.note}</p>
+                  <p className="text-[11px] font-semibold mono" style={{ color: C.pink }}>{pct.toFixed(0)}%</p>
                 </div>
               </div>
             )
@@ -331,185 +320,204 @@ export default function Dashboard() {
         </div>
       </Card>
 
-      {/* ── Cumulative P&L chart ───────────────────────────────────────────── */}
+      {/* ── P&L chart ── */}
       {chartData.length > 1 && (
         <Card className="p-5 mb-8">
-          <SectionLabel>Cumulative P&L · {range}d</SectionLabel>
+          <Label>Cumulative P&L · {range}d</Label>
           <ResponsiveContainer width="100%" height={200}>
             <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -10, bottom: 0 }}>
               <defs>
-                <linearGradient id="goldGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor={C.gold} stopOpacity={0.28} />
-                  <stop offset="95%" stopColor={C.gold} stopOpacity={0}    />
+                <linearGradient id="pinkGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={C.pink} stopOpacity={0.35} />
+                  <stop offset="95%" stopColor={C.pink} stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(176,141,79,0.14)" />
-              <XAxis dataKey="date" tick={{ fill: C.inkSoft, fontSize: 10, fontFamily: 'Inter' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: C.inkSoft, fontSize: 10, fontFamily: 'Inter' }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} />
-              <Tooltip
-                contentStyle={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 12, fontFamily: 'Inter', fontSize: 12, color: C.ink }}
-                labelStyle={{ color: C.inkSoft }}
-                formatter={(v: number) => [`$${v.toFixed(2)}`, 'P&L']}
-              />
-              <Area type="monotone" dataKey="pnl" stroke={C.gold} strokeWidth={2} fill="url(#goldGrad)" dot={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,95,162,0.1)" />
+              <XAxis dataKey="date" tick={{ fill: C.inkSoft, fontSize: 10, fontFamily: 'JetBrains Mono' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: C.inkSoft, fontSize: 10, fontFamily: 'JetBrains Mono' }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} />
+              <Tooltip contentStyle={{ background: C.surface2, border: `1px solid ${C.line}`, borderRadius: 12, fontFamily: 'JetBrains Mono', fontSize: 12, color: C.ink }}
+                labelStyle={{ color: C.inkSoft }} formatter={(v: number) => [`$${v.toFixed(2)}`, 'P&L']} />
+              <Area type="monotone" dataKey="pnl" stroke={C.pink} strokeWidth={2} fill="url(#pinkGrad)" dot={false} />
             </AreaChart>
           </ResponsiveContainer>
         </Card>
       )}
 
-      {/* ── Trade log ──────────────────────────────────────────────────────── */}
+      {/* ── Loss Autopsy & Corrective Actions ── */}
+      <Card className="p-5 mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <Label>Loss Autopsy &amp; Corrective Actions</Label>
+          <span style={{ color: C.loss }} className="text-xs mono">{losers.length} loss{losers.length === 1 ? '' : 'es'}</span>
+        </div>
+
+        {/* Corrective insight banner */}
+        <div style={{ background: C.surface2, border: `1px solid ${C.line}` }} className="rounded-xl px-4 py-3 mb-4">
+          <p className="text-[10px] tracking-[0.2em] uppercase mono mb-1" style={{ color: C.gold }}>What to fix</p>
+          <p className="text-sm" style={{ color: C.ink }}>{corrective}</p>
+        </div>
+
+        {/* Per-loss table */}
+        {losers.length > 0 ? (
+          <div className="space-y-2">
+            {losers.slice(0, 8).map(t => (
+              <div key={t.id} className="flex items-start justify-between gap-3 py-2"
+                style={{ borderBottom: `1px solid rgba(255,95,162,0.08)` }}>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold" style={{ color: C.ink }}>
+                    {t.ticker}
+                    <span className="ml-2 text-[11px] mono" style={{ color: C.inkSoft }}>
+                      {format(parseISO(t.date), 'MMM d')} · {sessionOf(t.time_et)}
+                    </span>
+                  </p>
+                  <p className="text-xs mt-0.5 truncate" style={{ color: C.inkSoft }}>
+                    {t.notes ?? t.exit_reason ?? 'no note logged'}
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-sm font-semibold mono" style={{ color: C.loss }}>
+                    ${(t.realized_pnl ?? 0).toFixed(2)}
+                  </p>
+                  <div className="mt-1 flex justify-end"><ScoreDots score={t.setup_score ?? 0} max={t.setup_max ?? 5} /></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm" style={{ color: C.inkSoft }}>No losing trades in this window. Clean book. 🤍</p>
+        )}
+      </Card>
+
+      {/* ── Trade log ── */}
       <Card className="overflow-hidden mb-8">
         <div style={{ borderBottom: `1px solid ${C.line}` }} className="px-5 py-3 flex items-center justify-between">
-          <SectionLabel>Trade Log</SectionLabel>
-          {loading && <span style={{ color: C.gold }} className="text-xs font-sans animate-pulse">loading…</span>}
+          <Label>Trade Log</Label>
+          {loading && <span style={{ color: C.pink }} className="text-xs mono animate-pulse">loading…</span>}
         </div>
 
         {/* Desktop */}
         <div className="overflow-x-auto hidden md:block">
-          <table className="w-full text-sm font-sans">
+          <table className="w-full text-sm">
             <thead>
               <tr style={{ borderBottom: `1px solid ${C.line}` }}>
-                {['Date', 'Ticker', 'Status', 'Entry', 'Exit', 'P&L', 'Setup', 'K / D', 'Vol', 'Exit reason'].map(h => (
-                  <th key={h} style={{ color: C.inkSoft }} className="px-4 py-2 text-left text-[10px] tracking-[0.15em] uppercase font-semibold">
-                    {h}
-                  </th>
+                {['Date', 'Ticker', 'Status', 'Entry', 'Exit', 'P&L', 'Setup', 'K/D', 'Vol', 'Note'].map(h => (
+                  <th key={h} style={{ color: C.inkSoft }} className="px-4 py-2 text-left text-[10px] tracking-[0.15em] uppercase mono">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {trades.map((t, i) => (
-                <tr key={t.id} style={{ borderBottom: i < trades.length - 1 ? `1px solid rgba(176,141,79,0.1)` : undefined }} className="transition-colors hover:bg-[rgba(176,141,79,0.05)]">
-                  <td className="px-4 py-3 whitespace-nowrap" style={{ color: C.inkSoft }}>
-                    {format(parseISO(t.date), 'MMM d')}
-                    <span className="text-[10px] ml-1.5 opacity-60">{t.time_et}</span>
+                <tr key={t.id} style={{ borderBottom: i < trades.length - 1 ? `1px solid rgba(255,95,162,0.07)` : undefined }}
+                  className="transition-colors hover:bg-[rgba(255,95,162,0.05)]">
+                  <td className="px-4 py-3 whitespace-nowrap mono text-xs" style={{ color: C.inkSoft }}>
+                    {format(parseISO(t.date), 'MMM d')}<span className="ml-1.5 opacity-60">{t.time_et}</span>
                   </td>
                   <td className="px-4 py-3 font-semibold" style={{ color: C.ink }}>
-                    {t.ticker}
-                    {t.deep_curl && <span style={{ color: C.gold }} className="ml-1 text-xs">⭐</span>}
+                    {t.ticker}{t.deep_curl && <span style={{ color: C.pink }} className="ml-1 text-xs">⭐</span>}
                   </td>
                   <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
-                  <td className="px-4 py-3" style={{ color: C.ink }}>${t.entry_price?.toFixed(3)}</td>
-                  <td className="px-4 py-3" style={{ color: C.inkSoft }}>{t.exit_price ? `$${t.exit_price.toFixed(3)}` : '—'}</td>
-                  <td className="px-4 py-3 font-semibold" style={pnlColor(t.realized_pnl)}>
+                  <td className="px-4 py-3 mono" style={{ color: C.ink }}>${t.entry_price?.toFixed(3)}</td>
+                  <td className="px-4 py-3 mono" style={{ color: C.inkSoft }}>{t.exit_price ? `$${t.exit_price.toFixed(3)}` : '—'}</td>
+                  <td className="px-4 py-3 font-semibold mono" style={pnlStyle(t.realized_pnl)}>
                     {t.realized_pnl !== null ? `${t.realized_pnl >= 0 ? '+' : ''}$${t.realized_pnl.toFixed(2)}` : '—'}
                   </td>
                   <td className="px-4 py-3"><ScoreDots score={t.setup_score ?? 0} max={t.setup_max ?? 5} /></td>
-                  <td className="px-4 py-3 text-xs" style={{ color: C.inkSoft }}>{t.k_value?.toFixed(0)} / {t.d_value?.toFixed(0)}</td>
-                  <td className="px-4 py-3 text-xs" style={{ color: C.inkSoft }}>{t.vol_ratio?.toFixed(1)}×</td>
-                  <td className="px-4 py-3 text-xs max-w-[180px] truncate" style={{ color: C.inkSoft }}>{t.exit_reason ?? t.blockers ?? '—'}</td>
+                  <td className="px-4 py-3 mono text-xs" style={{ color: C.inkSoft }}>{t.k_value?.toFixed(0)}/{t.d_value?.toFixed(0)}</td>
+                  <td className="px-4 py-3 mono text-xs" style={{ color: C.inkSoft }}>{t.vol_ratio?.toFixed(1)}×</td>
+                  <td className="px-4 py-3 text-xs max-w-[180px] truncate" style={{ color: C.inkSoft }}>{t.notes ?? t.exit_reason ?? t.blockers ?? '—'}</td>
                 </tr>
               ))}
               {!loading && trades.length === 0 && (
-                <tr>
-                  <td colSpan={10} className="px-4 py-12 text-center font-display italic text-lg" style={{ color: C.inkSoft }}>
-                    No trades in the last {range} days. The patient win.
-                  </td>
-                </tr>
+                <tr><td colSpan={10} className="px-4 py-12 text-center font-display text-lg" style={{ color: C.inkSoft }}>
+                  No trades in the last {range} days. The patient win.
+                </td></tr>
               )}
             </tbody>
           </table>
         </div>
 
-        {/* Mobile cards */}
-        <div className="md:hidden" style={{ borderColor: 'rgba(176,141,79,0.12)' }}>
+        {/* Mobile */}
+        <div className="md:hidden">
           {trades.map((t, i) => (
-            <div key={t.id} className="p-4" style={{ borderTop: i > 0 ? `1px solid rgba(176,141,79,0.12)` : undefined }}>
+            <div key={t.id} className="p-4" style={{ borderTop: i > 0 ? `1px solid rgba(255,95,162,0.1)` : undefined }}>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <span className="font-semibold" style={{ color: C.ink }}>{t.ticker}</span>
-                  {t.deep_curl && <span style={{ color: C.gold }}>⭐</span>}
+                  {t.deep_curl && <span style={{ color: C.pink }}>⭐</span>}
                   <StatusBadge status={t.status} />
                 </div>
-                <span className="font-semibold" style={pnlColor(t.realized_pnl)}>
+                <span className="font-semibold mono" style={pnlStyle(t.realized_pnl)}>
                   {t.realized_pnl !== null ? `${t.realized_pnl >= 0 ? '+' : ''}$${t.realized_pnl.toFixed(2)}` : 'open'}
                 </span>
               </div>
-              <div className="flex flex-wrap items-center gap-3 text-xs" style={{ color: C.inkSoft }}>
+              <div className="flex flex-wrap items-center gap-3 text-xs mono" style={{ color: C.inkSoft }}>
                 <span>{format(parseISO(t.date), 'MMM d')} {t.time_et}</span>
-                <span>in ${t.entry_price?.toFixed(3)}{t.exit_price ? ` → $${t.exit_price.toFixed(3)}` : ''}</span>
-                <span>{t.vol_ratio?.toFixed(1)}× vol</span>
+                <span>${t.entry_price?.toFixed(3)}{t.exit_price ? `→$${t.exit_price.toFixed(3)}` : ''}</span>
+                <span>{t.vol_ratio?.toFixed(1)}×</span>
               </div>
-              <div className="mt-2 flex items-center gap-2">
-                <ScoreDots score={t.setup_score ?? 0} max={t.setup_max ?? 5} />
-                {t.exit_reason && <span className="text-xs truncate" style={{ color: C.inkSoft }}>{t.exit_reason}</span>}
-              </div>
+              {(t.notes ?? t.exit_reason) && <p className="text-xs mt-2" style={{ color: C.inkSoft }}>{t.notes ?? t.exit_reason}</p>}
             </div>
           ))}
         </div>
       </Card>
 
-      {/* ── Self-Audit ─────────────────────────────────────────────────────── */}
+      {/* ── Self-Audit ── */}
       <Card className="p-5">
-        <SectionLabel>Daily Strategic Self-Audit</SectionLabel>
-        <div className="grid md:grid-cols-3 gap-6 text-sm font-sans">
-
-          {/* Setup quality */}
+        <Label>Strategic Self-Audit</Label>
+        <div className="grid md:grid-cols-3 gap-6 text-sm">
           <div>
-            <p style={{ color: C.ink }} className="text-xs font-semibold tracking-wide uppercase mb-3">Setup Quality</p>
+            <p style={{ color: C.ink }} className="text-xs font-semibold tracking-wide uppercase mb-3 mono">Setup Quality</p>
             {[5, 4, 3, 2].map(score => {
               const count = trades.filter(t => t.setup_score === score).length
-              const won   = trades.filter(t => t.setup_score === score && (t.realized_pnl ?? 0) > 0).length
-              const rate  = count > 0 ? Math.round((won / count) * 100) : null
+              const won = trades.filter(t => t.setup_score === score && (t.realized_pnl ?? 0) > 0).length
+              const rate = count > 0 ? Math.round((won / count) * 100) : null
               return (
                 <div key={score} className="flex items-center gap-3 mb-2">
                   <ScoreDots score={score} max={5} />
-                  <span style={{ color: C.inkSoft }} className="text-xs">{count} trades</span>
-                  {rate !== null && (
-                    <span style={{ color: rate >= 70 ? C.win : C.gold }} className="text-xs ml-auto font-semibold">{rate}% win</span>
-                  )}
+                  <span style={{ color: C.inkSoft }} className="text-xs mono">{count} trades</span>
+                  {rate !== null && <span style={{ color: rate >= 70 ? C.win : C.pink }} className="text-xs ml-auto font-semibold mono">{rate}%</span>}
                 </div>
               )
             })}
           </div>
-
-          {/* Deep curl */}
           <div>
-            <p style={{ color: C.ink }} className="text-xs font-semibold tracking-wide uppercase mb-3">Deep Curl ⭐</p>
+            <p style={{ color: C.ink }} className="text-xs font-semibold tracking-wide uppercase mb-3 mono">Deep Curl ⭐</p>
             <div className="space-y-2">
               <div className="flex justify-between text-xs">
-                <span style={{ color: C.ink }}>Deep curl entries</span>
-                <span style={{ color: dcRate !== null && (stdRate === null || dcRate > stdRate) ? C.win : C.inkSoft }} className="font-semibold">
-                  {dcRate !== null ? `${dcRate}%` : '—'} ({deepCurlTrades.length})
+                <span style={{ color: C.ink }}>Deep curl</span>
+                <span className="mono font-semibold" style={{ color: dcRate !== null && (stdRate === null || dcRate > stdRate) ? C.win : C.inkSoft }}>
+                  {dcRate !== null ? `${dcRate}%` : '—'} ({dc.length})
                 </span>
               </div>
               <div className="flex justify-between text-xs">
-                <span style={{ color: C.inkSoft }}>Standard entries</span>
-                <span style={{ color: C.inkSoft }}>{stdRate !== null ? `${stdRate}%` : '—'} ({stdTrades.length})</span>
+                <span style={{ color: C.inkSoft }}>Standard</span>
+                <span className="mono" style={{ color: C.inkSoft }}>{stdRate !== null ? `${stdRate}%` : '—'} ({std.length})</span>
               </div>
               <p style={{ color: C.inkSoft }} className="text-xs mt-3 leading-relaxed">
-                {deepCurlTrades.length < 5
-                  ? 'Need more data to draw conclusions.'
-                  : dcRate !== null && stdRate !== null && dcRate > stdRate
-                    ? '⭐ Deep curls are outperforming. Prioritize them.'
-                    : 'Deep curls not showing edge yet — keep collecting data.'}
+                {dc.length < 5 ? 'Need more data to draw conclusions.'
+                  : dcRate !== null && stdRate !== null && dcRate > stdRate ? '⭐ Deep curls outperforming. Prioritize them.'
+                  : 'Deep curls not showing edge yet.'}
               </p>
             </div>
           </div>
-
-          {/* Exit reasons */}
           <div>
-            <p style={{ color: C.ink }} className="text-xs font-semibold tracking-wide uppercase mb-3">Exit Reasons</p>
+            <p style={{ color: C.ink }} className="text-xs font-semibold tracking-wide uppercase mb-3 mono">Exit Reasons</p>
             <div className="space-y-2">
               {Object.entries(exitReasons).sort(([, a], [, b]) => b - a).slice(0, 6).map(([r, n]) => (
                 <div key={r} className="flex justify-between text-xs">
                   <span style={{ color: C.inkSoft }} className="truncate max-w-[160px]">{r}</span>
-                  <span style={{ color: C.gold }} className="ml-2 shrink-0 font-semibold">{n}×</span>
+                  <span style={{ color: C.pink }} className="ml-2 shrink-0 font-semibold mono">{n}×</span>
                 </div>
               ))}
-              {Object.keys(exitReasons).length === 0 && (
-                <span style={{ color: C.inkSoft }} className="text-xs italic">No closed trades yet.</span>
-              )}
+              {Object.keys(exitReasons).length === 0 && <span style={{ color: C.inkSoft }} className="text-xs">No closed trades yet.</span>}
             </div>
           </div>
         </div>
       </Card>
 
-      {/* ── Footer ─────────────────────────────────────────────────────────── */}
-      <GoldDivider />
-      <p style={{ color: C.inkSoft }} className="text-center text-[10px] tracking-[0.3em] uppercase font-sans">
-        Romanticize your discipline &nbsp;·&nbsp; Private &nbsp;·&nbsp; {new Date().getFullYear()}
+      <Divider />
+      <p style={{ color: C.inkSoft }} className="text-center text-[10px] tracking-[0.3em] uppercase mono">
+        Romanticize your discipline · Private · {new Date().getFullYear()}
       </p>
-
     </div>
   )
 }
