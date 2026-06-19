@@ -1,6 +1,6 @@
 # tradingbaby — Claude Code Briefing
 
-> Auto-loaded every session. Updated by PreCompact hook. Last manual update: 2026-06-15.
+> Auto-loaded every session. Last manual update: 2026-06-19.
 
 ## What this project is
 
@@ -157,14 +157,59 @@ print("✅ Drive ready")
 ```
 One click, then it connects without re-asking within the same session.
 
-## Open Positions (2026-06-15)
-| Ticker | Entry | Account | Stop | T1 | T2 | T3 |
-|--------|-------|---------|------|----|----|-----|
-| CAST | TBD | TBD | entry×0.92 | entry×1.15 | entry×1.30 | entry×1.60 |
-| HQ | TBD | TBD | entry×0.92 | entry×1.15 | entry×1.30 | entry×1.60 |
+## Infrastructure — Confirmed Working (2026-06-19)
 
-**Note:** Entry prices for CAST and HQ not yet logged — user to confirm. CALC/VVOS status from June 5 unknown (assumed closed).
+### Supabase
+- **Trading project:** `lgzzuppprbokfobhycov.supabase.co` — this is the ONLY Supabase project for trading
+- **Tables:** `w118_trades` (logs every entry) + `w118_edge` (edge engine snapshots)
+- **RLS:** anon key = read-only (dashboard). Service role key in VPS `bot/config.py` = write.
+- **Dashboard anon key:** `sb_publishable_qIqnOFvjWSVquqlCpDIj2Q_t468MohI` (public/safe)
+- **DO NOT TOUCH** the healing project (`suqfqnrxkjhmrzbkzrze`) — unrelated to trading
+
+### VPS Bot (Hostinger)
+- Bot lives at: `/root/tradingbaby/bot/bot.py`
+- Service name: `w118bot`
+- Key commands:
+  ```
+  sudo systemctl status w118bot       # is it running?
+  sudo journalctl -fu w118bot         # live log stream
+  sudo journalctl -u w118bot -n 50 --no-pager   # last 50 lines
+  sudo systemctl restart w118bot      # restart after config/code change
+  git pull origin main                # pull latest fixes (from /root/tradingbaby/)
+  ```
+- Config on VPS: `/root/tradingbaby/bot/config.py` (gitignored — keys live here only)
+- Required in config: `ALPACA_KEY_ID`, `ALPACA_SECRET_KEY`, `TELEGRAM_TOKEN`, `SUPABASE_URL`, `SUPABASE_KEY`
+
+### Dashboard (Vercel)
+- Vercel env vars must match the trading Supabase project:
+  - `NEXT_PUBLIC_SUPABASE_URL` = `https://lgzzuppprbokfobhycov.supabase.co`
+  - `NEXT_PUBLIC_SUPABASE_ANON_KEY` = `sb_publishable_qIqnOFvjWSVquqlCpDIj2Q_t468MohI`
+
+### Current config on VPS (as of 2026-06-19)
+- `MAX_POSITIONS = 5` ✅ (raised from 3 for paper learning phase)
+- `MAX_DAILY_TRADES = 9999` ✅ (effectively unlimited — run `grep MAX_DAILY_TRADES /root/tradingbaby/bot/config.py` to confirm)
+
+## Bug fixes shipped (2026-06-19)
+| Fix | PR | Status |
+|-----|----|--------|
+| `buy_$` SyntaxError crash-loop | earlier | ✅ merged |
+| Edge Engine (A+/A/B/C grading, learn→tighten) | #59 | ✅ on branch, merge when ready |
+| Exit spam loop (100+ TNON alerts) | #59 | ✅ |
+| Premarket market sell not filling → switched to `market/opg` | #59 | ✅ |
+| Restart re-alert dedup (`exit_pending.json`) | #59 | ✅ |
+| Heartbeat now shows top blockers (why no alert) | #59 | ✅ |
+| Supabase health check on startup | #59 | ✅ |
+
+## What "no alerts" means
+Silence is correct when: the scanner finds stocks but none pass all 5 conditions.
+The **hourly heartbeat** (💓) always fires and shows TOP BLOCKERS so you know exactly
+which condition is failing most. If no heartbeat for >2 hours → check `systemctl status w118bot`.
+
+## Open Positions (as of 2026-06-19 ~9am ET)
+- **TNON**: entered premarket, hit hard stop -42.5% (premarket market orders couldn't fill — now fixed with opg). Exit order pending → should fill at 9:30am open. Sell manually on Alpaca if needed.
+- **GMRS**: open, 7 shares, up
 
 ## Security Rules
-- **NEVER paste API keys in chat** — only in Colab cells or n8n node code directly
-- Keys belong in: n8n code node top constants, Colab cell variables — nowhere else
+- **NEVER paste API keys or secret keys in chat** — only in VPS config.py directly
+- The `sb_publishable_...` anon key IS safe to share (read-only by design)
+- Service role key = NEVER in chat, NEVER in git
