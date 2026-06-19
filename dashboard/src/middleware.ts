@@ -25,16 +25,16 @@ export function middleware(req: NextRequest) {
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     :root{
-      --gold:#c9a96e;--gold-dim:#8b6e3c;--rose:#c4789b;
-      --cream:#f0ebe0;--taupe:#7a6a5a;--bg:#080807;
-      --card:#141210;--border:rgba(201,169,110,0.14);
+      --gold:#b08d4f;--gold-dim:#c9a96e;--rose:#b06087;
+      --ink:#2b2620;--taupe:#6b6256;--bg:#f4efe6;
+      --card:#fffdf8;--border:rgba(176,141,79,0.22);
     }
     body{
-      background:var(--bg);
+      background:radial-gradient(1200px 600px at 80% -10%, rgba(201,169,110,0.12), transparent), var(--bg);
       display:flex;align-items:center;justify-content:center;
       min-height:100vh;
       font-family:'Inter',sans-serif;
-      font-weight:300;
+      font-weight:400;
       -webkit-font-smoothing:antialiased;
     }
     .wrap{
@@ -43,6 +43,7 @@ export function middleware(req: NextRequest) {
       background:var(--card);
       border:1px solid var(--border);
       border-radius:24px;
+      box-shadow:0 1px 2px rgba(43,38,32,0.04),0 12px 36px rgba(43,38,32,0.08);
     }
     .ornament{
       text-align:center;
@@ -51,11 +52,12 @@ export function middleware(req: NextRequest) {
       letter-spacing:0.3em;
       text-transform:uppercase;
       margin-bottom:20px;
+      font-weight:600;
     }
     h1{
       font-family:'Cormorant Garamond',Georgia,serif;
       font-size:40px;font-weight:600;line-height:1;
-      color:var(--cream);
+      color:var(--ink);
       text-align:center;margin-bottom:4px;
     }
     h1 em{color:var(--gold);font-style:italic;}
@@ -68,7 +70,7 @@ export function middleware(req: NextRequest) {
       display:flex;align-items:center;gap:12px;margin-bottom:28px;
     }
     .divider-line{flex:1;height:1px;background:var(--border);}
-    .divider-dot{color:var(--gold-dim);font-size:10px;}
+    .divider-dot{color:var(--gold);font-size:10px;}
     label{
       display:block;
       font-size:9px;letter-spacing:0.25em;text-transform:uppercase;
@@ -76,32 +78,32 @@ export function middleware(req: NextRequest) {
     }
     input{
       width:100%;padding:12px 16px;
-      background:rgba(201,169,110,0.04);
+      background:rgba(176,141,79,0.06);
       border:1px solid var(--border);
       border-radius:10px;
-      color:var(--cream);
-      font-size:14px;font-family:'Inter',sans-serif;font-weight:300;
+      color:var(--ink);
+      font-size:14px;font-family:'Inter',sans-serif;font-weight:400;
       outline:none;
       transition:border-color 0.2s;
     }
-    input:focus{border-color:rgba(201,169,110,0.5);}
+    input:focus{border-color:rgba(176,141,79,0.6);}
     input::placeholder{color:var(--taupe);}
     button{
       width:100%;margin-top:16px;padding:13px;
       background:var(--gold);
-      color:var(--bg);
+      color:var(--card);
       border:none;border-radius:10px;
       font-size:12px;font-family:'Inter',sans-serif;
-      font-weight:500;letter-spacing:0.15em;text-transform:uppercase;
+      font-weight:600;letter-spacing:0.15em;text-transform:uppercase;
       cursor:pointer;
       transition:opacity 0.2s;
     }
     button:hover{opacity:0.88;}
-    .err{color:#c06060;font-size:11px;margin-top:10px;text-align:center;display:none;font-family:'Inter';}
+    .err{color:#b4524a;font-size:11px;margin-top:10px;text-align:center;display:none;font-family:'Inter';}
     .quote{
       margin-top:28px;
       font-family:'Cormorant Garamond',Georgia,serif;
-      font-size:13px;font-style:italic;
+      font-size:14px;font-style:italic;
       color:var(--taupe);text-align:center;
       line-height:1.6;
     }

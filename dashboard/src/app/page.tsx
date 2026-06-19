@@ -6,10 +6,14 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { format, parseISO, subDays } from 'date-fns'
+import { GOALS, AFFIRMATIONS } from '../goals'
 
+// Fallback placeholders keep the production build from throwing during
+// prerender when env vars aren't present (e.g. CI). On Vercel the real
+// NEXT_PUBLIC_* values are inlined at build and used in the browser.
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  process.env.NEXT_PUBLIC_SUPABASE_URL  || 'https://placeholder.supabase.co',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key',
 )
 
 type Trade = {
@@ -38,23 +42,23 @@ type Trade = {
   blockers: string | null
 }
 
-// ── Design tokens (inline so Tailwind JIT picks them up) ──────────────────────
+// ── Light luxury palette ──────────────────────────────────────────────────────
 const C = {
-  gold:     '#c9a96e',
-  goldDim:  '#8b6e3c',
-  rose:     '#c4789b',
-  cream:    '#f0ebe0',
-  taupe:    '#7a6a5a',
-  bg:       '#080807',
-  card:     '#141210',
-  border:   'rgba(201,169,110,0.14)',
-  win:      '#6aad8a',
-  loss:     '#c06060',
+  bg:      '#f4efe6',
+  surface: '#fffdf8',
+  ink:     '#2b2620',
+  inkSoft: '#6b6256',
+  gold:    '#b08d4f',
+  goldSoft:'#c9a96e',
+  line:    'rgba(176,141,79,0.22)',
+  win:     '#3f8f63',
+  loss:    '#b4524a',
+  rose:    '#b06087',
 }
 
 function pnlColor(v: number | null) {
-  if (v === null) return 'text-[#7a6a5a]'
-  return v >= 0 ? 'text-[#6aad8a]' : 'text-[#c06060]'
+  if (v === null) return { color: C.inkSoft }
+  return { color: v >= 0 ? C.win : C.loss }
 }
 
 function ScoreDots({ score, max }: { score: number; max: number }) {
@@ -63,7 +67,7 @@ function ScoreDots({ score, max }: { score: number; max: number }) {
       {Array.from({ length: max }).map((_, i) => (
         <span
           key={i}
-          style={{ background: i < score ? C.gold : 'rgba(201,169,110,0.15)' }}
+          style={{ background: i < score ? C.gold : 'rgba(176,141,79,0.2)' }}
           className="w-1.5 h-1.5 rounded-full inline-block"
         />
       ))}
@@ -72,15 +76,15 @@ function ScoreDots({ score, max }: { score: number; max: number }) {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { bg: string; text: string; border: string }> = {
-    open:    { bg: 'rgba(196,120,155,0.1)', text: C.rose,   border: 'rgba(196,120,155,0.25)' },
-    closed:  { bg: 'rgba(201,169,110,0.08)', text: C.taupe, border: 'rgba(201,169,110,0.2)' },
-    stopped: { bg: 'rgba(192,96,96,0.1)',   text: C.loss,   border: 'rgba(192,96,96,0.25)' },
+  const map: Record<string, { bg: string; text: string }> = {
+    open:    { bg: 'rgba(176,96,135,0.12)', text: C.rose },
+    closed:  { bg: 'rgba(176,141,79,0.12)', text: C.gold },
+    stopped: { bg: 'rgba(180,82,74,0.12)',  text: C.loss },
   }
   const s = map[status] ?? map.closed
   return (
     <span
-      style={{ background: s.bg, color: s.text, border: `1px solid ${s.border}` }}
+      style={{ background: s.bg, color: s.text }}
       className="text-[10px] px-2 py-0.5 rounded-full font-medium tracking-wider uppercase"
     >
       {status}
@@ -90,11 +94,30 @@ function StatusBadge({ status }: { status: string }) {
 
 function GoldDivider() {
   return (
-    <div className="flex items-center gap-3 my-6">
-      <div style={{ background: `linear-gradient(to right, transparent, ${C.goldDim})` }} className="flex-1 h-px" />
-      <span style={{ color: C.gold }} className="text-xs tracking-[0.3em] uppercase">✦</span>
-      <div style={{ background: `linear-gradient(to left, transparent, ${C.goldDim})` }} className="flex-1 h-px" />
+    <div className="flex items-center gap-3 my-7">
+      <div style={{ background: `linear-gradient(to right, transparent, ${C.line})` }} className="flex-1 h-px" />
+      <span style={{ color: C.gold }} className="text-xs tracking-[0.3em]">✦</span>
+      <div style={{ background: `linear-gradient(to left, transparent, ${C.line})` }} className="flex-1 h-px" />
     </div>
+  )
+}
+
+function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div
+      style={{ background: C.surface, border: `1px solid ${C.line}`, boxShadow: '0 1px 2px rgba(43,38,32,0.04), 0 8px 24px rgba(43,38,32,0.05)' }}
+      className={`rounded-2xl ${className}`}
+    >
+      {children}
+    </div>
+  )
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p style={{ color: C.gold }} className="text-[10px] tracking-[0.25em] uppercase font-sans font-semibold mb-3">
+      {children}
+    </p>
   )
 }
 
@@ -102,18 +125,15 @@ function KpiCard({ label, value, sub, color }: {
   label: string; value: string; sub: string; color: string
 }) {
   return (
-    <div
-      style={{ background: C.card, border: `1px solid ${C.border}` }}
-      className="rounded-2xl p-5 flex flex-col gap-1"
-    >
-      <p style={{ color: C.taupe }} className="text-[10px] tracking-[0.25em] uppercase font-sans font-medium">
+    <Card className="p-5 flex flex-col gap-1">
+      <p style={{ color: C.inkSoft }} className="text-[10px] tracking-[0.2em] uppercase font-sans font-medium">
         {label}
       </p>
       <p style={{ color }} className="font-display text-3xl font-semibold leading-none mt-1">
         {value}
       </p>
-      <p style={{ color: C.taupe }} className="text-xs font-sans mt-1">{sub}</p>
-    </div>
+      <p style={{ color: C.inkSoft }} className="text-xs font-sans mt-1">{sub}</p>
+    </Card>
   )
 }
 
@@ -151,6 +171,9 @@ export default function Dashboard() {
     ? losers.reduce((s, t) => s + (t.realized_pnl ?? 0), 0) / losers.length
     : 0
 
+  // Total booked across ALL time-filtered closed trades = goal fuel (never below 0)
+  const goalFuel = Math.max(0, netPnl)
+
   // Cumulative P&L by date for chart
   const byDate: Record<string, number> = {}
   ;[...closed].reverse().forEach(t => {
@@ -162,13 +185,17 @@ export default function Dashboard() {
     return { date: format(parseISO(d), 'MMM d'), pnl: parseFloat(running.toFixed(2)) }
   })
 
+  // Daily affirmation (rotates by day-of-year)
+  const dayIdx = Math.floor(Date.now() / 86400000) % AFFIRMATIONS.length
+  const affirmation = AFFIRMATIONS[dayIdx]
+
   // ── Audit helpers ──────────────────────────────────────────────────────────
   const deepCurlTrades = closed.filter(t => t.deep_curl)
-  const dcWins   = deepCurlTrades.filter(t => (t.realized_pnl ?? 0) > 0).length
-  const dcRate   = deepCurlTrades.length ? Math.round((dcWins / deepCurlTrades.length) * 100) : null
+  const dcWins  = deepCurlTrades.filter(t => (t.realized_pnl ?? 0) > 0).length
+  const dcRate  = deepCurlTrades.length ? Math.round((dcWins / deepCurlTrades.length) * 100) : null
   const stdTrades = closed.filter(t => !t.deep_curl)
-  const stdWins  = stdTrades.filter(t => (t.realized_pnl ?? 0) > 0).length
-  const stdRate  = stdTrades.length ? Math.round((stdWins / stdTrades.length) * 100) : null
+  const stdWins = stdTrades.filter(t => (t.realized_pnl ?? 0) > 0).length
+  const stdRate = stdTrades.length ? Math.round((stdWins / stdTrades.length) * 100) : null
 
   const exitReasons: Record<string, number> = {}
   closed.forEach(t => {
@@ -177,42 +204,38 @@ export default function Dashboard() {
   })
 
   return (
-    <div
-      style={{ background: C.bg }}
-      className="min-h-screen text-[#f0ebe0] px-4 py-10 md:px-10 max-w-6xl mx-auto"
-    >
+    <div className="min-h-screen px-4 py-10 md:px-10 max-w-6xl mx-auto" style={{ color: C.ink }}>
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <header className="mb-2">
-        <div className="flex items-start justify-between">
+      <header>
+        <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
-            <p style={{ color: C.gold, letterSpacing: '0.3em' }} className="text-[10px] uppercase font-sans mb-2">
+            <p style={{ color: C.gold, letterSpacing: '0.3em' }} className="text-[10px] uppercase font-sans font-semibold mb-2">
               W118 · Curl if Flow · Private
             </p>
-            <h1 className="font-display text-5xl md:text-6xl font-semibold leading-none" style={{ color: C.cream }}>
+            <h1 className="font-display text-5xl md:text-6xl font-semibold leading-none" style={{ color: C.ink }}>
               <span style={{ color: C.gold }} className="italic">Olya&rsquo;s</span> Dashboard
             </h1>
           </div>
 
-          {/* Range + refresh */}
-          <div className="flex items-center gap-2 mt-2">
+          <div className="flex items-center gap-2 mt-1">
             {([7, 30, 90] as const).map(r => (
               <button
                 key={r}
                 onClick={() => setRange(r)}
                 style={{
-                  background: range === r ? C.gold : 'transparent',
-                  color:      range === r ? C.bg   : C.taupe,
-                  border:     `1px solid ${range === r ? C.gold : C.border}`,
+                  background: range === r ? C.gold : C.surface,
+                  color:      range === r ? C.surface : C.inkSoft,
+                  border:     `1px solid ${range === r ? C.gold : C.line}`,
                 }}
-                className="px-3 py-1 rounded-full text-xs font-sans transition-all duration-200 hover:border-gold"
+                className="px-3 py-1 rounded-full text-xs font-sans transition-all duration-200"
               >
                 {r}d
               </button>
             ))}
             <button
               onClick={load}
-              style={{ color: C.taupe, border: `1px solid ${C.border}` }}
+              style={{ color: C.inkSoft, background: C.surface, border: `1px solid ${C.line}` }}
               className="px-3 py-1 rounded-full text-xs font-sans hover:opacity-80 transition-opacity"
             >
               ↻
@@ -220,13 +243,18 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Quote */}
-        <p
-          style={{ color: C.taupe, borderLeft: `2px solid ${C.goldDim}` }}
-          className="font-display italic text-base md:text-lg mt-4 pl-4"
+        {/* Mantra banner */}
+        <div
+          style={{ background: C.surface, border: `1px solid ${C.line}` }}
+          className="mt-5 rounded-2xl px-5 py-4 flex items-center justify-between flex-wrap gap-2"
         >
-          She doesn&rsquo;t chase. She builds.
-        </p>
+          <p className="font-display italic text-lg md:text-xl" style={{ color: C.ink }}>
+            “{affirmation}”
+          </p>
+          <p style={{ color: C.gold }} className="text-[10px] tracking-[0.3em] uppercase font-sans font-semibold">
+            Discipline = Freedom
+          </p>
+        </div>
       </header>
 
       <GoldDivider />
@@ -259,88 +287,90 @@ export default function Dashboard() {
         />
       </div>
 
+      {/* ── Goal progress ──────────────────────────────────────────────────── */}
+      <Card className="p-5 mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <SectionLabel>Building Toward</SectionLabel>
+          <p style={{ color: C.inkSoft }} className="text-xs font-sans">
+            Fuel: <span style={{ color: C.win }} className="font-semibold">${goalFuel.toFixed(2)}</span>
+          </p>
+        </div>
+        <div className="space-y-5">
+          {GOALS.map(g => {
+            const pct = Math.min(100, (goalFuel / g.target) * 100)
+            const reached = goalFuel >= g.target
+            return (
+              <div key={g.label}>
+                <div className="flex items-baseline justify-between mb-1.5">
+                  <p className="font-sans text-sm font-medium" style={{ color: C.ink }}>
+                    <span className="mr-1.5">{g.emoji}</span>{g.label}
+                    {reached && <span style={{ color: C.win }} className="ml-2 text-xs">✓ reached</span>}
+                  </p>
+                  <p className="font-sans text-xs" style={{ color: C.inkSoft }}>
+                    ${goalFuel.toFixed(0)} <span className="opacity-50">/ ${g.target.toLocaleString()}</span>
+                  </p>
+                </div>
+                <div style={{ background: C.bg }} className="h-2.5 rounded-full overflow-hidden">
+                  <div
+                    style={{
+                      width: `${pct}%`,
+                      background: reached
+                        ? `linear-gradient(90deg, ${C.win}, #5fae84)`
+                        : `linear-gradient(90deg, ${C.gold}, ${C.goldSoft})`,
+                    }}
+                    className="h-full rounded-full transition-all duration-700"
+                  />
+                </div>
+                <div className="flex items-center justify-between mt-1.5">
+                  <p className="font-display italic text-xs" style={{ color: C.inkSoft }}>{g.note}</p>
+                  <p className="font-sans text-[11px] font-semibold" style={{ color: C.gold }}>{pct.toFixed(0)}%</p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </Card>
+
       {/* ── Cumulative P&L chart ───────────────────────────────────────────── */}
       {chartData.length > 1 && (
-        <div
-          style={{ background: C.card, border: `1px solid ${C.border}` }}
-          className="rounded-2xl p-5 mb-8"
-        >
-          <p style={{ color: C.taupe }} className="text-[10px] tracking-[0.25em] uppercase font-sans mb-4">
-            Cumulative P&L · {range}d
-          </p>
+        <Card className="p-5 mb-8">
+          <SectionLabel>Cumulative P&L · {range}d</SectionLabel>
           <ResponsiveContainer width="100%" height={200}>
             <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -10, bottom: 0 }}>
               <defs>
                 <linearGradient id="goldGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor={C.gold} stopOpacity={0.25} />
+                  <stop offset="5%"  stopColor={C.gold} stopOpacity={0.28} />
                   <stop offset="95%" stopColor={C.gold} stopOpacity={0}    />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(201,169,110,0.07)" />
-              <XAxis
-                dataKey="date"
-                tick={{ fill: C.taupe, fontSize: 10, fontFamily: 'Inter' }}
-                axisLine={false} tickLine={false}
-              />
-              <YAxis
-                tick={{ fill: C.taupe, fontSize: 10, fontFamily: 'Inter' }}
-                axisLine={false} tickLine={false}
-                tickFormatter={v => `$${v}`}
-              />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(176,141,79,0.14)" />
+              <XAxis dataKey="date" tick={{ fill: C.inkSoft, fontSize: 10, fontFamily: 'Inter' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: C.inkSoft, fontSize: 10, fontFamily: 'Inter' }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} />
               <Tooltip
-                contentStyle={{
-                  background: C.card,
-                  border: `1px solid ${C.border}`,
-                  borderRadius: 12,
-                  fontFamily: 'Inter',
-                  fontSize: 12,
-                }}
-                labelStyle={{ color: C.taupe }}
+                contentStyle={{ background: C.surface, border: `1px solid ${C.line}`, borderRadius: 12, fontFamily: 'Inter', fontSize: 12, color: C.ink }}
+                labelStyle={{ color: C.inkSoft }}
                 formatter={(v: number) => [`$${v.toFixed(2)}`, 'P&L']}
               />
-              <Area
-                type="monotone"
-                dataKey="pnl"
-                stroke={C.gold}
-                strokeWidth={1.5}
-                fill="url(#goldGrad)"
-                dot={false}
-              />
+              <Area type="monotone" dataKey="pnl" stroke={C.gold} strokeWidth={2} fill="url(#goldGrad)" dot={false} />
             </AreaChart>
           </ResponsiveContainer>
-        </div>
+        </Card>
       )}
 
       {/* ── Trade log ──────────────────────────────────────────────────────── */}
-      <div
-        style={{ background: C.card, border: `1px solid ${C.border}` }}
-        className="rounded-2xl overflow-hidden mb-8"
-      >
-        <div
-          style={{ borderBottom: `1px solid ${C.border}` }}
-          className="px-5 py-3 flex items-center justify-between"
-        >
-          <p style={{ color: C.taupe }} className="text-[10px] tracking-[0.25em] uppercase font-sans">
-            Trade Log
-          </p>
-          {loading && (
-            <span style={{ color: C.gold }} className="text-xs font-sans animate-pulse">
-              loading…
-            </span>
-          )}
+      <Card className="overflow-hidden mb-8">
+        <div style={{ borderBottom: `1px solid ${C.line}` }} className="px-5 py-3 flex items-center justify-between">
+          <SectionLabel>Trade Log</SectionLabel>
+          {loading && <span style={{ color: C.gold }} className="text-xs font-sans animate-pulse">loading…</span>}
         </div>
 
         {/* Desktop */}
         <div className="overflow-x-auto hidden md:block">
           <table className="w-full text-sm font-sans">
             <thead>
-              <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+              <tr style={{ borderBottom: `1px solid ${C.line}` }}>
                 {['Date', 'Ticker', 'Status', 'Entry', 'Exit', 'P&L', 'Setup', 'K / D', 'Vol', 'Exit reason'].map(h => (
-                  <th
-                    key={h}
-                    style={{ color: C.taupe }}
-                    className="px-4 py-2 text-left text-[10px] tracking-[0.2em] uppercase font-medium"
-                  >
+                  <th key={h} style={{ color: C.inkSoft }} className="px-4 py-2 text-left text-[10px] tracking-[0.15em] uppercase font-semibold">
                     {h}
                   </th>
                 ))}
@@ -348,49 +378,31 @@ export default function Dashboard() {
             </thead>
             <tbody>
               {trades.map((t, i) => (
-                <tr
-                  key={t.id}
-                  style={{
-                    borderBottom: i < trades.length - 1 ? `1px solid rgba(201,169,110,0.06)` : undefined,
-                  }}
-                  className="transition-colors hover:bg-[rgba(201,169,110,0.03)]"
-                >
-                  <td className="px-4 py-3 whitespace-nowrap" style={{ color: C.taupe }}>
+                <tr key={t.id} style={{ borderBottom: i < trades.length - 1 ? `1px solid rgba(176,141,79,0.1)` : undefined }} className="transition-colors hover:bg-[rgba(176,141,79,0.05)]">
+                  <td className="px-4 py-3 whitespace-nowrap" style={{ color: C.inkSoft }}>
                     {format(parseISO(t.date), 'MMM d')}
-                    <span className="text-[10px] ml-1.5 opacity-50">{t.time_et}</span>
+                    <span className="text-[10px] ml-1.5 opacity-60">{t.time_et}</span>
                   </td>
-                  <td className="px-4 py-3 font-semibold" style={{ color: C.cream }}>
+                  <td className="px-4 py-3 font-semibold" style={{ color: C.ink }}>
                     {t.ticker}
                     {t.deep_curl && <span style={{ color: C.gold }} className="ml-1 text-xs">⭐</span>}
                   </td>
                   <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
-                  <td className="px-4 py-3" style={{ color: C.cream }}>${t.entry_price?.toFixed(3)}</td>
-                  <td className="px-4 py-3" style={{ color: C.taupe }}>
-                    {t.exit_price ? `$${t.exit_price.toFixed(3)}` : '—'}
+                  <td className="px-4 py-3" style={{ color: C.ink }}>${t.entry_price?.toFixed(3)}</td>
+                  <td className="px-4 py-3" style={{ color: C.inkSoft }}>{t.exit_price ? `$${t.exit_price.toFixed(3)}` : '—'}</td>
+                  <td className="px-4 py-3 font-semibold" style={pnlColor(t.realized_pnl)}>
+                    {t.realized_pnl !== null ? `${t.realized_pnl >= 0 ? '+' : ''}$${t.realized_pnl.toFixed(2)}` : '—'}
                   </td>
-                  <td className={`px-4 py-3 font-semibold ${pnlColor(t.realized_pnl)}`}>
-                    {t.realized_pnl !== null
-                      ? `${t.realized_pnl >= 0 ? '+' : ''}$${t.realized_pnl.toFixed(2)}`
-                      : '—'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <ScoreDots score={t.setup_score ?? 0} max={t.setup_max ?? 5} />
-                  </td>
-                  <td className="px-4 py-3 text-xs" style={{ color: C.taupe }}>
-                    {t.k_value?.toFixed(0)} / {t.d_value?.toFixed(0)}
-                  </td>
-                  <td className="px-4 py-3 text-xs" style={{ color: C.taupe }}>
-                    {t.vol_ratio?.toFixed(1)}×
-                  </td>
-                  <td className="px-4 py-3 text-xs max-w-[180px] truncate" style={{ color: C.taupe }}>
-                    {t.exit_reason ?? t.blockers ?? '—'}
-                  </td>
+                  <td className="px-4 py-3"><ScoreDots score={t.setup_score ?? 0} max={t.setup_max ?? 5} /></td>
+                  <td className="px-4 py-3 text-xs" style={{ color: C.inkSoft }}>{t.k_value?.toFixed(0)} / {t.d_value?.toFixed(0)}</td>
+                  <td className="px-4 py-3 text-xs" style={{ color: C.inkSoft }}>{t.vol_ratio?.toFixed(1)}×</td>
+                  <td className="px-4 py-3 text-xs max-w-[180px] truncate" style={{ color: C.inkSoft }}>{t.exit_reason ?? t.blockers ?? '—'}</td>
                 </tr>
               ))}
               {!loading && trades.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-4 py-12 text-center font-display italic text-lg" style={{ color: C.taupe }}>
-                    No trades in the last {range} days.
+                  <td colSpan={10} className="px-4 py-12 text-center font-display italic text-lg" style={{ color: C.inkSoft }}>
+                    No trades in the last {range} days. The patient win.
                   </td>
                 </tr>
               )}
@@ -399,53 +411,41 @@ export default function Dashboard() {
         </div>
 
         {/* Mobile cards */}
-        <div className="md:hidden divide-y" style={{ borderColor: 'rgba(201,169,110,0.08)' }}>
-          {trades.map(t => (
-            <div key={t.id} className="p-4">
+        <div className="md:hidden" style={{ borderColor: 'rgba(176,141,79,0.12)' }}>
+          {trades.map((t, i) => (
+            <div key={t.id} className="p-4" style={{ borderTop: i > 0 ? `1px solid rgba(176,141,79,0.12)` : undefined }}>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <span className="font-semibold" style={{ color: C.cream }}>{t.ticker}</span>
+                  <span className="font-semibold" style={{ color: C.ink }}>{t.ticker}</span>
                   {t.deep_curl && <span style={{ color: C.gold }}>⭐</span>}
                   <StatusBadge status={t.status} />
                 </div>
-                <span className={`font-semibold ${pnlColor(t.realized_pnl)}`}>
-                  {t.realized_pnl !== null
-                    ? `${t.realized_pnl >= 0 ? '+' : ''}$${t.realized_pnl.toFixed(2)}`
-                    : 'open'}
+                <span className="font-semibold" style={pnlColor(t.realized_pnl)}>
+                  {t.realized_pnl !== null ? `${t.realized_pnl >= 0 ? '+' : ''}$${t.realized_pnl.toFixed(2)}` : 'open'}
                 </span>
               </div>
-              <div className="flex flex-wrap items-center gap-3 text-xs" style={{ color: C.taupe }}>
+              <div className="flex flex-wrap items-center gap-3 text-xs" style={{ color: C.inkSoft }}>
                 <span>{format(parseISO(t.date), 'MMM d')} {t.time_et}</span>
                 <span>in ${t.entry_price?.toFixed(3)}{t.exit_price ? ` → $${t.exit_price.toFixed(3)}` : ''}</span>
                 <span>{t.vol_ratio?.toFixed(1)}× vol</span>
               </div>
               <div className="mt-2 flex items-center gap-2">
                 <ScoreDots score={t.setup_score ?? 0} max={t.setup_max ?? 5} />
-                {t.exit_reason && (
-                  <span className="text-xs truncate" style={{ color: C.taupe }}>{t.exit_reason}</span>
-                )}
+                {t.exit_reason && <span className="text-xs truncate" style={{ color: C.inkSoft }}>{t.exit_reason}</span>}
               </div>
             </div>
           ))}
         </div>
-      </div>
+      </Card>
 
       {/* ── Self-Audit ─────────────────────────────────────────────────────── */}
-      <div
-        style={{ background: C.card, border: `1px solid ${C.border}` }}
-        className="rounded-2xl p-5"
-      >
-        <p style={{ color: C.taupe }} className="text-[10px] tracking-[0.25em] uppercase font-sans mb-4">
-          Self-Audit
-        </p>
-
+      <Card className="p-5">
+        <SectionLabel>Daily Strategic Self-Audit</SectionLabel>
         <div className="grid md:grid-cols-3 gap-6 text-sm font-sans">
 
           {/* Setup quality */}
           <div>
-            <p style={{ color: C.gold }} className="text-xs tracking-wider uppercase mb-3">
-              Setup Quality
-            </p>
+            <p style={{ color: C.ink }} className="text-xs font-semibold tracking-wide uppercase mb-3">Setup Quality</p>
             {[5, 4, 3, 2].map(score => {
               const count = trades.filter(t => t.setup_score === score).length
               const won   = trades.filter(t => t.setup_score === score && (t.realized_pnl ?? 0) > 0).length
@@ -453,11 +453,9 @@ export default function Dashboard() {
               return (
                 <div key={score} className="flex items-center gap-3 mb-2">
                   <ScoreDots score={score} max={5} />
-                  <span style={{ color: C.taupe }} className="text-xs">{count} trades</span>
+                  <span style={{ color: C.inkSoft }} className="text-xs">{count} trades</span>
                   {rate !== null && (
-                    <span style={{ color: rate >= 70 ? C.win : C.gold }} className="text-xs ml-auto">
-                      {rate}% win
-                    </span>
+                    <span style={{ color: rate >= 70 ? C.win : C.gold }} className="text-xs ml-auto font-semibold">{rate}% win</span>
                   )}
                 </div>
               )
@@ -466,23 +464,19 @@ export default function Dashboard() {
 
           {/* Deep curl */}
           <div>
-            <p style={{ color: C.gold }} className="text-xs tracking-wider uppercase mb-3">
-              Deep Curl ⭐
-            </p>
+            <p style={{ color: C.ink }} className="text-xs font-semibold tracking-wide uppercase mb-3">Deep Curl ⭐</p>
             <div className="space-y-2">
               <div className="flex justify-between text-xs">
-                <span style={{ color: C.cream }}>Deep curl entries</span>
-                <span style={{ color: dcRate !== null && (stdRate === null || dcRate > stdRate) ? C.gold : C.taupe }}>
+                <span style={{ color: C.ink }}>Deep curl entries</span>
+                <span style={{ color: dcRate !== null && (stdRate === null || dcRate > stdRate) ? C.win : C.inkSoft }} className="font-semibold">
                   {dcRate !== null ? `${dcRate}%` : '—'} ({deepCurlTrades.length})
                 </span>
               </div>
               <div className="flex justify-between text-xs">
-                <span style={{ color: C.taupe }}>Standard entries</span>
-                <span style={{ color: C.taupe }}>
-                  {stdRate !== null ? `${stdRate}%` : '—'} ({stdTrades.length})
-                </span>
+                <span style={{ color: C.inkSoft }}>Standard entries</span>
+                <span style={{ color: C.inkSoft }}>{stdRate !== null ? `${stdRate}%` : '—'} ({stdTrades.length})</span>
               </div>
-              <p style={{ color: C.taupe }} className="text-xs mt-3 leading-relaxed">
+              <p style={{ color: C.inkSoft }} className="text-xs mt-3 leading-relaxed">
                 {deepCurlTrades.length < 5
                   ? 'Need more data to draw conclusions.'
                   : dcRate !== null && stdRate !== null && dcRate > stdRate
@@ -494,33 +488,25 @@ export default function Dashboard() {
 
           {/* Exit reasons */}
           <div>
-            <p style={{ color: C.gold }} className="text-xs tracking-wider uppercase mb-3">
-              Exit Reasons
-            </p>
+            <p style={{ color: C.ink }} className="text-xs font-semibold tracking-wide uppercase mb-3">Exit Reasons</p>
             <div className="space-y-2">
-              {Object.entries(exitReasons)
-                .sort(([, a], [, b]) => b - a)
-                .slice(0, 6)
-                .map(([r, n]) => (
-                  <div key={r} className="flex justify-between text-xs">
-                    <span style={{ color: C.taupe }} className="truncate max-w-[160px]">{r}</span>
-                    <span style={{ color: C.goldDim }} className="ml-2 shrink-0">{n}×</span>
-                  </div>
-                ))}
+              {Object.entries(exitReasons).sort(([, a], [, b]) => b - a).slice(0, 6).map(([r, n]) => (
+                <div key={r} className="flex justify-between text-xs">
+                  <span style={{ color: C.inkSoft }} className="truncate max-w-[160px]">{r}</span>
+                  <span style={{ color: C.gold }} className="ml-2 shrink-0 font-semibold">{n}×</span>
+                </div>
+              ))}
               {Object.keys(exitReasons).length === 0 && (
-                <span style={{ color: C.taupe }} className="text-xs italic">No closed trades yet.</span>
+                <span style={{ color: C.inkSoft }} className="text-xs italic">No closed trades yet.</span>
               )}
             </div>
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* ── Footer ─────────────────────────────────────────────────────────── */}
       <GoldDivider />
-      <p
-        style={{ color: C.taupe }}
-        className="text-center text-[10px] tracking-[0.3em] uppercase font-sans"
-      >
+      <p style={{ color: C.inkSoft }} className="text-center text-[10px] tracking-[0.3em] uppercase font-sans">
         Romanticize your discipline &nbsp;·&nbsp; Private &nbsp;·&nbsp; {new Date().getFullYear()}
       </p>
 
