@@ -145,7 +145,7 @@ def get_bars(ticker: str, limit: int = 100, timeframe: str = "5Min") -> list | N
     try:
         data = _alpaca("GET", f"/v2/stocks/{ticker}/bars",
                        params={"timeframe": timeframe, "limit": limit,
-                               "feed": "iex", "adjustment": "raw"})
+                               "feed": "sip", "adjustment": "raw"})
         bars = data.get("bars") or []
         if not bars:
             log.info(f"[bars] {ticker} ({timeframe}): no bars returned")

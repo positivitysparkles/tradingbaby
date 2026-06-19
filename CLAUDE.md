@@ -193,21 +193,40 @@ One click, then it connects without re-asking within the same session.
 | Fix | PR | Status |
 |-----|----|--------|
 | `buy_$` SyntaxError crash-loop | earlier | ✅ merged |
-| Edge Engine (A+/A/B/C grading, learn→tighten) | #59 | ✅ on branch, merge when ready |
-| Exit spam loop (100+ TNON alerts) | #59 | ✅ |
-| Premarket market sell not filling → switched to `market/opg` | #59 | ✅ |
-| Restart re-alert dedup (`exit_pending.json`) | #59 | ✅ |
-| Heartbeat now shows top blockers (why no alert) | #59 | ✅ |
-| Supabase health check on startup | #59 | ✅ |
+| Edge Engine (A+/A/B/C grading, learn→tighten) | #59 | ✅ merged |
+| Exit spam loop (100+ TNON alerts) | #63 | ✅ merged |
+| Premarket OPG sell (bracket orders blocked shares) | #63 | ✅ merged |
+| Restart re-alert dedup (`exit_pending.json`) | #63 | ✅ merged |
+| RTH hard stop blocked by bracket orders | #63 | ✅ merged |
+| [skip] logging at INFO level + 9:30am bell + 30min heartbeat | #63 | ✅ merged |
+| AVOID_MIDDAY disabled for data collection phase | #67 | ✅ merged |
+| get_bars silent failure: `feed=sip` + min 10 bars + visible logging | #67 | ✅ merged |
+
+## Critical lessons learned (2026-06-19) — DO NOT REPEAT
+1. **`feed=sip` is correct** for Alpaca paper trading. SIP covers all exchanges incl. NASDAQ.
+   `feed=iex` only covers stocks that trade on IEX exchange — our small-cap NASDAQ universe
+   has ZERO IEX coverage. Every stock returns empty bars on IEX. DO NOT switch to iex.
+2. **30-bar minimum was too strict.** Individual indicator functions handle sparse data
+   gracefully (return None → blocker added). Bar minimum is now 10.
+3. **`REQUIRE_1M_FRESH = False`** — this gate was added in the Edge Engine PR overnight.
+   It blocks 5/5 setups when 1m is consolidating. Leave it False.
+4. **`AVOID_MIDDAY = False`** during data collection phase so bot trades all session hours.
+5. **After ANY PR merge → always `git pull origin main && sudo systemctl restart w118bot` on VPS.**
+   The VPS bot does not auto-update. Silence after a merge = old code still running.
+6. **Heartbeat "No candidates found this scan"** = blockers Counter is empty = get_bars()
+   returning None for every ticker (feed issue or bars < minimum). Not a conditions problem.
 
 ## What "no alerts" means
-Silence is correct when: the scanner finds stocks but none pass all 5 conditions.
-The **hourly heartbeat** (💓) always fires and shows TOP BLOCKERS so you know exactly
-which condition is failing most. If no heartbeat for >2 hours → check `systemctl status w118bot`.
+The **30-min heartbeat** (💓) shows TOP BLOCKERS — exact condition failing most.
+- "No candidates found this scan" → bars fetch failing (check feed, API key, bot restart)
+- Any other blocker → conditions failing (expected during slow market periods)
+If no heartbeat for >1 hour → `sudo systemctl status w118bot`
 
-## Open Positions (as of 2026-06-19 ~9am ET)
-- **TNON**: entered premarket, hit hard stop -42.5% (premarket market orders couldn't fill — now fixed with opg). Exit order pending → should fill at 9:30am open. Sell manually on Alpaca if needed.
-- **GMRS**: open, 7 shares, up
+## Current config on VPS (as of 2026-06-19 ~11am ET)
+- `MAX_POSITIONS = 5`
+- `MAX_DAILY_TRADES = 9999`
+- `AVOID_MIDDAY = False` (disabled for data collection)
+- `REQUIRE_1M_FRESH = False`
 
 ## Security Rules
 - **NEVER paste API keys or secret keys in chat** — only in VPS config.py directly
