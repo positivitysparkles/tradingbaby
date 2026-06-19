@@ -21,10 +21,10 @@ export const GOALS: Goal[] = [
     note:   'First + last + deposit. My own space, my own rules.',
   },
   {
-    label:  'Epic Views',
-    emoji:  '🌅',
+    label:  'Ocean View Retreat',
+    emoji:  '🌊',
     target: 25000,
-    note:   'The apartment with the skyline. Floor-to-ceiling windows.',
+    note:   'Epic views. Floor-to-ceiling windows. Salt air.',
   },
   {
     label:  'Dream Car Fund',
@@ -33,10 +33,10 @@ export const GOALS: Goal[] = [
     note:   "I'm the owner of my dream car, and it feels amazing.",
   },
   {
-    label:  'Freedom Fund',
+    label:  'Total Freedom',
     emoji:  '🕊️',
     target: 100000,
-    note:   'Financially free from 9–5 trading. Discipline = Freedom.',
+    note:   'Financially free. Discipline = Freedom.',
   },
 ]
 

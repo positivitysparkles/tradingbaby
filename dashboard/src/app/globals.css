@@ -2,20 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600;1,700&family=Inter:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 :root {
-  --bg:        #f4efe6;  /* warm ivory / marble */
-  --bg-soft:   #ece5d8;
-  --surface:   #fffdf8;  /* warm white card */
-  --ink:       #2b2620;  /* charcoal text */
-  --ink-soft:  #6b6256;  /* muted brown-grey */
-  --gold:      #b08d4f;  /* champagne gold (darkened for contrast on light) */
-  --gold-soft: #c9a96e;
-  --line:      rgba(176, 141, 79, 0.22);
-  --win:       #3f8f63;
-  --loss:      #b4524a;
-  --rose:      #b06087;
+  --bg:        #0b0910;  /* near-black plum */
+  --bg-2:      #120e1a;
+  --surface:   #15111f;  /* dark plum card */
+  --surface-2: #1c1729;
+  --ink:       #f3eef7;  /* soft white */
+  --ink-soft:  #9c90ad;  /* muted lavender-grey */
+  --pink:      #ff5fa2;  /* hot rosé — primary */
+  --pink-soft: #ffa6cd;
+  --pink-dim:  #b8407a;
+  --gold:      #e7c79c;  /* champagne — secondary luxe accent */
+  --line:      rgba(255, 95, 162, 0.16);
+  --win:       #57e0a0;
+  --loss:      #ff6b81;
 }
 
 * { box-sizing: border-box; }
@@ -24,16 +26,25 @@ html { scroll-behavior: smooth; }
 
 body {
   background:
-    radial-gradient(1200px 600px at 80% -10%, rgba(201,169,110,0.10), transparent),
+    radial-gradient(900px 500px at 88% -8%, rgba(255,95,162,0.16), transparent),
+    radial-gradient(700px 500px at 0% 100%, rgba(231,199,156,0.07), transparent),
     var(--bg);
+  background-attachment: fixed;
   color: var(--ink);
-  font-family: 'Inter', sans-serif;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
   font-weight: 400;
   -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.01em;
 }
+
+/* Mono for numbers / data — the "terminal alpha" feel */
+.mono { font-family: 'JetBrains Mono', monospace; font-feature-settings: "tnum"; }
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(176,141,79,0.3); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(176,141,79,0.5); }
+::-webkit-scrollbar-thumb { background: rgba(255,95,162,0.28); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,95,162,0.5); }
+
+/* Subtle neon text glow for headline accents */
+.glow-pink { text-shadow: 0 0 22px rgba(255,95,162,0.45); }
