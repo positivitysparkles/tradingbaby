@@ -185,12 +185,32 @@ def place_order(ticker: str, qty: int, side: str, otype: str,
         return False
 
 def market_sell_position(ticker: str) -> bool:
+    # If a sell order is already pending, DON'T cancel-and-resubmit — let it fill.
+    # Without this check: every scan cancels the in-flight sell, places a new one,
+    # position stays open, Telegram fires again → 100+ identical exit messages.
+    existing_sells = [o for o in get_open_orders()
+                      if o["symbol"] == ticker and o["side"] == "sell"]
+    if existing_sells:
+        log.info(f"[exit] {ticker}: sell already pending ({existing_sells[0].get('status')}) — holding")
+        return True
     cancel_ticker_orders(ticker)
     for p in get_positions():
         if p["symbol"] == ticker:
             qty = abs(int(float(p["qty"])))
-            if qty > 0:
+            if qty <= 0:
+                continue
+            if _is_rth():
                 return place_order(ticker, qty, "sell", "market", tif="day")
+            # Outside RTH (premarket / afterhours): Alpaca cancels market+day orders —
+            # they park at "new" and never fill. A marketable limit with extended_hours=True
+            # actually executes (same pattern as the premarket buy entry).
+            cur = float(p.get("current_price") or 0) or (get_latest_price(ticker) or 0.0)
+            if cur > 0:
+                lim = round(cur * 0.97, 4)   # 3% slippage buffer — fills in thin tape
+                log.info(f"[exit] {ticker} ext-hours limit sell @ ${lim} (cur=${cur:.4f})")
+                return place_order(ticker, qty, "sell", "limit",
+                                   limit_price=lim, tif="day", extended_hours=True)
+            return place_order(ticker, qty, "sell", "market", tif="day")
     return False
 
 # ── Telegram ──────────────────────────────────────────────────────────────────
@@ -659,6 +679,11 @@ def execute_exit(ticker: str, reason: str):
             break
     sold = market_sell_position(ticker)
     if sold:
+        if ticker in _exiting_now:
+            # Sell order is already in flight — position still exists but we already
+            # sent the alert and logged to Supabase. Suppress the duplicate.
+            return
+        _exiting_now.add(ticker)
         exit_price = get_latest_price(ticker) or 0.0
         # Build a self-audit note. Losers get tagged LOSS AUTOPSY so the dashboard
         # can mine them for patterns (which session / which exit reason leaks money).
@@ -834,6 +859,7 @@ _watch_sent: dict  = {}      # ticker → timestamp; throttle WATCH alerts to 1 
 _setup_sent: dict  = {}      # ticker → timestamp; throttle MANUAL SETUP alerts to 1 per 10 min
 _bought_today: set = set()   # tickers already bought today — never double-buy the same name
 _bought_day: str   = ""      # date the set above belongs to (reset on rollover)
+_exiting_now: set  = set()   # tickers with a submitted exit order — prevents duplicate Telegram alerts
 
 
 def _send_setup_alert(ticker: str, info: dict, why: str) -> None:
@@ -931,6 +957,8 @@ def scan():
         tg(f"⏰ <b>Bot scanning</b> — {now}\nGate open. Running TradingView scanner...")
 
     held = get_held()
+    # Release the exit guard for any ticker whose position is now fully gone (fill confirmed).
+    _exiting_now.intersection_update(held)
 
     # Check exits on existing positions first (signal exits + hard P&L stop backup)
     positions = get_positions()
