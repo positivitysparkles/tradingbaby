@@ -72,7 +72,7 @@ EXT_HOURS_LIMIT_BUFFER = 0.02 # pay up to +2% above last to guarantee a premarke
 # Entry timing — 1-minute freshness gate (W118's "zoom to 1m"). The 5-min signal
 # lags; this blocks entries where the 1-min move is already rolling over (no more
 # buying the top like the ATPC $3.43 chase). Fails open on thin 1-min history.
-REQUIRE_1M_FRESH = True
+REQUIRE_1M_FRESH = False
 
 # Supabase — dedicated tradingbaby project (supabase.com → "tradingbaby" → Settings → API)
 # SUPABASE_KEY = service_role (secret) key — bot writes trades.
