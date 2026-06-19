@@ -5,11 +5,12 @@ Runs continuously. Active 4am–11am ET. Finds NASDAQ small-cap momentum
 setups, executes on Alpaca paper account, self-audits daily at 4:30pm ET.
 
 Quick start:
-  pip install requests schedule
+  pip install requests schedule yfinance
   # Edit config.py → paste Alpaca keys + Telegram token
   python bot/bot.py
 
-No FMP key, no extra signups. Uses Yahoo Finance (free) + Alpaca IEX data.
+No FMP key, no extra signups. Bar data via yfinance (free, all US stocks).
+Alpaca used for orders only.
 """
 
 import html
@@ -24,6 +25,7 @@ from pathlib import Path
 
 import requests
 import schedule
+import yfinance as yf
 
 # ── Bootstrap path so we can import siblings ─────────────────────────────────
 sys.path.insert(0, str(Path(__file__).parent))
@@ -143,19 +145,27 @@ def is_tradeable(ticker: str) -> bool:
 
 def get_bars(ticker: str, limit: int = 100, timeframe: str = "5Min") -> list | None:
     try:
-        data = _alpaca("GET", f"/v2/stocks/{ticker}/bars",
-                       params={"timeframe": timeframe, "limit": limit,
-                               "feed": "sip", "adjustment": "raw"})
-        bars = data.get("bars") or []
-        if not bars:
-            log.info(f"[bars] {ticker} ({timeframe}): no bars returned")
+        interval = "1m" if "1Min" in timeframe else "5m"
+        df = yf.download(ticker, period="1d", interval=interval,
+                         prepost=True, progress=False, auto_adjust=False)
+        if df is None or df.empty:
+            log.info(f"[bars] {ticker} ({timeframe}): no bars from yfinance")
             return None
+        # yfinance MultiIndex columns when single ticker — flatten if needed
+        if hasattr(df.columns, "levels"):
+            df.columns = df.columns.get_level_values(0)
+        bars = [
+            {"o": float(row["Open"]), "h": float(row["High"]),
+             "l": float(row["Low"]),  "c": float(row["Close"]),
+             "v": int(row["Volume"])}
+            for _, row in df.tail(limit).iterrows()
+        ]
         if len(bars) < 10:
-            log.info(f"[bars] {ticker} ({timeframe}): only {len(bars)} bars — too thin, skip")
+            log.info(f"[bars] {ticker} ({timeframe}): only {len(bars)} bars — too thin")
             return None
         return bars
     except Exception as e:
-        log.warning(f"[bars] {ticker} ({timeframe}): API error — {e}")
+        log.warning(f"[bars] {ticker} ({timeframe}): {e}")
         return None
 
 def place_order(ticker: str, qty: int, side: str, otype: str,
