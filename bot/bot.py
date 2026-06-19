@@ -951,6 +951,37 @@ def _send_setup_alert(ticker: str, info: dict, why: str) -> None:
     )
     log.info(f"[MANUAL] {ticker} full 5/5 setup — alert only ({why})")
 
+def _send_coil_alert(ticker: str, info: dict) -> None:
+    """Coil near-miss — Tier-1 (Supertrend+VWAP+ZLSMA) + Stoch hook + MACD all pass,
+    only VOLUME hasn't expanded yet. In a Shelf Bounce the volume surge prints on the
+    NEXT (breakout) candle, so this is the dry-coil entry to take by hand. Throttled
+    1/10 min, shares the setup throttle so the same name never double-alerts."""
+    last = _setup_sent.get(ticker, 0)
+    if time.time() - last < 600:
+        return
+    _setup_sent[ticker] = time.time()
+    bar_price  = info["price"]
+    live_price = get_latest_price(ticker)
+    price = live_price if live_price else bar_price
+    price_note = "live" if live_price else "last 5m bar"
+    stop = round(price * (1 - STOP_PCT), 2)
+    t1   = round(price * (1 + T1_PCT), 2)
+    t2   = round(price * (1 + T2_PCT), 2)
+    t3   = round(price * (1 + T3_PCT), 2)
+    curl  = " ⭐ DEEP CURL" if info.get("deep_curl") else ""
+    grade = info.get("grade")
+    gtag  = f"  <b>[{grade}]</b>" if grade else ""
+    tg(
+        f"🌀 <b>COIL — {html.escape(ticker)}</b>{gtag}{curl}\n"
+        f"<i>Tier-1 ✓ + Stoch hook ✓ + MACD ✓ — only volume still drying up "
+        f"(surge usually next candle). Watch for the break:</i>\n"
+        f"Entry ~${price:.4f} ({price_note})  ·  VWAP {_vwap_tag(info)}\n"
+        f"K={info['k']}↑ D={info['d']}  Vol {info['vol_ratio']}x (needs ≥{REL_VOL_MIN}x)\n"
+        f"🛑 Stop ${stop} (-8%)   🎯 T1 ${t1}  T2 ${t2}  T3 ${t3}"
+    )
+    log.info(f"[COIL] {ticker} {info['score']}/{info['max']} — only volume short "
+             f"(vol {info['vol_ratio']}x)")
+
 def _save_watch_sent():
     try:
         WATCH_SENT_FILE.write_text(json.dumps(_watch_sent))
@@ -1181,13 +1212,32 @@ def scan():
                 _send_setup_alert(ticker, info, why)
         else:
             # Tally each blocker individually for heartbeat
-            for b in info.get("blockers", [info.get("fail", "unknown")]):
+            blk = info.get("blockers", [])
+            for b in (blk or [info.get("fail", "unknown")]):
                 blockers[_blocker_bucket(b)] += 1
 
+            # Coil near-miss: Tier-1 (Supertrend+VWAP+ZLSMA) + Stoch hook + MACD all
+            # pass, and the ONLY thing short is volume — which DRIES UP in the shelf by
+            # design (the surge prints on the next/breakout candle). Surface it as a
+            # manual cue so we can take the dry-coil entry by hand and let the edge
+            # engine learn whether volume is really a must. Auto-buy is untouched.
+            only_vol_missing = (
+                bool(blk)
+                and all(b.startswith("vol ") for b in blk)   # nothing else failed
+                and info.get("above_vwap") is True           # Tier-1 VWAP confirmed
+            )
+            st_green = "Supertrend bearish" not in blk
+            if only_vol_missing:
+                catalyst_tier = None
+                if CATALYST_PROXY:
+                    daily = get_bars(ticker, limit=5, timeframe="1Day")
+                    catalyst_tier, _ = catalyst_score(bars, daily)
+                info["grade"]   = grade_setup(info, catalyst_tier)
+                info["session"] = _session_label()
+                _send_coil_alert(ticker, info)
             # WATCH only when one gate away AND Supertrend is already green —
             # the primary trigger must be on for it to be a real forming setup.
-            st_green = "Supertrend bearish" not in info.get("blockers", [])
-            if score >= max_ - 1 and st_green:
+            elif score >= max_ - 1 and st_green:
                 _send_watch_alert(ticker, info)
             else:
                 log.info(f"[skip] {ticker} {score}/{max_}: {info.get('fail', 'unknown')}")
