@@ -80,7 +80,8 @@ UTC = timezone.utc
 DATA_DIR     = Path(__file__).parent.parent / "data"
 TRADE_LOG    = DATA_DIR / "trade_log.json"
 MANUAL_WL    = DATA_DIR / "watchlist.json"
-EXIT_PENDING = DATA_DIR / "exit_pending.json"  # survives restarts — no re-alert on stuck exits
+EXIT_PENDING  = DATA_DIR / "exit_pending.json"   # survives restarts — no re-alert on stuck exits
+WATCH_SENT_FILE = DATA_DIR / "watch_sent.json"  # survives restarts — no re-alert on same WATCH
 
 # ── Alpaca REST helpers ───────────────────────────────────────────────────────
 
@@ -930,12 +931,24 @@ def _send_setup_alert(ticker: str, info: dict, why: str) -> None:
     )
     log.info(f"[MANUAL] {ticker} full 5/5 setup — alert only ({why})")
 
+def _save_watch_sent():
+    try:
+        WATCH_SENT_FILE.write_text(json.dumps(_watch_sent))
+    except Exception:
+        pass
+
 def _send_watch_alert(ticker: str, info: dict) -> None:
-    """Fire a Telegram WATCH alert when a ticker hits 4/5 conditions — manual entry cue."""
+    """Fire a Telegram WATCH alert when a ticker hits 4/5 conditions — manual entry cue.
+    K must be under 85: at K≥85 the stoch is overbought/extended, not a fresh curl setup."""
+    k_val = info.get("k") or 0
+    if k_val >= 85:
+        log.info(f"[skip-watch] {ticker}: K={k_val} overbought — not a reset setup")
+        return
     last = _watch_sent.get(ticker, 0)
     if time.time() - last < 600:   # don't re-alert same ticker within 10 min
         return
     _watch_sent[ticker] = time.time()
+    _save_watch_sent()
     score    = info["score"]
     max_     = info["max"]
     missing  = html.escape(info.get("fail") or "—")   # escape so '<' can't break Telegram HTML
@@ -1210,6 +1223,15 @@ def main():
                 if t in held_now:
                     _exiting_now.add(t)
                     log.info(f"[exit] restored pending exit guard for {t} from last session")
+    except Exception:
+        pass
+
+    # Reload WATCH sent times so restarts don't re-fire alerts within the 10-min throttle.
+    global _watch_sent
+    try:
+        if WATCH_SENT_FILE.exists():
+            _watch_sent = json.loads(WATCH_SENT_FILE.read_text())
+            log.info(f"[watch] restored sent cache ({len(_watch_sent)} tickers)")
     except Exception:
         pass
 
