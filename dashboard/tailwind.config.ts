@@ -5,22 +5,23 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        gold:    { DEFAULT: '#c9a96e', dim: '#8b6e3c', muted: 'rgba(201,169,110,0.14)' },
-        rose:    { DEFAULT: '#c4789b', dim: '#8b4e6e' },
-        cream:   '#f0ebe0',
-        taupe:   '#7a6a5a',
-        bg:      '#080807',
-        surface: '#100f0e',
-        card:    '#141210',
-        win:     '#6aad8a',
-        loss:    '#c06060',
+        bg:      '#f4efe6',
+        bgSoft:  '#ece5d8',
+        surface: '#fffdf8',
+        ink:     '#2b2620',
+        inkSoft: '#6b6256',
+        gold:    { DEFAULT: '#b08d4f', soft: '#c9a96e' },
+        line:    'rgba(176,141,79,0.22)',
+        win:     '#3f8f63',
+        loss:    '#b4524a',
+        rose:    '#b06087',
       },
       fontFamily: {
         display: ['"Cormorant Garamond"', 'Georgia', 'serif'],
         sans:    ['Inter', 'system-ui', 'sans-serif'],
       },
-      borderColor: {
-        gold: 'rgba(201,169,110,0.14)',
+      boxShadow: {
+        card: '0 1px 2px rgba(43,38,32,0.04), 0 8px 24px rgba(43,38,32,0.05)',
       },
     },
   },

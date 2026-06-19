@@ -619,15 +619,15 @@ def _realized_pnl_today() -> tuple[dict, float, int, int]:
     net = 0.0
     wins = losses = 0
     for sym, sides in by_sym.items():
-        buy_q  = sum(e["qty"]   for e in sides["buys"])
-        buy_$  = sum(e["qty"] * e["price"] for e in sides["buys"])
-        sell_q = sum(e["qty"]   for e in sides["sells"])
-        sell_$ = sum(e["qty"] * e["price"] for e in sides["sells"])
+        buy_q   = sum(e["qty"]   for e in sides["buys"])
+        buy_val = sum(e["qty"] * e["price"] for e in sides["buys"])
+        sell_q   = sum(e["qty"]   for e in sides["sells"])
+        sell_val = sum(e["qty"] * e["price"] for e in sides["sells"])
         matched = min(buy_q, sell_q)
         if matched <= 0 or buy_q <= 0:
             continue
-        avg_buy  = buy_$ / buy_q
-        avg_sell = sell_$ / sell_q if sell_q else 0
+        avg_buy  = buy_val / buy_q
+        avg_sell = sell_val / sell_q if sell_q else 0
         pnl = (avg_sell - avg_buy) * matched
         result[sym] = {"pnl": pnl, "qty": int(matched), "avg_buy": avg_buy, "avg_sell": avg_sell}
         net += pnl
