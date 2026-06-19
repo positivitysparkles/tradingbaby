@@ -3,9 +3,36 @@
   "system_name": "Curl if Flow",
   "author": "Weatherman118",
   "last_compact": "2026-06-02T22:00:00Z",
-  "last_manual_update": "2026-06-15",
+  "last_manual_update": "2026-06-19T17:52Z",
   "compact_count": 14,
   "goal": "Reverse-engineer Weatherman118's exact entry + exit system. Paper trade on Alpaca until 80%+ consistent win rate, then go live. ONE Pine Script = his secret sauce. Perfect it over time.",
+  "session_log": [
+    {
+      "date": "2026-06-19",
+      "sessions": [
+        {"time_utc": "morning", "summary": "Fixed silent-alert blackout cascade: removed REQUIRE_1M_FRESH gate, AVOID_MIDDAY=False, switched bars Alpaca-SIP->yfinance (yf.Ticker().history), fixed vol=0 MultiIndex. PRs #66 #67 #70 merged."},
+        {"time_utc": "~17:30", "summary": "June-19 chart study (30 charts in 'june 19 2026/'). Codified A+ Shelf Bounce. Shipped Session-VWAP gate (cond #6), Chandelier Exit (10/2), float 20M->10M, SCANNER_REL_VOL_MIN=3.0 split from bar REL_VOL_MIN=1.5, DEEP_CURL_RESET 20->30. PR #71 merged."},
+        {"time_utc": "~17:40", "summary": "Pine v5-shelf-bounce.pine — mirrors bot exactly (VWAP+Chandelier+MACD 5/10/16+A+ star). PR #72 merged."},
+        {"time_utc": "~17:48", "summary": "Fixed vol 0.0x on every ticker (yfinance pads live edge with 0-vol bars; strip trailing zeros). Added ranked TOP SETUPS log board. PR #73 merged."},
+        {"time_utc": "~17:52", "summary": "Coil near-miss alert (Tier-1+hook+MACD pass, only volume short -> manual 🌀 COIL; auto-buy untouched). Documented 6-condition priority tiers. Updated Pine + this vault. PR #74."}
+      ]
+    }
+  ],
+  "current_state_2026_06_19": {
+    "note": "SUPERSEDES older stale fields below wherever they conflict. Most recent truth.",
+    "macd": "5/10/16 (NOT 12/26/9) — requires line>0 AND hist>0 as a hard gate. Owner-confirmed 2026-06-19.",
+    "bars_data_feed": "yfinance (yf.Ticker().history, period=5d, interval=5m/1m, prepost=True). Alpaca SIP needs a paid sub; do NOT use Alpaca for bars. Alpaca is ORDERS-only.",
+    "entry_conditions_6": ["Supertrend green 5m", "price>ZLSMA-50", "StochRSI K>D & rising", "MACD(5,10,16) line>0 & hist>0", "vol>1.5x 20-bar (SOFT)", "price>=VWAP*(1-0.5%)"],
+    "priority_tiers": {"tier1_hard_must": ["supertrend_green", "above_vwap", "above_zlsma"], "tier2_ignition": ["stoch_hook_k_gt_d_rising", "macd_hist_gt_0"], "tier3_soft": ["volume_1.5x", "macd_line_gt_0"]},
+    "new_indicators": {"vwap": "Anchor=Session, Source=HL2, gate with 0.5% tolerance", "chandelier_exit": "ATR 10, mult 2, use-close; exit on a candle close below the long-stop line"},
+    "scanner": {"max_float": 10000000, "scanner_rel_vol_min": 3.0, "bar_rel_vol_min": 1.5, "price_range": "0.10-15.00"},
+    "deep_curl_reset": 30.0,
+    "alert_types": {"auto_buy": "full pass only (learning phase: takes every grade)", "watch": "score>=max-1 AND supertrend green", "coil": "Tier-1+hook+MACD pass, only volume short (manual)", "manual_setup": "full pass but cap/midday/dup blocked"},
+    "branch": "claude/push-tradingbaby-ESEFn",
+    "prs_today": ["#66","#67","#70","#71","#72","#73","#74"],
+    "vps_after_merge": "cd /root/tradingbaby && git pull origin main && sudo systemctl restart w118bot",
+    "pine_current": "pine-script/weatherman118-curl-flow.pine (v5-shelf-bounce); versions/ holds v3,v4,v5"
+  },
   "confirmed_entry_conditions": {
     "stoch_rsi": {
       "trigger": "K crosses UP through 20 from below — ta.crossover(k, 20)",
@@ -122,8 +149,7 @@
       "Edit bot/config.py → paste Alpaca paper keys (rotate first) + Telegram token",
       "screen -S w118bot && python3 tradingbaby/bot/bot.py",
       "Reset Alpaca paper balance to $10,000"
-    ]
-  },
+    ],
     "known_bugs_fixed": [
       "2026-06-02: Massive grouped daily endpoint returned EOD data — switched to snapshot gainers (real-time)",
       "2026-06-02: Timezone was UTC-5 (EST) instead of UTC-4 (EDT) — scanner started 1hr late",
