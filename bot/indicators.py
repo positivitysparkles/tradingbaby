@@ -254,12 +254,15 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
         passed += 1
 
     # 5. Volume > rel_vol_min × 20-bar average.
-    #    Use the last CLOSED bar (bars[-2]), not the forming one (bars[-1]).
-    #    A freshly-opened 5m bar has near-zero volume for most of its life and
-    #    produces "Vol 0.0x" false rejections that block real setups.
-    vols    = [b["v"] for b in bars[-22:-2]]  # 20 completed bars before the last closed
+    #    yfinance pads the live edge with 0-volume "forming" bars, so a naive bars[-2]
+    #    reads 0 → "Vol 0.0x" false rejections on EVERY ticker (blocks all auto-buys).
+    #    Strip trailing 0-volume bars first, then use the last CLOSED bar (vbars[-2]).
+    vbars = bars
+    while len(vbars) > 22 and vbars[-1]["v"] == 0:
+        vbars = vbars[:-1]
+    vols    = [b["v"] for b in vbars[-22:-2]]  # 20 completed bars before the last closed
     avg_vol = sum(vols) / len(vols) if vols else 0
-    cur_vol = bars[-2]["v"]                   # last CLOSED bar
+    cur_vol = vbars[-2]["v"]                   # last CLOSED bar (trailing zeros stripped)
     vol_ratio = cur_vol / avg_vol if avg_vol else 0
     if vol_ratio >= rel_vol_min:
         passed += 1

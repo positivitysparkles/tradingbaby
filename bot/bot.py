@@ -1105,6 +1105,7 @@ def scan():
              + ("" if entries_open else f"  (ALERT-ONLY: {pause_reason})"))
 
     blockers: Counter = Counter()
+    ranked: list = []   # (score, max, ticker, info) for the per-scan TOP SETUPS board
     signals = 0
     for ticker in candidates:
         if ticker in held:
@@ -1117,6 +1118,7 @@ def scan():
         ok, info = check_all_entry(bars, MIN_PRICE, MAX_PRICE, REL_VOL_MIN, DEEP_CURL_RESET,
                                    vwap_tol=VWAP_TOLERANCE, vwap_gate=VWAP_GATE)
         score, max_ = info.get("score", 0), info.get("max", 5)
+        ranked.append((score, max_, ticker, info))
 
         if ok:
             # Micro-timeframe freshness — W118's "zoom to 1m". The 5-min signal lags;
@@ -1191,6 +1193,18 @@ def scan():
                 log.info(f"[skip] {ticker} {score}/{max_}: {info.get('fail', 'unknown')}")
 
         time.sleep(0.15)  # ~6 reqs/sec — well under Alpaca's 200/min free limit
+
+    # Ranked TOP SETUPS board — best candidates first so the hot names are obvious
+    # instead of buried in discovery-order skip lines. Only surfaces 3+/max.
+    top = sorted(ranked, key=lambda r: (r[0] / r[1] if r[1] else 0, r[0]), reverse=True)
+    worthy = [r for r in top if r[0] >= max(3, r[1] - 2)][:6]
+    if worthy:
+        parts = []
+        for sc, mx, tk, inf in worthy:
+            star = "⭐" if inf.get("deep_curl") else ""
+            vtag = " V✓" if inf.get("above_vwap") else (" V✗" if inf.get("above_vwap") is False else "")
+            parts.append(f"{star}{tk} {sc}/{mx}{vtag}")
+        log.info("[scan] 🔝 TOP SETUPS  " + "   ".join(parts))
 
     _last_summary = {
         "time":       now,
