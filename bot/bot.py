@@ -145,14 +145,17 @@ def get_bars(ticker: str, limit: int = 100, timeframe: str = "5Min") -> list | N
     try:
         data = _alpaca("GET", f"/v2/stocks/{ticker}/bars",
                        params={"timeframe": timeframe, "limit": limit,
-                               "feed": "sip", "adjustment": "raw"})
+                               "feed": "iex", "adjustment": "raw"})
         bars = data.get("bars") or []
-        if len(bars) < 30:
-            log.debug(f"bars {ticker} ({timeframe}): only {len(bars)} bars (need 30), skip")
+        if not bars:
+            log.info(f"[bars] {ticker} ({timeframe}): no bars returned")
+            return None
+        if len(bars) < 10:
+            log.info(f"[bars] {ticker} ({timeframe}): only {len(bars)} bars — too thin, skip")
             return None
         return bars
     except Exception as e:
-        log.debug(f"bars {ticker} ({timeframe}): {e}")
+        log.warning(f"[bars] {ticker} ({timeframe}): API error — {e}")
         return None
 
 def place_order(ticker: str, qty: int, side: str, otype: str,
