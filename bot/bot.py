@@ -186,21 +186,30 @@ def place_order(ticker: str, qty: int, side: str, otype: str,
         return False
 
 def market_sell_position(ticker: str) -> bool:
-    # If a sell order is already pending, DON'T cancel-and-resubmit — let it fill.
-    # Without this check: every scan cancels the in-flight sell, places a new one,
-    # position stays open, Telegram fires again → 100+ identical exit messages.
+    in_rth = _is_rth()
+    # A pending sell here is usually our resting T1/T2/T3 profit-target brackets —
+    # NOT an exit in progress. How we treat that depends on the session:
+    #  • Premarket/afterhours: a market order can't fill, and cancel+resubmit just
+    #    spins (the old 100-alert loop). If a sell is already working, let it ride to
+    #    the open — RTH logic below will force it out.
+    #  • RTH: a market sell fills in ~1s, so it's both safe and NECESSARY to cancel
+    #    the bracket legs (they're holding the shares → "insufficient qty available")
+    #    and dump at market right now. This is what actually executes the stop.
     existing_sells = [o for o in get_open_orders()
                       if o["symbol"] == ticker and o["side"] == "sell"]
-    if existing_sells:
-        log.info(f"[exit] {ticker}: sell already pending ({existing_sells[0].get('status')}) — holding")
+    if existing_sells and not in_rth:
+        log.info(f"[exit] {ticker}: sell already pending ({existing_sells[0].get('status')}) — holding until open")
         return True
+    # Cancel ALL open orders for this ticker (incl. OCO bracket legs) so the shares
+    # are released — otherwise Alpaca rejects the sell with 'insufficient qty available'.
     cancel_ticker_orders(ticker)
+    time.sleep(0.6)   # let the cancels settle so held shares are freed before we sell
     for p in get_positions():
         if p["symbol"] == ticker:
             qty = abs(int(float(p["qty"])))
             if qty <= 0:
                 continue
-            if _is_rth():
+            if in_rth:
                 return place_order(ticker, qty, "sell", "market", tif="day")
             # Outside RTH: submit a market-on-open (opg) order — executes at the 9:30am
             # opening auction, guaranteed fill no matter where the stock opens.
@@ -1072,6 +1081,9 @@ def scan():
                     if not fresh:
                         log.info(f"[skip-stale] {ticker} 5/5 on 5m but {why_stale}")
                         blockers["1m rolling over (stale)"] += 1
+                        # Still alert — 5/5 on the 5m chart is real. User can decide
+                        # whether to take it manually while 1m momentum recovers.
+                        _send_setup_alert(ticker, info, f"1m rolling over ({why_stale}) — watch chart")
                         time.sleep(0.15)
                         continue
 
