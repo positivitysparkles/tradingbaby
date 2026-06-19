@@ -58,8 +58,10 @@ def macd(closes: list) -> tuple[float | None, float | None]:
     """
     MACD(5,10,16). Returns (macd_line, histogram).
 
-    • histogram > 0  → macd_line above signal line = momentum turning up right now.
-      This is the W118 gate: "blue line above red line."
+    • macd_line > 0  → fast EMA above slow EMA = stock in a sustained uptrend.
+      Separates real runners (CDT +102%, CAST +118%) from dead-cat bounces
+      (ATPC blipped histogram-green with the line still below zero).
+    • histogram > 0  → macd_line above signal = momentum turning up right now.
 
     Faster than standard 12,26,9 — fires in sync with Supertrend, not lagging.
     """
@@ -187,8 +189,10 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
     #    (momentum turning up). Both = the A+ runner structure. Line-above-zero is
     #    what the histogram-only check was missing — it rejects dead-cat bounces.
     m_line, hist = macd(closes)
-    if hist is None:
+    if hist is None or m_line is None:
         blockers.append("MACD error")
+    elif m_line <= 0:
+        blockers.append(f"MACD line {m_line:.4f} below zero (not in uptrend)")
     elif hist <= 0:
         blockers.append(f"MACD hist {hist:.4f} (momentum fading)")
     else:
