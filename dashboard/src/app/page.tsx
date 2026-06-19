@@ -38,9 +38,23 @@ type Trade = {
   blockers: string | null
 }
 
+// ── Design tokens (inline so Tailwind JIT picks them up) ──────────────────────
+const C = {
+  gold:     '#c9a96e',
+  goldDim:  '#8b6e3c',
+  rose:     '#c4789b',
+  cream:    '#f0ebe0',
+  taupe:    '#7a6a5a',
+  bg:       '#080807',
+  card:     '#141210',
+  border:   'rgba(201,169,110,0.14)',
+  win:      '#6aad8a',
+  loss:     '#c06060',
+}
+
 function pnlColor(v: number | null) {
-  if (v === null) return 'text-slate-400'
-  return v >= 0 ? 'text-green-400' : 'text-red-400'
+  if (v === null) return 'text-[#7a6a5a]'
+  return v >= 0 ? 'text-[#6aad8a]' : 'text-[#c06060]'
 }
 
 function ScoreDots({ score, max }: { score: number; max: number }) {
@@ -49,7 +63,8 @@ function ScoreDots({ score, max }: { score: number; max: number }) {
       {Array.from({ length: max }).map((_, i) => (
         <span
           key={i}
-          className={`w-2 h-2 rounded-full ${i < score ? 'bg-violet-400' : 'bg-slate-700'}`}
+          style={{ background: i < score ? C.gold : 'rgba(201,169,110,0.15)' }}
+          className="w-1.5 h-1.5 rounded-full inline-block"
         />
       ))}
     </span>
@@ -57,15 +72,48 @@ function ScoreDots({ score, max }: { score: number; max: number }) {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    open:    'bg-blue-900/60 text-blue-300 border border-blue-700',
-    closed:  'bg-slate-800 text-slate-300 border border-slate-600',
-    stopped: 'bg-red-900/60 text-red-300 border border-red-700',
+  const map: Record<string, { bg: string; text: string; border: string }> = {
+    open:    { bg: 'rgba(196,120,155,0.1)', text: C.rose,   border: 'rgba(196,120,155,0.25)' },
+    closed:  { bg: 'rgba(201,169,110,0.08)', text: C.taupe, border: 'rgba(201,169,110,0.2)' },
+    stopped: { bg: 'rgba(192,96,96,0.1)',   text: C.loss,   border: 'rgba(192,96,96,0.25)' },
   }
+  const s = map[status] ?? map.closed
   return (
-    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${map[status] ?? map.closed}`}>
+    <span
+      style={{ background: s.bg, color: s.text, border: `1px solid ${s.border}` }}
+      className="text-[10px] px-2 py-0.5 rounded-full font-medium tracking-wider uppercase"
+    >
       {status}
     </span>
+  )
+}
+
+function GoldDivider() {
+  return (
+    <div className="flex items-center gap-3 my-6">
+      <div style={{ background: `linear-gradient(to right, transparent, ${C.goldDim})` }} className="flex-1 h-px" />
+      <span style={{ color: C.gold }} className="text-xs tracking-[0.3em] uppercase">✦</span>
+      <div style={{ background: `linear-gradient(to left, transparent, ${C.goldDim})` }} className="flex-1 h-px" />
+    </div>
+  )
+}
+
+function KpiCard({ label, value, sub, color }: {
+  label: string; value: string; sub: string; color: string
+}) {
+  return (
+    <div
+      style={{ background: C.card, border: `1px solid ${C.border}` }}
+      className="rounded-2xl p-5 flex flex-col gap-1"
+    >
+      <p style={{ color: C.taupe }} className="text-[10px] tracking-[0.25em] uppercase font-sans font-medium">
+        {label}
+      </p>
+      <p style={{ color }} className="font-display text-3xl font-semibold leading-none mt-1">
+        {value}
+      </p>
+      <p style={{ color: C.taupe }} className="text-xs font-sans mt-1">{sub}</p>
+    </div>
   )
 }
 
@@ -89,16 +137,19 @@ export default function Dashboard() {
 
   useEffect(() => { load() }, [load])
 
-  // ── Derived stats ─────────────────────────────────────────────────────────
+  // ── Derived stats ──────────────────────────────────────────────────────────
   const closed   = trades.filter(t => t.status !== 'open' && t.realized_pnl !== null)
   const open     = trades.filter(t => t.status === 'open')
   const netPnl   = closed.reduce((s, t) => s + (t.realized_pnl ?? 0), 0)
   const wins     = closed.filter(t => (t.realized_pnl ?? 0) > 0).length
-  const winRate  = closed.length ? Math.round((wins / closed.length) * 100) : 0
-  const avgWin   = wins ? closed.filter(t => (t.realized_pnl ?? 0) > 0).reduce((s, t) => s + (t.realized_pnl ?? 0), 0) / wins : 0
   const losers   = closed.filter(t => (t.realized_pnl ?? 0) < 0)
-  const avgLoss  = losers.length ? losers.reduce((s, t) => s + (t.realized_pnl ?? 0), 0) / losers.length : 0
-  const deepCurls = trades.filter(t => t.deep_curl).length
+  const winRate  = closed.length ? Math.round((wins / closed.length) * 100) : 0
+  const avgWin   = wins
+    ? closed.filter(t => (t.realized_pnl ?? 0) > 0).reduce((s, t) => s + (t.realized_pnl ?? 0), 0) / wins
+    : 0
+  const avgLoss  = losers.length
+    ? losers.reduce((s, t) => s + (t.realized_pnl ?? 0), 0) / losers.length
+    : 0
 
   // Cumulative P&L by date for chart
   const byDate: Record<string, number> = {}
@@ -111,159 +162,234 @@ export default function Dashboard() {
     return { date: format(parseISO(d), 'MMM d'), pnl: parseFloat(running.toFixed(2)) }
   })
 
+  // ── Audit helpers ──────────────────────────────────────────────────────────
+  const deepCurlTrades = closed.filter(t => t.deep_curl)
+  const dcWins   = deepCurlTrades.filter(t => (t.realized_pnl ?? 0) > 0).length
+  const dcRate   = deepCurlTrades.length ? Math.round((dcWins / deepCurlTrades.length) * 100) : null
+  const stdTrades = closed.filter(t => !t.deep_curl)
+  const stdWins  = stdTrades.filter(t => (t.realized_pnl ?? 0) > 0).length
+  const stdRate  = stdTrades.length ? Math.round((stdWins / stdTrades.length) * 100) : null
+
+  const exitReasons: Record<string, number> = {}
+  closed.forEach(t => {
+    const k = t.exit_reason ?? 'unknown'
+    exitReasons[k] = (exitReasons[k] ?? 0) + 1
+  })
+
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-slate-200 p-4 md:p-8 max-w-6xl mx-auto">
+    <div
+      style={{ background: C.bg }}
+      className="min-h-screen text-[#f0ebe0] px-4 py-10 md:px-10 max-w-6xl mx-auto"
+    >
 
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            W118 <span className="text-violet-400">Curl if Flow</span>
-          </h1>
-          <p className="text-slate-500 text-sm mt-0.5">Private P&L Dashboard</p>
-        </div>
-        <div className="flex gap-2">
-          {([7, 30, 90] as const).map(r => (
-            <button
-              key={r}
-              onClick={() => setRange(r)}
-              className={`px-3 py-1 rounded text-sm transition-colors ${
-                range === r
-                  ? 'bg-violet-700 text-white'
-                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-              }`}
-            >
-              {r}d
-            </button>
-          ))}
-          <button
-            onClick={load}
-            className="px-3 py-1 rounded text-sm bg-slate-800 text-slate-400 hover:bg-slate-700 transition-colors ml-2"
-          >
-            ↻
-          </button>
-        </div>
-      </div>
-
-      {/* ── KPI cards ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        {[
-          {
-            label: 'Net P&L',
-            value: `${netPnl >= 0 ? '+' : ''}$${netPnl.toFixed(2)}`,
-            color: netPnl >= 0 ? 'text-green-400' : 'text-red-400',
-            sub: `${closed.length} closed trades`,
-          },
-          {
-            label: 'Win Rate',
-            value: `${winRate}%`,
-            color: winRate >= 60 ? 'text-green-400' : winRate >= 40 ? 'text-yellow-400' : 'text-red-400',
-            sub: `${wins}W / ${losers.length}L`,
-          },
-          {
-            label: 'Avg Win',
-            value: `+$${avgWin.toFixed(2)}`,
-            color: 'text-green-400',
-            sub: `Avg Loss: $${avgLoss.toFixed(2)}`,
-          },
-          {
-            label: 'Open Now',
-            value: `${open.length}`,
-            color: 'text-blue-400',
-            sub: `${deepCurls} deep curls total`,
-          },
-        ].map(card => (
-          <div key={card.label} className="bg-slate-900/80 border border-slate-800 rounded-xl p-4">
-            <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">{card.label}</p>
-            <p className={`text-2xl font-semibold ${card.color}`}>{card.value}</p>
-            <p className="text-xs text-slate-500 mt-1">{card.sub}</p>
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      <header className="mb-2">
+        <div className="flex items-start justify-between">
+          <div>
+            <p style={{ color: C.gold, letterSpacing: '0.3em' }} className="text-[10px] uppercase font-sans mb-2">
+              W118 · Curl if Flow · Private
+            </p>
+            <h1 className="font-display text-5xl md:text-6xl font-semibold leading-none" style={{ color: C.cream }}>
+              <span style={{ color: C.gold }} className="italic">Olya&rsquo;s</span> Dashboard
+            </h1>
           </div>
-        ))}
+
+          {/* Range + refresh */}
+          <div className="flex items-center gap-2 mt-2">
+            {([7, 30, 90] as const).map(r => (
+              <button
+                key={r}
+                onClick={() => setRange(r)}
+                style={{
+                  background: range === r ? C.gold : 'transparent',
+                  color:      range === r ? C.bg   : C.taupe,
+                  border:     `1px solid ${range === r ? C.gold : C.border}`,
+                }}
+                className="px-3 py-1 rounded-full text-xs font-sans transition-all duration-200 hover:border-gold"
+              >
+                {r}d
+              </button>
+            ))}
+            <button
+              onClick={load}
+              style={{ color: C.taupe, border: `1px solid ${C.border}` }}
+              className="px-3 py-1 rounded-full text-xs font-sans hover:opacity-80 transition-opacity"
+            >
+              ↻
+            </button>
+          </div>
+        </div>
+
+        {/* Quote */}
+        <p
+          style={{ color: C.taupe, borderLeft: `2px solid ${C.goldDim}` }}
+          className="font-display italic text-base md:text-lg mt-4 pl-4"
+        >
+          She doesn&rsquo;t chase. She builds.
+        </p>
+      </header>
+
+      <GoldDivider />
+
+      {/* ── KPI cards ──────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <KpiCard
+          label="Net P&L"
+          value={`${netPnl >= 0 ? '+' : ''}$${netPnl.toFixed(2)}`}
+          color={netPnl >= 0 ? C.win : C.loss}
+          sub={`${closed.length} closed trades`}
+        />
+        <KpiCard
+          label="Win Rate"
+          value={`${winRate}%`}
+          color={winRate >= 70 ? C.win : winRate >= 50 ? C.gold : C.loss}
+          sub={`${wins}W / ${losers.length}L`}
+        />
+        <KpiCard
+          label="Avg Win"
+          value={`+$${avgWin.toFixed(2)}`}
+          color={C.win}
+          sub={`Avg Loss: $${avgLoss.toFixed(2)}`}
+        />
+        <KpiCard
+          label="Live Positions"
+          value={`${open.length}`}
+          color={C.rose}
+          sub={open.length > 0 ? open.map(t => t.ticker).join(', ') : 'No open trades'}
+        />
       </div>
 
-      {/* ── Cumulative P&L chart ── */}
+      {/* ── Cumulative P&L chart ───────────────────────────────────────────── */}
       {chartData.length > 1 && (
-        <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 mb-8">
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-4">Cumulative P&L</p>
-          <ResponsiveContainer width="100%" height={180}>
-            <AreaChart data={chartData}>
+        <div
+          style={{ background: C.card, border: `1px solid ${C.border}` }}
+          className="rounded-2xl p-5 mb-8"
+        >
+          <p style={{ color: C.taupe }} className="text-[10px] tracking-[0.25em] uppercase font-sans mb-4">
+            Cumulative P&L · {range}d
+          </p>
+          <ResponsiveContainer width="100%" height={200}>
+            <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -10, bottom: 0 }}>
               <defs>
-                <linearGradient id="pnlGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#7c3aed" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#7c3aed" stopOpacity={0}   />
+                <linearGradient id="goldGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%"  stopColor={C.gold} stopOpacity={0.25} />
+                  <stop offset="95%" stopColor={C.gold} stopOpacity={0}    />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-              <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false}
-                     tickFormatter={v => `$${v}`} />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(201,169,110,0.07)" />
+              <XAxis
+                dataKey="date"
+                tick={{ fill: C.taupe, fontSize: 10, fontFamily: 'Inter' }}
+                axisLine={false} tickLine={false}
+              />
+              <YAxis
+                tick={{ fill: C.taupe, fontSize: 10, fontFamily: 'Inter' }}
+                axisLine={false} tickLine={false}
+                tickFormatter={v => `$${v}`}
+              />
               <Tooltip
-                contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8 }}
-                labelStyle={{ color: '#94a3b8' }}
+                contentStyle={{
+                  background: C.card,
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 12,
+                  fontFamily: 'Inter',
+                  fontSize: 12,
+                }}
+                labelStyle={{ color: C.taupe }}
                 formatter={(v: number) => [`$${v.toFixed(2)}`, 'P&L']}
               />
-              <Area type="monotone" dataKey="pnl" stroke="#7c3aed" strokeWidth={2}
-                    fill="url(#pnlGrad)" dot={false} />
+              <Area
+                type="monotone"
+                dataKey="pnl"
+                stroke={C.gold}
+                strokeWidth={1.5}
+                fill="url(#goldGrad)"
+                dot={false}
+              />
             </AreaChart>
           </ResponsiveContainer>
         </div>
       )}
 
-      {/* ── Trade table ── */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
-          <p className="text-xs text-slate-500 uppercase tracking-wider">Trade Log</p>
-          {loading && <span className="text-xs text-violet-400 animate-pulse">loading…</span>}
+      {/* ── Trade log ──────────────────────────────────────────────────────── */}
+      <div
+        style={{ background: C.card, border: `1px solid ${C.border}` }}
+        className="rounded-2xl overflow-hidden mb-8"
+      >
+        <div
+          style={{ borderBottom: `1px solid ${C.border}` }}
+          className="px-5 py-3 flex items-center justify-between"
+        >
+          <p style={{ color: C.taupe }} className="text-[10px] tracking-[0.25em] uppercase font-sans">
+            Trade Log
+          </p>
+          {loading && (
+            <span style={{ color: C.gold }} className="text-xs font-sans animate-pulse">
+              loading…
+            </span>
+          )}
         </div>
 
-        {/* Desktop table */}
+        {/* Desktop */}
         <div className="overflow-x-auto hidden md:block">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm font-sans">
             <thead>
-              <tr className="text-xs text-slate-500 border-b border-slate-800">
-                {['Date', 'Ticker', 'Status', 'Entry', 'Exit', 'P&L', 'Setup', 'K/D', 'Vol', 'Notes'].map(h => (
-                  <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>
+              <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                {['Date', 'Ticker', 'Status', 'Entry', 'Exit', 'P&L', 'Setup', 'K / D', 'Vol', 'Exit reason'].map(h => (
+                  <th
+                    key={h}
+                    style={{ color: C.taupe }}
+                    className="px-4 py-2 text-left text-[10px] tracking-[0.2em] uppercase font-medium"
+                  >
+                    {h}
+                  </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {trades.map(t => (
-                <tr key={t.id} className="border-b border-slate-800/50 hover:bg-slate-800/40 transition-colors">
-                  <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap">
+              {trades.map((t, i) => (
+                <tr
+                  key={t.id}
+                  style={{
+                    borderBottom: i < trades.length - 1 ? `1px solid rgba(201,169,110,0.06)` : undefined,
+                  }}
+                  className="transition-colors hover:bg-[rgba(201,169,110,0.03)]"
+                >
+                  <td className="px-4 py-3 whitespace-nowrap" style={{ color: C.taupe }}>
                     {format(parseISO(t.date), 'MMM d')}
-                    <span className="text-slate-600 text-xs ml-1">{t.time_et}</span>
+                    <span className="text-[10px] ml-1.5 opacity-50">{t.time_et}</span>
                   </td>
-                  <td className="px-3 py-2.5 font-semibold text-white">
+                  <td className="px-4 py-3 font-semibold" style={{ color: C.cream }}>
                     {t.ticker}
-                    {t.deep_curl && <span className="ml-1 text-yellow-400">⭐</span>}
+                    {t.deep_curl && <span style={{ color: C.gold }} className="ml-1 text-xs">⭐</span>}
                   </td>
-                  <td className="px-3 py-2.5"><StatusBadge status={t.status} /></td>
-                  <td className="px-3 py-2.5 text-slate-300">${t.entry_price?.toFixed(3)}</td>
-                  <td className="px-3 py-2.5 text-slate-300">
+                  <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
+                  <td className="px-4 py-3" style={{ color: C.cream }}>${t.entry_price?.toFixed(3)}</td>
+                  <td className="px-4 py-3" style={{ color: C.taupe }}>
                     {t.exit_price ? `$${t.exit_price.toFixed(3)}` : '—'}
                   </td>
-                  <td className={`px-3 py-2.5 font-semibold ${pnlColor(t.realized_pnl)}`}>
+                  <td className={`px-4 py-3 font-semibold ${pnlColor(t.realized_pnl)}`}>
                     {t.realized_pnl !== null
                       ? `${t.realized_pnl >= 0 ? '+' : ''}$${t.realized_pnl.toFixed(2)}`
                       : '—'}
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-4 py-3">
                     <ScoreDots score={t.setup_score ?? 0} max={t.setup_max ?? 5} />
                   </td>
-                  <td className="px-3 py-2.5 text-slate-400">
-                    {t.k_value?.toFixed(0)}/{t.d_value?.toFixed(0)}
+                  <td className="px-4 py-3 text-xs" style={{ color: C.taupe }}>
+                    {t.k_value?.toFixed(0)} / {t.d_value?.toFixed(0)}
                   </td>
-                  <td className="px-3 py-2.5 text-slate-400">
-                    {t.vol_ratio?.toFixed(1)}x
+                  <td className="px-4 py-3 text-xs" style={{ color: C.taupe }}>
+                    {t.vol_ratio?.toFixed(1)}×
                   </td>
-                  <td className="px-3 py-2.5 text-slate-500 text-xs max-w-[160px] truncate">
+                  <td className="px-4 py-3 text-xs max-w-[180px] truncate" style={{ color: C.taupe }}>
                     {t.exit_reason ?? t.blockers ?? '—'}
                   </td>
                 </tr>
               ))}
               {!loading && trades.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-3 py-8 text-center text-slate-600">
+                  <td colSpan={10} className="px-4 py-12 text-center font-display italic text-lg" style={{ color: C.taupe }}>
                     No trades in the last {range} days.
                   </td>
                 </tr>
@@ -273,13 +399,13 @@ export default function Dashboard() {
         </div>
 
         {/* Mobile cards */}
-        <div className="md:hidden divide-y divide-slate-800">
+        <div className="md:hidden divide-y" style={{ borderColor: 'rgba(201,169,110,0.08)' }}>
           {trades.map(t => (
             <div key={t.id} className="p-4">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <span className="font-semibold text-white">{t.ticker}</span>
-                  {t.deep_curl && <span className="text-yellow-400">⭐</span>}
+                  <span className="font-semibold" style={{ color: C.cream }}>{t.ticker}</span>
+                  {t.deep_curl && <span style={{ color: C.gold }}>⭐</span>}
                   <StatusBadge status={t.status} />
                 </div>
                 <span className={`font-semibold ${pnlColor(t.realized_pnl)}`}>
@@ -288,15 +414,15 @@ export default function Dashboard() {
                     : 'open'}
                 </span>
               </div>
-              <div className="flex items-center gap-4 text-xs text-slate-500">
+              <div className="flex flex-wrap items-center gap-3 text-xs" style={{ color: C.taupe }}>
                 <span>{format(parseISO(t.date), 'MMM d')} {t.time_et}</span>
                 <span>in ${t.entry_price?.toFixed(3)}{t.exit_price ? ` → $${t.exit_price.toFixed(3)}` : ''}</span>
-                <span>{t.vol_ratio?.toFixed(1)}x vol</span>
+                <span>{t.vol_ratio?.toFixed(1)}× vol</span>
               </div>
               <div className="mt-2 flex items-center gap-2">
                 <ScoreDots score={t.setup_score ?? 0} max={t.setup_max ?? 5} />
                 {t.exit_reason && (
-                  <span className="text-xs text-slate-600 truncate">{t.exit_reason}</span>
+                  <span className="text-xs truncate" style={{ color: C.taupe }}>{t.exit_reason}</span>
                 )}
               </div>
             </div>
@@ -304,84 +430,100 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Self-audit section ── */}
-      <div className="mt-8 bg-slate-900/80 border border-slate-800 rounded-xl p-4">
-        <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Self-Audit Notes</p>
-        <div className="grid md:grid-cols-3 gap-4 text-sm">
+      {/* ── Self-Audit ─────────────────────────────────────────────────────── */}
+      <div
+        style={{ background: C.card, border: `1px solid ${C.border}` }}
+        className="rounded-2xl p-5"
+      >
+        <p style={{ color: C.taupe }} className="text-[10px] tracking-[0.25em] uppercase font-sans mb-4">
+          Self-Audit
+        </p>
+
+        <div className="grid md:grid-cols-3 gap-6 text-sm font-sans">
+
+          {/* Setup quality */}
           <div>
-            <p className="text-slate-400 mb-2 font-medium">Setup Quality</p>
-            {[5, 4, 3].map(score => {
+            <p style={{ color: C.gold }} className="text-xs tracking-wider uppercase mb-3">
+              Setup Quality
+            </p>
+            {[5, 4, 3, 2].map(score => {
               const count = trades.filter(t => t.setup_score === score).length
               const won   = trades.filter(t => t.setup_score === score && (t.realized_pnl ?? 0) > 0).length
+              const rate  = count > 0 ? Math.round((won / count) * 100) : null
               return (
-                <div key={score} className="flex items-center gap-2 mb-1 text-xs">
+                <div key={score} className="flex items-center gap-3 mb-2">
                   <ScoreDots score={score} max={5} />
-                  <span className="text-slate-500">{count} trades</span>
-                  {count > 0 && <span className="text-green-500">{won}W</span>}
+                  <span style={{ color: C.taupe }} className="text-xs">{count} trades</span>
+                  {rate !== null && (
+                    <span style={{ color: rate >= 70 ? C.win : C.gold }} className="text-xs ml-auto">
+                      {rate}% win
+                    </span>
+                  )}
                 </div>
               )
             })}
           </div>
+
+          {/* Deep curl */}
           <div>
-            <p className="text-slate-400 mb-2 font-medium">Deep Curl Performance</p>
-            {(() => {
-              const dc     = closed.filter(t => t.deep_curl)
-              const dcWins = dc.filter(t => (t.realized_pnl ?? 0) > 0).length
-              const dcRate = dc.length ? Math.round((dcWins / dc.length) * 100) : 0
-              const ndc    = closed.filter(t => !t.deep_curl)
-              const ndcW   = ndc.filter(t => (t.realized_pnl ?? 0) > 0).length
-              const ndcRate= ndc.length ? Math.round((ndcW / ndc.length) * 100) : 0
-              return (
-                <div className="text-xs text-slate-400 space-y-1">
-                  <div className="flex justify-between">
-                    <span>⭐ Deep curl</span>
-                    <span className="text-yellow-400">{dcRate}% win ({dc.length} trades)</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Standard</span>
-                    <span className="text-slate-300">{ndcRate}% win ({ndc.length} trades)</span>
-                  </div>
-                  <p className="text-slate-600 mt-2">
-                    {dc.length < 5 ? 'Need more data to draw conclusions.' :
-                     dcRate > ndcRate ? '⭐ Deep curls outperforming — consider prioritizing.' :
-                     'Deep curls not showing edge yet.'}
-                  </p>
-                </div>
-              )
-            })()}
+            <p style={{ color: C.gold }} className="text-xs tracking-wider uppercase mb-3">
+              Deep Curl ⭐
+            </p>
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs">
+                <span style={{ color: C.cream }}>Deep curl entries</span>
+                <span style={{ color: dcRate !== null && (stdRate === null || dcRate > stdRate) ? C.gold : C.taupe }}>
+                  {dcRate !== null ? `${dcRate}%` : '—'} ({deepCurlTrades.length})
+                </span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span style={{ color: C.taupe }}>Standard entries</span>
+                <span style={{ color: C.taupe }}>
+                  {stdRate !== null ? `${stdRate}%` : '—'} ({stdTrades.length})
+                </span>
+              </div>
+              <p style={{ color: C.taupe }} className="text-xs mt-3 leading-relaxed">
+                {deepCurlTrades.length < 5
+                  ? 'Need more data to draw conclusions.'
+                  : dcRate !== null && stdRate !== null && dcRate > stdRate
+                    ? '⭐ Deep curls are outperforming. Prioritize them.'
+                    : 'Deep curls not showing edge yet — keep collecting data.'}
+              </p>
+            </div>
           </div>
+
+          {/* Exit reasons */}
           <div>
-            <p className="text-slate-400 mb-2 font-medium">Exit Reasons</p>
-            {(() => {
-              const reasons: Record<string, number> = {}
-              closed.forEach(t => {
-                const k = t.exit_reason ?? 'unknown'
-                reasons[k] = (reasons[k] ?? 0) + 1
-              })
-              return (
-                <div className="text-xs text-slate-400 space-y-1">
-                  {Object.entries(reasons)
-                    .sort(([, a], [, b]) => b - a)
-                    .slice(0, 5)
-                    .map(([r, n]) => (
-                      <div key={r} className="flex justify-between">
-                        <span className="truncate max-w-[160px]">{r}</span>
-                        <span className="text-slate-500 ml-2">{n}×</span>
-                      </div>
-                    ))}
-                  {Object.keys(reasons).length === 0 && (
-                    <span className="text-slate-600">No closed trades yet.</span>
-                  )}
-                </div>
-              )
-            })()}
+            <p style={{ color: C.gold }} className="text-xs tracking-wider uppercase mb-3">
+              Exit Reasons
+            </p>
+            <div className="space-y-2">
+              {Object.entries(exitReasons)
+                .sort(([, a], [, b]) => b - a)
+                .slice(0, 6)
+                .map(([r, n]) => (
+                  <div key={r} className="flex justify-between text-xs">
+                    <span style={{ color: C.taupe }} className="truncate max-w-[160px]">{r}</span>
+                    <span style={{ color: C.goldDim }} className="ml-2 shrink-0">{n}×</span>
+                  </div>
+                ))}
+              {Object.keys(exitReasons).length === 0 && (
+                <span style={{ color: C.taupe }} className="text-xs italic">No closed trades yet.</span>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
-      <p className="text-center text-slate-700 text-xs mt-8">
-        W118 · Private · {new Date().getFullYear()}
+      {/* ── Footer ─────────────────────────────────────────────────────────── */}
+      <GoldDivider />
+      <p
+        style={{ color: C.taupe }}
+        className="text-center text-[10px] tracking-[0.3em] uppercase font-sans"
+      >
+        Romanticize your discipline &nbsp;·&nbsp; Private &nbsp;·&nbsp; {new Date().getFullYear()}
       </p>
+
     </div>
   )
 }
