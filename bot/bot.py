@@ -909,6 +909,7 @@ _last_summary: dict = {}     # populated each scan, read by the hourly heartbeat
 _watch_sent: dict  = {}      # ticker → timestamp; throttle WATCH alerts to 1 per 10 min
 _setup_sent: dict  = {}      # ticker → timestamp; throttle MANUAL SETUP alerts to 1 per 10 min
 _bought_today: set = set()   # tickers already bought today — never double-buy the same name
+_last_board_key: str = ""    # fingerprint of last scanner-board Telegram message (dedup)
 _bought_day: str   = ""      # date the set above belongs to (reset on rollover)
 _exiting_now: set  = set()   # tickers with a submitted exit order — prevents duplicate Telegram alerts
 
@@ -992,6 +993,43 @@ def _send_watch_alert(ticker: str, info: dict) -> None:
         f"🛑 Stop ${stop} (-8%)   🎯 T1 ${t1} (+15%)  T2 ${t2} (+30%)  T3 ${t3} (+60%)"
     )
     log.info(f"[WATCH] {ticker}: {score}/{max_} — {info.get('fail')}")
+
+def _send_scan_board(worthy: list) -> None:
+    """Send a consolidated scanner board whenever the 3+/6 candidate set changes.
+    Deduplicated by fingerprint so the same board never re-fires every 1-min scan."""
+    global _last_board_key
+    if not worthy:
+        return
+    key = "|".join(sorted(f"{tk}:{sc}/{mx}" for sc, mx, tk, inf in worthy))
+    if key == _last_board_key:
+        return
+    _last_board_key = key
+
+    lines = []
+    for sc, mx, tk, inf in sorted(worthy, key=lambda r: r[0] / r[1] if r[1] else 0, reverse=True):
+        star   = "⭐" if inf.get("deep_curl") else ""
+        vtag   = " V✓" if inf.get("above_vwap") else (" V✗" if inf.get("above_vwap") is False else "")
+        guide  = "AUTO" if inf.get("core") else "WATCH"
+        price  = inf["price"]
+        stop   = round(price * (1 - STOP_PCT), 2)
+        t1     = round(price * (1 + T1_PCT),   2)
+        t2     = round(price * (1 + T2_PCT),   2)
+        t3     = round(price * (1 + T3_PCT),   2)
+        k_str  = f"K={inf['k']}" if inf.get("k") is not None else ""
+        miss   = html.escape(inf.get("fail") or "") if guide == "WATCH" else ""
+        miss_line = f"  Missing: {miss}\n" if miss else ""
+        lines.append(
+            f"{star}<b>{html.escape(tk)}</b> {sc}/{mx}{vtag} [{guide}]\n"
+            f"  Price ${price:.2f}  {k_str}  Vol {inf['vol_ratio']}x\n"
+            f"{miss_line}"
+            f"  🛑 Stop ${stop}  🎯 T1 ${t1}  T2 ${t2}  T3 ${t3}"
+        )
+
+    tg(
+        f"📊 <b>Scanner Board — {len(worthy)} setup(s)</b>\n\n"
+        + "\n\n".join(lines)
+    )
+    log.info(f"[scan-board] sent: {key}")
 
 def heartbeat() -> None:
     """Hourly Telegram pulse — proves the bot is alive and explains why no entry."""
@@ -1234,6 +1272,9 @@ def scan():
             vtag = " V✓" if inf.get("above_vwap") else (" V✗" if inf.get("above_vwap") is False else "")
             parts.append(f"{star}{tk} {sc}/{mx}{vtag}")
         log.info("[scan] 🔝 TOP SETUPS  " + "   ".join(parts))
+
+    # Per-scan Telegram board — fires only when the candidate set changes (dedup by fingerprint)
+    _send_scan_board(worthy)
 
     _last_summary = {
         "time":       now,
