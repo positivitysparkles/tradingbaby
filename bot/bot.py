@@ -146,19 +146,19 @@ def is_tradeable(ticker: str) -> bool:
 def get_bars(ticker: str, limit: int = 100, timeframe: str = "5Min") -> list | None:
     try:
         interval = "1m" if "1Min" in timeframe else "5m"
-        df = yf.download(ticker, period="1d", interval=interval,
-                         prepost=True, progress=False, auto_adjust=False)
+        # Use Ticker.history() — always returns simple columns (Open/High/Low/Close/Volume)
+        # with no MultiIndex confusion. period="5d" gives enough bars for a reliable
+        # 20-bar volume average even on thin premarket sessions.
+        df = yf.Ticker(ticker).history(period="5d", interval=interval, prepost=True)
         if df is None or df.empty:
             log.info(f"[bars] {ticker} ({timeframe}): no bars from yfinance")
             return None
-        # yfinance MultiIndex columns when single ticker — flatten if needed
-        if hasattr(df.columns, "levels"):
-            df.columns = df.columns.get_level_values(0)
         bars = [
             {"o": float(row["Open"]), "h": float(row["High"]),
              "l": float(row["Low"]),  "c": float(row["Close"]),
-             "v": int(row["Volume"])}
+             "v": max(0, int(row["Volume"]))}
             for _, row in df.tail(limit).iterrows()
+            if not (row["Open"] != row["Open"])  # skip NaN rows
         ]
         if len(bars) < 10:
             log.info(f"[bars] {ticker} ({timeframe}): only {len(bars)} bars — too thin")
