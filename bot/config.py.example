@@ -61,6 +61,13 @@ AVOID_MIDDAY    = False
 MIDDAY_START_ET = 10.5        # 10:30am ET — entries pause
 MIDDAY_END_ET   = 15.0        # 3:00pm ET  — entries resume (power hour)
 
+# ── Auto-buy gate = CORE priority tiers (not a perfect 6/6) ───────────────────
+# 6/6 rarely lines up, so auto-buy fires on the CORE musts and lets the soft ones
+# (volume, MACD-line) just set the grade. CORE = Supertrend green + above VWAP +
+# above ZLSMA + Stoch hook (K>D & rising) + MACD histogram > 0 + K < OVERBOUGHT_K.
+# The Edge Engine prunes weak grades (learn→tighten), so relaxing the gate is safe.
+OVERBOUGHT_K = 85.0           # K at/above this = blow-off top, NOT a reset — never auto-buy
+
 # Entry quality — deep-curl flag. StochRSI K that recently dipped low then curled up
 # = stronger reload (Colab grader's ⭐). Raised 20→30 on 2026-06-19: the user's own A+
 # CDT entry was K=33.9, so a strict ≤20 (or ≤25) reset would have BLOCKED the best trade.

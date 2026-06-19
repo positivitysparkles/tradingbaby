@@ -182,13 +182,20 @@ def chandelier_exit(bars: list, period: int = 10, mult: float = 2.0) -> dict | N
 
 def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min: float,
                     deep_curl_reset: float = 20.0, vwap_tol: float = 0.005,
-                    vwap_gate: bool = True) -> tuple[bool, dict]:
+                    vwap_gate: bool = True, overbought_k: float = 85.0) -> tuple[bool, dict]:
     """
-    Run all W118 entry conditions. Returns (passed, details_dict).
+    Run all W118 entry conditions. Returns (CORE_pass, details_dict).
+
+    The first return value is the AUTO-BUY gate = the priority-tier "core":
+      Tier-1 (Supertrend green + above VWAP + above ZLSMA) + Stoch hook (K>D & rising,
+      not overbought) + MACD histogram > 0.
+    Volume and MACD-line-above-zero are SOFT — they raise the score/grade but do NOT
+    block a buy (6/6 rarely lines up; the Edge Engine prunes weak grades via learn→
+    tighten). `score`/`max` in the info dict still tally all 6 for grading + display.
 
     Checks ALL conditions instead of short-circuiting so we can score
-    partial setups (4/5) for WATCH alerts. ZLSMA is skipped (not failed)
-    when insufficient bar history — the other 4 conditions are sufficient.
+    partial setups for WATCH alerts. ZLSMA / VWAP are skipped (not failed)
+    when insufficient bar history.
 
     `deep_curl_reset`: if StochRSI K dipped below this within the lookback and is
     now curling up, the setup is flagged deep_curl=True (stronger reload). This is
@@ -291,10 +298,27 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
     if zl is None:
         max_possible -= 1
 
+    # ── CORE auto-buy gate (priority tiers) ───────────────────────────────────
+    # MUST: Supertrend green + above VWAP + above ZLSMA + Stoch hook (K>D rising,
+    #       not overbought) + MACD hist > 0. Volume + MACD-line are SOFT (score only).
+    # Skipped ZLSMA/VWAP (no history) count as OK — never block on missing data.
+    not_overbought = (k is not None and k < overbought_k)
+    stoch_hook = (k is not None and d is not None and k > d
+                  and (k_prev is None or k >= k_prev))
+    core_pass = (
+        st == 1
+        and ((zl is None) or (price > zl))            # ZLSMA: pass or skip
+        and ((above_vwap is None) or (above_vwap is True))  # VWAP: pass or skip
+        and stoch_hook and not_overbought
+        and (hist is not None and hist > 0)           # MACD histogram (ignition)
+    )
+
     info = {
         "price":     price,
         "score":     passed,
         "max":       max_possible,
+        "core":      core_pass,
+        "overbought": (k is not None and k >= overbought_k),
         "k":         round(k, 1)      if k    is not None else None,
         "d":         round(d, 1)      if d    is not None else None,
         "k_prev":    round(k_prev, 1) if k_prev is not None else None,
@@ -306,11 +330,12 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
         "macd_hist": round(hist, 5)   if hist   is not None else None,
         "macd_line": round(m_line, 5) if m_line is not None else None,
         "vol_ratio": round(vol_ratio, 1),
+        "full_pass": (passed >= max_possible),
         "blockers":  blockers,
         "fail":      " | ".join(blockers) if blockers else None,
     }
 
-    return (passed >= max_possible), info
+    return core_pass, info
 
 
 def is_fresh_1m(bars_1m: list) -> tuple[bool, str]:

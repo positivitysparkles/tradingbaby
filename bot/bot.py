@@ -72,6 +72,10 @@ VWAP_TOLERANCE      = getattr(_cfg, "VWAP_TOLERANCE", 0.005)    # 0.5% shelf tol
 CHANDELIER_EXIT     = getattr(_cfg, "CHANDELIER_EXIT", True)    # CE trailing exit on/off
 CE_ATR_PERIOD       = getattr(_cfg, "CE_ATR_PERIOD", 10)
 CE_ATR_MULT         = getattr(_cfg, "CE_ATR_MULT", 2.0)
+# Auto-buy fires on the CORE priority-tier gate (Tier-1 + Stoch hook + MACD hist),
+# not a perfect 6/6 — volume + MACD-line are soft (score/grade only). K must be under
+# OVERBOUGHT_K: a hooked-but-overbought stoch (e.g. NUCL K=98.8) is a top, not a reset.
+OVERBOUGHT_K        = getattr(_cfg, "OVERBOUGHT_K", 85.0)
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -951,37 +955,6 @@ def _send_setup_alert(ticker: str, info: dict, why: str) -> None:
     )
     log.info(f"[MANUAL] {ticker} full 5/5 setup — alert only ({why})")
 
-def _send_coil_alert(ticker: str, info: dict) -> None:
-    """Coil near-miss — Tier-1 (Supertrend+VWAP+ZLSMA) + Stoch hook + MACD all pass,
-    only VOLUME hasn't expanded yet. In a Shelf Bounce the volume surge prints on the
-    NEXT (breakout) candle, so this is the dry-coil entry to take by hand. Throttled
-    1/10 min, shares the setup throttle so the same name never double-alerts."""
-    last = _setup_sent.get(ticker, 0)
-    if time.time() - last < 600:
-        return
-    _setup_sent[ticker] = time.time()
-    bar_price  = info["price"]
-    live_price = get_latest_price(ticker)
-    price = live_price if live_price else bar_price
-    price_note = "live" if live_price else "last 5m bar"
-    stop = round(price * (1 - STOP_PCT), 2)
-    t1   = round(price * (1 + T1_PCT), 2)
-    t2   = round(price * (1 + T2_PCT), 2)
-    t3   = round(price * (1 + T3_PCT), 2)
-    curl  = " ⭐ DEEP CURL" if info.get("deep_curl") else ""
-    grade = info.get("grade")
-    gtag  = f"  <b>[{grade}]</b>" if grade else ""
-    tg(
-        f"🌀 <b>COIL — {html.escape(ticker)}</b>{gtag}{curl}\n"
-        f"<i>Tier-1 ✓ + Stoch hook ✓ + MACD ✓ — only volume still drying up "
-        f"(surge usually next candle). Watch for the break:</i>\n"
-        f"Entry ~${price:.4f} ({price_note})  ·  VWAP {_vwap_tag(info)}\n"
-        f"K={info['k']}↑ D={info['d']}  Vol {info['vol_ratio']}x (needs ≥{REL_VOL_MIN}x)\n"
-        f"🛑 Stop ${stop} (-8%)   🎯 T1 ${t1}  T2 ${t2}  T3 ${t3}"
-    )
-    log.info(f"[COIL] {ticker} {info['score']}/{info['max']} — only volume short "
-             f"(vol {info['vol_ratio']}x)")
-
 def _save_watch_sent():
     try:
         WATCH_SENT_FILE.write_text(json.dumps(_watch_sent))
@@ -992,7 +965,7 @@ def _send_watch_alert(ticker: str, info: dict) -> None:
     """Fire a Telegram WATCH alert when a ticker hits 4/5 conditions — manual entry cue.
     K must be under 85: at K≥85 the stoch is overbought/extended, not a fresh curl setup."""
     k_val = info.get("k") or 0
-    if k_val >= 85:
+    if k_val >= OVERBOUGHT_K:
         log.info(f"[skip-watch] {ticker}: K={k_val} overbought — not a reset setup")
         return
     last = _watch_sent.get(ticker, 0)
@@ -1147,7 +1120,8 @@ def scan():
             continue
 
         ok, info = check_all_entry(bars, MIN_PRICE, MAX_PRICE, REL_VOL_MIN, DEEP_CURL_RESET,
-                                   vwap_tol=VWAP_TOLERANCE, vwap_gate=VWAP_GATE)
+                                   vwap_tol=VWAP_TOLERANCE, vwap_gate=VWAP_GATE,
+                                   overbought_k=OVERBOUGHT_K)
         score, max_ = info.get("score", 0), info.get("max", 5)
         ranked.append((score, max_, ticker, info))
 
@@ -1200,44 +1174,30 @@ def scan():
                     LEARN_THRESHOLD, EDGE_WINRATE_FLOOR, EDGE_MIN_SAMPLE)
                 why = None if allow else f"edge hold [{grade}] — {edge_reason}"
 
+            tag = "FULL 6/6" if info.get("full_pass") else f"CORE {info['score']}/{info['max']}"
             if why is None:
-                log.info(f"[SIGNAL] {ticker} [{grade}] — ALL PASS (auto-buy): price=${info['price']} K={info['k']}↑ MACD▲ vol={info['vol_ratio']}x{curl}")
+                log.info(f"[SIGNAL] {ticker} [{grade}] — {tag} (auto-buy): price=${info['price']} K={info['k']}↑ MACD▲ vol={info['vol_ratio']}x{curl}")
                 _bought_today.add(ticker)   # mark BEFORE the order so a slow fill can't trigger a repeat
                 bought = execute_buy(ticker, info["price"], info)
                 if not bought:
                     _bought_today.discard(ticker)  # order failed (e.g. halted) — allow retry next scan
                 held = get_held()
             else:
-                log.info(f"[SIGNAL] {ticker} [{grade}] — ALL PASS (manual, {why}){curl}")
+                log.info(f"[SIGNAL] {ticker} [{grade}] — {tag} (manual, {why}){curl}")
                 _send_setup_alert(ticker, info, why)
         else:
-            # Tally each blocker individually for heartbeat
+            # Not a core auto-buy (missing a MUST: Supertrend / VWAP / ZLSMA / Stoch
+            # hook / MACD-hist, or overbought). Tally blockers + maybe WATCH.
+            # NB: a setup missing ONLY soft conditions (volume / MACD-line) is now a
+            # CORE auto-buy, so it never lands here — the old coil near-miss case.
             blk = info.get("blockers", [])
             for b in (blk or [info.get("fail", "unknown")]):
                 blockers[_blocker_bucket(b)] += 1
 
-            # Coil near-miss: Tier-1 (Supertrend+VWAP+ZLSMA) + Stoch hook + MACD all
-            # pass, and the ONLY thing short is volume — which DRIES UP in the shelf by
-            # design (the surge prints on the next/breakout candle). Surface it as a
-            # manual cue so we can take the dry-coil entry by hand and let the edge
-            # engine learn whether volume is really a must. Auto-buy is untouched.
-            only_vol_missing = (
-                bool(blk)
-                and all(b.startswith("vol ") for b in blk)   # nothing else failed
-                and info.get("above_vwap") is True           # Tier-1 VWAP confirmed
-            )
-            st_green = "Supertrend bearish" not in blk
-            if only_vol_missing:
-                catalyst_tier = None
-                if CATALYST_PROXY:
-                    daily = get_bars(ticker, limit=5, timeframe="1Day")
-                    catalyst_tier, _ = catalyst_score(bars, daily)
-                info["grade"]   = grade_setup(info, catalyst_tier)
-                info["session"] = _session_label()
-                _send_coil_alert(ticker, info)
             # WATCH only when one gate away AND Supertrend is already green —
             # the primary trigger must be on for it to be a real forming setup.
-            elif score >= max_ - 1 and st_green:
+            st_green = "Supertrend bearish" not in blk
+            if score >= max_ - 1 and st_green:
                 _send_watch_alert(ticker, info)
             else:
                 log.info(f"[skip] {ticker} {score}/{max_}: {info.get('fail', 'unknown')}")

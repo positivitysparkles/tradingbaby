@@ -14,7 +14,8 @@
         {"time_utc": "~17:30", "summary": "June-19 chart study (30 charts in 'june 19 2026/'). Codified A+ Shelf Bounce. Shipped Session-VWAP gate (cond #6), Chandelier Exit (10/2), float 20M->10M, SCANNER_REL_VOL_MIN=3.0 split from bar REL_VOL_MIN=1.5, DEEP_CURL_RESET 20->30. PR #71 merged."},
         {"time_utc": "~17:40", "summary": "Pine v5-shelf-bounce.pine — mirrors bot exactly (VWAP+Chandelier+MACD 5/10/16+A+ star). PR #72 merged."},
         {"time_utc": "~17:48", "summary": "Fixed vol 0.0x on every ticker (yfinance pads live edge with 0-vol bars; strip trailing zeros). Added ranked TOP SETUPS log board. PR #73 merged."},
-        {"time_utc": "~17:52", "summary": "Coil near-miss alert (Tier-1+hook+MACD pass, only volume short -> manual 🌀 COIL; auto-buy untouched). Documented 6-condition priority tiers. Updated Pine + this vault. PR #74."}
+        {"time_utc": "~17:52", "summary": "Coil near-miss alert (Tier-1+hook+MACD pass, only volume short -> manual 🌀 COIL; auto-buy untouched). Documented 6-condition priority tiers. Updated Pine + this vault. PR #74."},
+        {"time_utc": "~18:10", "summary": "Owner: 6/6 rarely hits -> relaxed AUTO-BUY to CORE gate (Tier-1 + Stoch hook + MACD hist>0 + K<85 overbought guard); volume & MACD-line now SOFT (score/grade only). check_all_entry returns core_pass. Overbought K now blocks auto-buy too. Same grade-scaled sizing (relaxed=C=$50); edge engine learn->tighten prunes losers. Superseded the manual 🌀 COIL (those are now auto-buys). PR #76."}
       ]
     }
   ],
@@ -27,7 +28,8 @@
     "new_indicators": {"vwap": "Anchor=Session, Source=HL2, gate with 0.5% tolerance", "chandelier_exit": "ATR 10, mult 2, use-close; exit on a candle close below the long-stop line"},
     "scanner": {"max_float": 10000000, "scanner_rel_vol_min": 3.0, "bar_rel_vol_min": 1.5, "price_range": "0.10-15.00"},
     "deep_curl_reset": 30.0,
-    "alert_types": {"auto_buy": "full pass only (learning phase: takes every grade)", "watch": "score>=max-1 AND supertrend green", "coil": "Tier-1+hook+MACD pass, only volume short (manual)", "manual_setup": "full pass but cap/midday/dup blocked"},
+    "auto_buy_gate": "CORE (not 6/6): supertrend_green + above_vwap + above_zlsma + stoch_hook(K>D & rising) + macd_hist>0 + K<OVERBOUGHT_K(85). Volume & MACD-line are SOFT (score/grade only). Edge engine learn->tighten prunes weak grades.",
+    "alert_types": {"auto_buy": "CORE pass (learning phase: takes every grade; relaxed=C=$50)", "watch": "score>=max-1 AND supertrend green AND K<85", "manual_setup": "core pass but cap/midday/dup blocked"},
     "branch": "claude/push-tradingbaby-ESEFn",
     "prs_today": ["#66","#67","#70","#71","#72","#73","#74"],
     "vps_after_merge": "cd /root/tradingbaby && git pull origin main && sudo systemctl restart w118bot",
