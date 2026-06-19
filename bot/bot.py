@@ -44,7 +44,24 @@ try:
 except ImportError:
     SUPABASE_URL = SUPABASE_KEY = ""
     _SB_ENABLED = False
-from indicators import check_all_entry, check_exit_signal, is_fresh_1m
+from indicators import check_all_entry, check_exit_signal, is_fresh_1m, catalyst_score
+from edge import (
+    grade_setup, size_for_grade, compute_edge_profile,
+    should_autobuy, phase_for, edge_summary,
+)
+
+# ── Edge Engine config ────────────────────────────────────────────────────────
+# Defaults are baked in here so the VPS config.py needs NO edits — a plain
+# `git pull` + restart picks all of this up. Override any of them in config.py.
+import config as _cfg
+LEARN_THRESHOLD    = getattr(_cfg, "LEARN_THRESHOLD", 30)       # closed trades before tightening
+EDGE_WINRATE_FLOOR = getattr(_cfg, "EDGE_WINRATE_FLOOR", 0.45)  # min win-rate to keep a grade live
+EDGE_MIN_SAMPLE    = getattr(_cfg, "EDGE_MIN_SAMPLE", 8)        # min trades before judging a grade
+DOLLARS_BY_GRADE   = getattr(_cfg, "DOLLARS_BY_GRADE",
+                             {"A+": 150, "A": 100, "B": 60, "C": 50})
+DOLLARS_MIN        = getattr(_cfg, "DOLLARS_MIN", 50)           # hard floor per trade
+DOLLARS_MAX        = getattr(_cfg, "DOLLARS_MAX", 200)          # hard ceiling per trade (never exceeded)
+CATALYST_PROXY     = getattr(_cfg, "CATALYST_PROXY", True)      # price-action catalyst detection
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -219,6 +236,45 @@ def _sb(method: str, path: str, **kwargs) -> dict | list | None:
         log.warning(f"[supabase] {e}")
         return None
 
+# ── Edge memory (the learn→tighten loop) ──────────────────────────────────────
+
+EDGE_CACHE     = DATA_DIR / "edge_profile.json"
+_edge_profile: dict = {}    # latest per-bucket win-rate map (from compute_edge_profile)
+_edge_n_closed: int = 0     # how many closed trades the profile is built on
+
+
+def refresh_edge() -> str:
+    """
+    Pull every closed trade from Supabase, recompute the edge profile (win-rate by
+    grade / session / catalyst / deep-curl / vol), cache it locally, and snapshot it
+    to w118_edge for the dashboard. Called on startup and in the daily audit.
+    Safe no-op when Supabase is off. Returns the one-line summary.
+    """
+    global _edge_profile, _edge_n_closed
+    rows = _sb("GET", "/rest/v1/w118_trades?status=in.(closed,stopped)&select=*&limit=2000") or []
+    closed = [r for r in rows if r.get("realized_pnl") is not None]
+    _edge_n_closed = len(closed)
+    _edge_profile  = compute_edge_profile(closed)
+    phase   = phase_for(_edge_n_closed, LEARN_THRESHOLD)
+    summary = edge_summary(_edge_profile, _edge_n_closed, phase)
+
+    try:
+        EDGE_CACHE.write_text(json.dumps({
+            "computed_at": datetime.now(UTC).isoformat(),
+            "n_closed": _edge_n_closed, "phase": phase,
+            "summary": summary, "profile": _edge_profile,
+        }, indent=2))
+    except Exception:
+        pass
+
+    _sb("POST", "/rest/v1/w118_edge", json={
+        "n_closed": _edge_n_closed, "phase": phase,
+        "summary": summary, "profile": _edge_profile,
+    })
+    log.info(f"[edge] {summary}")
+    return summary
+
+
 def sb_log_trade(ticker: str, price: float, qty: int, info: dict):
     row = {
         "date":        date.today().isoformat(),
@@ -240,6 +296,9 @@ def sb_log_trade(ticker: str, price: float, qty: int, info: dict):
         "macd_hist":   info.get("macd_hist"),
         "macd_line":   info.get("macd_line"),
         "zlsma":       info.get("zlsma"),
+        "grade":       info.get("grade"),
+        "catalyst":    info.get("catalyst"),
+        "session":     info.get("session"),
         "blockers":    info.get("fail"),
     }
     result = _sb("POST", "/rest/v1/w118_trades", json=row)
@@ -490,9 +549,13 @@ def _place_oco_exit(ticker: str, qty: int, target: float, stop: float) -> bool:
 
 
 def execute_buy(ticker: str, price: float, info: dict):
-    # Dynamic sizing: spend ~$100, split T1/T2/T3 proportionally (30%/30%/40%).
-    # At least 3 shares so each leg gets at least 1.
-    qty    = max(3, int(DOLLARS_PER_TRADE / price))
+    # Grade-scaled sizing: A+ presses harder, weaker setups risk less — but ALWAYS
+    # clamped to [DOLLARS_MIN, DOLLARS_MAX] so a single trade can never exceed the
+    # hard ceiling. Split T1/T2/T3 proportionally (30%/30%/40%); ≥3 shares so each
+    # leg gets at least 1.
+    grade   = info.get("grade", "B")
+    dollars = size_for_grade(grade, DOLLARS_BY_GRADE, DOLLARS_PER_TRADE, DOLLARS_MIN, DOLLARS_MAX)
+    qty    = max(3, int(dollars / price))
     t1_qty = qty // 3
     t2_qty = qty // 3
     t3_qty = qty - t1_qty - t2_qty   # remainder to T3 so total = qty exactly
@@ -529,7 +592,7 @@ def execute_buy(ticker: str, price: float, info: dict):
         tg(f"<b>⚠️ {html.escape(ticker)}: fill unconfirmed after 30s</b>\nSet T1/T2/T3 manually on Alpaca!")
         log_trade(ticker, price, info)
         tg(
-            f"<b>🟢 W118 AUTO BUY — {html.escape(ticker)}</b>\n"
+            f"<b>🟢 AUTO BUY — {html.escape(ticker)}</b>  <b>[{info.get('grade','B')}]</b>\n"
             f"Entry: ${price:.4f}  ×{qty} shares (~${qty*price:.0f})\n"
             f"🛑 Stop: ${stop}  (-8%) — scan-enforced\n"
             f"🎯 T1: ${t1}  T2: ${t2}  T3: ${t3}  — SET MANUALLY"
@@ -561,8 +624,8 @@ def execute_buy(ticker: str, price: float, info: dict):
     sb_log_trade(ticker, price, qty, info)
 
     msg = (
-        f"<b>🟢 W118 AUTO BUY — {html.escape(ticker)}</b>{' ⭐ DEEP CURL' if info.get('deep_curl') else ''}\n"
-        f"Entry: ${price:.4f}  ×{qty} shares (~${qty*price:.0f})\n"
+        f"<b>🟢 AUTO BUY — {html.escape(ticker)}</b>  <b>[{grade}]</b>{' ⭐ DEEP CURL' if info.get('deep_curl') else ''}\n"
+        f"Entry: ${price:.4f}  ×{qty} shares (~${qty*price:.0f})  ·  grade {grade}\n"
         f"K={info['k']}↑  D={info['d']}  MACD(5,10,16)={'▲' if info['macd_hist'] > 0 else '▽'}  Vol {info['vol_ratio']}x\n"
         f"🛑 Stop: ${stop}  (-8%) — {stop_note}\n"
         f"🎯 T1: ${t1}  (+15%)  ×{t1_qty} — {'✓' if res['T1'] else '❌ FAILED'}\n"
@@ -604,7 +667,7 @@ def execute_exit(ticker: str, reason: str):
         note = f"{sess} · {reason} · {pct:+.1f}%"
         if entry_price and exit_price < entry_price:
             note = "LOSS AUTOPSY — " + note
-        tg(f"<b>🔴 W118 EXIT — {ticker}</b>\nReason: {reason}  ({pct:+.1f}%)")
+        tg(f"<b>🔴 EXIT — {ticker}</b>\nReason: {reason}  ({pct:+.1f}%)")
         log.info(f"[exit] {ticker}: {reason} ({pct:+.1f}%)")
         sb_close_trade(ticker, exit_price, reason, entry_price or 0.0, pos_qty, note)
 
@@ -687,7 +750,7 @@ def daily_audit():
                       f"P&L ${s['pnl']:+.2f}\n")
 
     msg = (
-        f"<b>📊 W118 Daily Audit — {today}</b>\n"
+        f"<b>📊 Daily Audit — {today}</b>\n"
         f"Entries today: {len(today_trades)}  |  Positions open: {len(positions)}\n"
         f"Buy fills: {len(buys)}  |  Sell fills: {len(sells)}\n"
     )
@@ -697,6 +760,12 @@ def daily_audit():
                 f"Net: <b>${net_pnl:+.2f}</b>  ({wins}W / {losses}L  {win_rate})\n")
     if pos_lines:
         msg += f"\n<b>Open now (unrealized):</b>\n{pos_lines}"
+
+    # Edge Engine: recompute what's working and report the phase + grade win-rates.
+    try:
+        msg += f"\n<b>🧠 Edge:</b> {refresh_edge()}"
+    except Exception as e:
+        log.warning(f"[edge] refresh in audit failed: {e}")
 
     tg(msg)
     log.info("[audit] Daily audit sent to Telegram")
@@ -723,7 +792,7 @@ def weekly_audit():
                    if t.get("date", "") >= (date.today() - timedelta(days=7)).isoformat()]
 
     msg = (
-        f"<b>📈 W118 Weekly Audit</b>\n"
+        f"<b>📈 Weekly Audit</b>\n"
         f"Entries this week: {len(week_trades)}\n"
         f"Sell orders filled: {len(sell_fills)}\n"
         f"Total logged trades: {len(trades)}\n"
@@ -779,15 +848,18 @@ def _send_setup_alert(ticker: str, info: dict, why: str) -> None:
     live_price = get_latest_price(ticker)      # real-time last trade
     price = live_price if live_price else bar_price
     price_note = "live" if live_price else "last 5m bar"
-    qty   = max(3, int(DOLLARS_PER_TRADE / price))
+    dollars = size_for_grade(info.get("grade", "B"), DOLLARS_BY_GRADE, DOLLARS_PER_TRADE, DOLLARS_MIN, DOLLARS_MAX)
+    qty   = max(3, int(dollars / price))
     stop  = round(price * (1 - STOP_PCT), 2)
     t1    = round(price * (1 + T1_PCT), 2)
     t2    = round(price * (1 + T2_PCT), 2)
     t3    = round(price * (1 + T3_PCT), 2)
     curl  = " ⭐ DEEP CURL" if info.get("deep_curl") else ""
     macd  = "▲" if (info.get("macd_hist") or 0) > 0 else "▽"
+    grade = info.get("grade")
+    gtag  = f"  <b>[{grade}]</b>" if grade else ""
     tg(
-        f"🔔 <b>MANUAL SETUP — {html.escape(ticker)}</b>{curl}\n"
+        f"🔔 <b>MANUAL SETUP — {html.escape(ticker)}</b>{gtag}{curl}\n"
         f"<i>Bot can't auto-buy ({html.escape(why)}) — you can paper-trade it:</i>\n"
         f"Entry ~${price:.4f} ({price_note})  ×{qty} shares (~${qty*price:.0f})\n"
         f"K={info['k']}↑ D={info['d']}  MACD {macd}  Vol {info['vol_ratio']}x\n"
@@ -821,7 +893,7 @@ def heartbeat() -> None:
         return
     s = _last_summary
     if not s:
-        tg("💓 <b>W118 alive</b> — first scan still pending.")
+        tg("💓 <b>Bot alive</b> — first scan still pending.")
         return
     if s.get("blockers"):
         top = sorted(s["blockers"].items(), key=lambda x: -x[1])
@@ -831,7 +903,7 @@ def heartbeat() -> None:
     mode = s.get("mode", "live")
     mode_line = "" if mode == "live" else f"\n⚠️ Auto-entries paused ({mode}) — manual setup alerts still firing"
     tg(
-        f"💓 <b>W118 alive</b> — {s['time']}\n"
+        f"💓 <b>Bot alive</b> — {s['time']}\n"
         f"Checked {s['candidates']} candidates · {s['positions']}/{MAX_POSITIONS} open · "
         f"{s['trades']} trades today\n"
         f"Setups passing all 5: <b>{s['signals']}</b>{mode_line}\n"
@@ -856,7 +928,7 @@ def scan():
     # Send one "I'm alive" Telegram at the first scan of each day
     if _first_scan_of_day != today:
         _first_scan_of_day = today
-        tg(f"⏰ <b>W118 Bot scanning</b> — {now}\nGate open. Running TradingView scanner...")
+        tg(f"⏰ <b>Bot scanning</b> — {now}\nGate open. Running TradingView scanner...")
 
     held = get_held()
 
@@ -933,6 +1005,17 @@ def scan():
 
             signals += 1
             curl = " ⭐deep-curl" if info.get("deep_curl") else ""
+
+            # Grade the setup (A+/A/B/C) from its DNA + a price-action catalyst proxy.
+            catalyst_tier = None
+            if CATALYST_PROXY:
+                daily = get_bars(ticker, limit=5, timeframe="1Day")
+                catalyst_tier, _cat_reason = catalyst_score(bars, daily)
+            grade = grade_setup(info, catalyst_tier)
+            info["grade"]    = grade
+            info["catalyst"] = catalyst_tier
+            info["session"]  = _session_label()
+
             # Can we actually auto-buy? Re-check live caps each pass so a buy made
             # earlier in THIS loop correctly flips later passes to alert-only.
             if ticker in _bought_today:
@@ -944,17 +1027,23 @@ def scan():
             elif len(get_held()) >= MAX_POSITIONS:
                 why = f"{MAX_POSITIONS} positions open"
             else:
-                why = None   # clear to buy
+                # Learn→tighten edge gate: take everything while gathering data, then
+                # auto-restrict to grades that actually win. Restrict-only — it can
+                # remove a trade but never loosens a rule or raises a cap.
+                allow, edge_reason = should_autobuy(
+                    grade, _edge_profile, _edge_n_closed,
+                    LEARN_THRESHOLD, EDGE_WINRATE_FLOOR, EDGE_MIN_SAMPLE)
+                why = None if allow else f"edge hold [{grade}] — {edge_reason}"
 
             if why is None:
-                log.info(f"[SIGNAL] {ticker} — ALL PASS (auto-buy): price=${info['price']} K={info['k']}↑ MACD▲ vol={info['vol_ratio']}x{curl}")
+                log.info(f"[SIGNAL] {ticker} [{grade}] — ALL PASS (auto-buy): price=${info['price']} K={info['k']}↑ MACD▲ vol={info['vol_ratio']}x{curl}")
                 _bought_today.add(ticker)   # mark BEFORE the order so a slow fill can't trigger a repeat
                 bought = execute_buy(ticker, info["price"], info)
                 if not bought:
                     _bought_today.discard(ticker)  # order failed (e.g. halted) — allow retry next scan
                 held = get_held()
             else:
-                log.info(f"[SIGNAL] {ticker} — ALL PASS (manual, {why}){curl}")
+                log.info(f"[SIGNAL] {ticker} [{grade}] — ALL PASS (manual, {why}){curl}")
                 _send_setup_alert(ticker, info, why)
         else:
             # Tally each blocker individually for heartbeat
@@ -1002,11 +1091,18 @@ def main():
         log.error("Fill in TELEGRAM_TOKEN in bot/config.py first.")
         sys.exit(1)
 
+    # Warm the edge profile from prior closed trades before the first scan.
+    try:
+        refresh_edge()
+    except Exception as e:
+        log.warning(f"[edge] startup refresh failed: {e}")
+
     tg(
-        f"🤖 <b>W118 Bot started</b>\n"
-        f"Gate: 2am–4pm MT (4am–6pm ET)  |  Max {MAX_DAILY_TRADES} trades/day\n"
+        f"🤖 <b>Bot started</b>\n"
+        f"Gate: 2am–4pm MT (4am–6pm ET)  |  {MAX_POSITIONS} positions max\n"
         f"Universe: NASDAQ $0.10–$15, vol>1M, chg>10%, relVol>{REL_VOL_MIN}x\n"
-        f"Conditions: Supertrend ✓  K>D+rising ✓  price>ZLSMA ✓  MACD(5,10,16)>0 ✓  vol>{REL_VOL_MIN}x ✓"
+        f"Conditions: Supertrend ✓  K>D+rising ✓  price>ZLSMA ✓  MACD(5,10,16)>0 ✓  vol>{REL_VOL_MIN}x ✓\n"
+        f"Edge: grade-scaled sizing + learn→tighten ({phase_for(_edge_n_closed, LEARN_THRESHOLD)}, {_edge_n_closed}/{LEARN_THRESHOLD})"
     )
 
     schedule.every(SCAN_INTERVAL_MIN).minutes.do(scan)

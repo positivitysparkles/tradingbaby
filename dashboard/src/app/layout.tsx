@@ -3,7 +3,7 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: "Olya's Dashboard",
-  description: 'Private trading P&L · W118 Curl if Flow',
+  description: 'Private trading P&L · Curl if Flow',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
