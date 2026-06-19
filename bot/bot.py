@@ -1072,6 +1072,9 @@ def scan():
                     if not fresh:
                         log.info(f"[skip-stale] {ticker} 5/5 on 5m but {why_stale}")
                         blockers["1m rolling over (stale)"] += 1
+                        # Still alert — 5/5 on the 5m chart is real. User can decide
+                        # whether to take it manually while 1m momentum recovers.
+                        _send_setup_alert(ticker, info, f"1m rolling over ({why_stale}) — watch chart")
                         time.sleep(0.15)
                         continue
 
