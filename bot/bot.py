@@ -76,6 +76,8 @@ CE_ATR_MULT         = getattr(_cfg, "CE_ATR_MULT", 2.0)
 # not a perfect 6/6 — volume + MACD-line are soft (score/grade only). K must be under
 # OVERBOUGHT_K: a hooked-but-overbought stoch (e.g. NUCL K=98.8) is a top, not a reset.
 OVERBOUGHT_K        = getattr(_cfg, "OVERBOUGHT_K", 85.0)
+MAX_DAILY_BUYS      = getattr(_cfg, "MAX_DAILY_BUYS", 5)    # hard cap on auto-buy submissions per day
+MAX_BUY_ATTEMPTS    = getattr(_cfg, "MAX_BUY_ATTEMPTS", 2)  # retries before giving up on a rejected ticker
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -657,16 +659,18 @@ def execute_buy(ticker: str, price: float, info: dict):
     # Poll until Alpaca confirms the position exists. A fixed sleep can still race;
     # polling is deterministic — targets land exactly when the fill is settled.
     if not _confirm_position(ticker, timeout=30):
-        log.error(f"[buy] {ticker} position not confirmed after 30s — targets NOT placed")
-        tg(f"<b>⚠️ {html.escape(ticker)}: fill unconfirmed after 30s</b>\nSet T1/T2/T3 manually on Alpaca!")
-        log_trade(ticker, price, info)
+        log.warning(f"[buy] {ticker} order resting — fill unconfirmed after 30s, targets skipped")
         tg(
             f"<b>🟢 AUTO BUY — {html.escape(ticker)}</b>  <b>[{info.get('grade','B')}]</b>\n"
             f"Entry: ${price:.4f}  ×{qty} shares (~${qty*price:.0f})\n"
             f"🛑 Stop: ${stop}  (-8%) — scan-enforced\n"
-            f"🎯 T1: ${t1}  T2: ${t2}  T3: ${t3}  — SET MANUALLY"
+            f"🎯 T1: ${t1}  T2: ${t2}  T3: ${t3}  — SET MANUALLY\n"
+            f"⚠️ Fill unconfirmed — order is resting on Alpaca. Set T1/T2/T3 manually."
         )
-        return False
+        # Return "resting" so the caller keeps ticker in _bought_today (no re-submit) but
+        # does NOT count this against the daily filled-position cap — the order is on
+        # Alpaca's book and WILL fill; it just hasn't confirmed yet in this 30s window.
+        return "resting"
 
     # Attach exits as 3 OCO bracket legs (t1_qty+t2_qty+t3_qty = qty exactly, no
     # oversell). Each leg = take-profit + protective stop, linked. This puts a REAL
@@ -880,7 +884,27 @@ def weekly_audit():
 
 # ── Main scan loop ────────────────────────────────────────────────────────────
 
+def _is_trading_day(today: str | None = None) -> bool:
+    """Return True only on days the US market actually opens (Mon–Fri, no holidays).
+    Uses Alpaca's /v2/calendar which knows every exchange holiday automatically.
+    Result is cached per date so we call Alpaca at most once per day.
+    Falls back to weekday-only check if the API is unavailable."""
+    global _trading_day_cache
+    d = today or date.today().isoformat()
+    if d in _trading_day_cache:
+        return _trading_day_cache[d]
+    try:
+        cal = _alpaca("GET", f"/v2/calendar?start={d}&end={d}")
+        result = bool(cal)   # non-empty list → market open today
+    except Exception:
+        # Fallback: at least block weekends; accept holidays as a safe degradation
+        result = datetime.now(ET).weekday() < 5
+    _trading_day_cache[d] = result
+    return result
+
 def _in_gate() -> bool:
+    if not _is_trading_day():
+        return False
     h = datetime.now(UTC).hour
     return GATE_OPEN_UTC <= h < GATE_CLOSE_UTC
 
@@ -912,6 +936,9 @@ _bought_today: set = set()   # tickers already bought today — never double-buy
 _last_board_key: str = ""    # fingerprint of last scanner-board Telegram message (dedup)
 _bought_day: str   = ""      # date the set above belongs to (reset on rollover)
 _exiting_now: set  = set()   # tickers with a submitted exit order — prevents duplicate Telegram alerts
+_buys_today: int   = 0       # count of buy orders actually submitted today (hard cap = MAX_DAILY_BUYS)
+_buy_attempts: Counter = Counter()  # ticker → failed-submission count; give up after MAX_BUY_ATTEMPTS
+_trading_day_cache: dict = {}       # date-str → bool; avoids repeated Alpaca calendar calls
 
 
 def _vwap_tag(info: dict) -> str:
@@ -1095,7 +1122,7 @@ def market_open_alert():
 
 
 def scan():
-    global _first_scan_of_day, _last_summary, _bought_today, _bought_day
+    global _first_scan_of_day, _last_summary, _bought_today, _bought_day, _buys_today, _buy_attempts
     if not _in_gate():
         return
 
@@ -1103,10 +1130,12 @@ def scan():
     today  = date.today().isoformat()
     log.info(f"[scan] ── {now} ─────────────────────────────────────")
 
-    # Reset the once-per-day "already bought" guard when the date rolls over.
+    # Reset the once-per-day guards when the date rolls over.
     if _bought_day != today:
-        _bought_day = today
-        _bought_today = set()
+        _bought_day    = today
+        _bought_today  = set()
+        _buys_today    = 0
+        _buy_attempts  = Counter()
 
     # Send one "I'm alive" Telegram at the first scan of each day
     if _first_scan_of_day != today:
@@ -1114,6 +1143,11 @@ def scan():
         tg(f"⏰ <b>Bot scanning</b> — {now}\nGate open. Running TradingView scanner...")
 
     held = get_held()
+    # Tickers with a resting BUY order on Alpaca — skip them to prevent duplicate submissions.
+    # This is the restart-proof backstop: even if _bought_today is lost on a VPS restart,
+    # an already-resting order blocks a duplicate.
+    open_buy_tickers = {o["symbol"] for o in get_open_orders() if o.get("side") == "buy"}
+
     # Release the exit guard for any ticker whose position is now fully gone (fill confirmed).
     before = set(_exiting_now)
     _exiting_now.intersection_update(held)
@@ -1154,7 +1188,9 @@ def scan():
     # hand off a "MANUAL SETUP" alert (entry + stop + T1/T2/T3).
     entries_open = True
     pause_reason = None
-    if trades_today() >= MAX_DAILY_TRADES:
+    if _buys_today >= MAX_DAILY_BUYS:
+        entries_open, pause_reason = False, f"daily buy cap {MAX_DAILY_BUYS} reached"
+    elif trades_today() >= MAX_DAILY_TRADES:
         entries_open, pause_reason = False, f"daily cap {MAX_DAILY_TRADES} reached"
     elif len(held) >= MAX_POSITIONS:
         entries_open, pause_reason = False, f"{MAX_POSITIONS} positions open"
@@ -1169,7 +1205,7 @@ def scan():
     ranked: list = []   # (score, max, ticker, info) for the per-scan TOP SETUPS board
     signals = 0
     for ticker in candidates:
-        if ticker in held:
+        if ticker in held or ticker in open_buy_tickers:
             continue
 
         bars = get_bars(ticker)
@@ -1216,12 +1252,18 @@ def scan():
             # earlier in THIS loop correctly flips later passes to alert-only.
             if ticker in _bought_today:
                 why = "already bought today"
+            elif ticker in open_buy_tickers:
+                why = "order already resting on Alpaca"
+            elif _buys_today >= MAX_DAILY_BUYS:
+                why = f"daily buy cap {MAX_DAILY_BUYS} reached"
             elif not entries_open:
                 why = pause_reason
             elif trades_today() >= MAX_DAILY_TRADES:
                 why = f"daily cap {MAX_DAILY_TRADES} reached"
             elif len(get_held()) >= MAX_POSITIONS:
                 why = f"{MAX_POSITIONS} positions open"
+            elif _buy_attempts[ticker] >= MAX_BUY_ATTEMPTS:
+                why = f"buy rejected {_buy_attempts[ticker]}x — skipping today"
             else:
                 # Learn→tighten edge gate: take everything while gathering data, then
                 # auto-restrict to grades that actually win. Restrict-only — it can
@@ -1236,8 +1278,20 @@ def scan():
                 log.info(f"[SIGNAL] {ticker} [{grade}] — {tag} (auto-buy): price=${info['price']} K={info['k']}↑ MACD▲ vol={info['vol_ratio']}x{curl}")
                 _bought_today.add(ticker)   # mark BEFORE the order so a slow fill can't trigger a repeat
                 bought = execute_buy(ticker, info["price"], info)
-                if not bought:
-                    _bought_today.discard(ticker)  # order failed (e.g. halted) — allow retry next scan
+                if bought is False:
+                    # Genuine submission failure (halted / API rejection). Track attempts and
+                    # allow a retry only while under the cap — at cap, keep in _bought_today
+                    # so no more tries fire today (prevents the 300-retry storm).
+                    _buy_attempts[ticker] += 1
+                    if _buy_attempts[ticker] < MAX_BUY_ATTEMPTS:
+                        _bought_today.discard(ticker)
+                    else:
+                        log.warning(f"[buy] {ticker}: {MAX_BUY_ATTEMPTS} submission failures — blocked for today")
+                elif bought is True:
+                    # Confirmed fill: position appeared in Alpaca within 30s — count it.
+                    _buys_today += 1
+                # bought == "resting": order is out there but unconfirmed — don't count
+                # against the daily cap yet (cap = 5 filled positions, not 5 submissions).
                 held = get_held()
             else:
                 log.info(f"[SIGNAL] {ticker} [{grade}] — {tag} (manual, {why}){curl}")
