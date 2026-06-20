@@ -667,10 +667,10 @@ def execute_buy(ticker: str, price: float, info: dict):
             f"🎯 T1: ${t1}  T2: ${t2}  T3: ${t3}  — SET MANUALLY\n"
             f"⚠️ Fill unconfirmed — order is resting on Alpaca. Set T1/T2/T3 manually."
         )
-        # Return True so the caller keeps ticker in _bought_today — the limit order is
-        # already resting on Alpaca's book and WILL fill; returning False would cause
-        # the next scan to submit a duplicate order (the root cause of the 200-order loop).
-        return True
+        # Return "resting" so the caller keeps ticker in _bought_today (no re-submit) but
+        # does NOT count this against the daily filled-position cap — the order is on
+        # Alpaca's book and WILL fill; it just hasn't confirmed yet in this 30s window.
+        return "resting"
 
     # Attach exits as 3 OCO bracket legs (t1_qty+t2_qty+t3_qty = qty exactly, no
     # oversell). Each leg = take-profit + protective stop, linked. This puts a REAL
@@ -1278,7 +1278,7 @@ def scan():
                 log.info(f"[SIGNAL] {ticker} [{grade}] — {tag} (auto-buy): price=${info['price']} K={info['k']}↑ MACD▲ vol={info['vol_ratio']}x{curl}")
                 _bought_today.add(ticker)   # mark BEFORE the order so a slow fill can't trigger a repeat
                 bought = execute_buy(ticker, info["price"], info)
-                if not bought:
+                if bought is False:
                     # Genuine submission failure (halted / API rejection). Track attempts and
                     # allow a retry only while under the cap — at cap, keep in _bought_today
                     # so no more tries fire today (prevents the 300-retry storm).
@@ -1287,8 +1287,11 @@ def scan():
                         _bought_today.discard(ticker)
                     else:
                         log.warning(f"[buy] {ticker}: {MAX_BUY_ATTEMPTS} submission failures — blocked for today")
-                else:
+                elif bought is True:
+                    # Confirmed fill: position appeared in Alpaca within 30s — count it.
                     _buys_today += 1
+                # bought == "resting": order is out there but unconfirmed — don't count
+                # against the daily cap yet (cap = 5 filled positions, not 5 submissions).
                 held = get_held()
             else:
                 log.info(f"[SIGNAL] {ticker} [{grade}] — {tag} (manual, {why}){curl}")
