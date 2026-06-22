@@ -78,6 +78,10 @@ CE_ATR_MULT         = getattr(_cfg, "CE_ATR_MULT", 2.0)
 OVERBOUGHT_K        = getattr(_cfg, "OVERBOUGHT_K", 85.0)
 MAX_DAILY_BUYS      = getattr(_cfg, "MAX_DAILY_BUYS", 5)    # hard cap on auto-buy submissions per day
 MAX_BUY_ATTEMPTS    = getattr(_cfg, "MAX_BUY_ATTEMPTS", 2)  # retries before giving up on a rejected ticker
+# QUIET_ALERTS: Telegram pushes only actual trades + audits (BUY / MANUAL SETUP / EXIT /
+# daily+weekly audit). WATCH near-misses, scanner board, heartbeat, market-open snapshot and
+# startup banners stay in the journalctl log (Termius) but no longer push. Default on.
+QUIET_ALERTS        = getattr(_cfg, "QUIET_ALERTS", True)
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -1012,13 +1016,14 @@ def _send_watch_alert(ticker: str, info: dict) -> None:
     t1   = round(price * (1 + T1_PCT),   2)
     t2   = round(price * (1 + T2_PCT),   2)
     t3   = round(price * (1 + T3_PCT),   2)
-    tg(
-        f"👀 <b>WATCH: {html.escape(ticker)}</b> — {score}/{max_} conditions{curl}\n"
-        f"Price ${price:.2f}  "
-        f"K={info['k']}  Vol {info['vol_ratio']}x  VWAP {_vwap_tag(info)}\n"
-        f"Missing: {missing}\n"
-        f"🛑 Stop ${stop} (-8%)   🎯 T1 ${t1} (+15%)  T2 ${t2} (+30%)  T3 ${t3} (+60%)"
-    )
+    if not QUIET_ALERTS:
+        tg(
+            f"👀 <b>WATCH: {html.escape(ticker)}</b> — {score}/{max_} conditions{curl}\n"
+            f"Price ${price:.2f}  "
+            f"K={info['k']}  Vol {info['vol_ratio']}x  VWAP {_vwap_tag(info)}\n"
+            f"Missing: {missing}\n"
+            f"🛑 Stop ${stop} (-8%)   🎯 T1 ${t1} (+15%)  T2 ${t2} (+30%)  T3 ${t3} (+60%)"
+        )
     log.info(f"[WATCH] {ticker}: {score}/{max_} — {info.get('fail')}")
 
 def _send_scan_board(worthy: list) -> None:
@@ -1052,17 +1057,26 @@ def _send_scan_board(worthy: list) -> None:
             f"  🛑 Stop ${stop}  🎯 T1 ${t1}  T2 ${t2}  T3 ${t3}"
         )
 
-    tg(
-        f"📊 <b>Scanner Board — {len(worthy)} setup(s)</b>\n\n"
-        + "\n\n".join(lines)
-    )
+    if not QUIET_ALERTS:
+        tg(
+            f"📊 <b>Scanner Board — {len(worthy)} setup(s)</b>\n\n"
+            + "\n\n".join(lines)
+        )
     log.info(f"[scan-board] sent: {key}")
 
 def heartbeat() -> None:
-    """Hourly Telegram pulse — proves the bot is alive and explains why no entry."""
+    """Hourly Telegram pulse — proves the bot is alive and explains why no entry.
+    In QUIET_ALERTS mode it logs a pulse (visible on Termius/journalctl) but doesn't push."""
     if not _in_gate():
         return
     s = _last_summary
+    if QUIET_ALERTS:
+        if s:
+            log.info(f"[heartbeat] (quiet) {s.get('time','')} · {s.get('candidates',0)} scanned · "
+                     f"{s.get('positions',0)}/{MAX_POSITIONS} open · {s.get('signals',0)} full setups")
+        else:
+            log.info("[heartbeat] (quiet) first scan still pending")
+        return
     if not s:
         tg("💓 <b>Bot alive</b> — first scan still pending.")
         return
@@ -1102,6 +1116,9 @@ def heartbeat() -> None:
 
 def market_open_alert():
     """Fire once at 9:30am ET (market open) — status snapshot so you always know what's in play."""
+    if QUIET_ALERTS:
+        log.info("[market-open] 9:30am ET — RTH started (quiet, Telegram suppressed)")
+        return
     positions = get_positions()
     pos_lines = ""
     for p in positions:
@@ -1140,7 +1157,9 @@ def scan():
     # Send one "I'm alive" Telegram at the first scan of each day
     if _first_scan_of_day != today:
         _first_scan_of_day = today
-        tg(f"⏰ <b>Bot scanning</b> — {now}\nGate open. Running TradingView scanner...")
+        if not QUIET_ALERTS:
+            tg(f"⏰ <b>Bot scanning</b> — {now}\nGate open. Running TradingView scanner...")
+        log.info(f"[scan] gate open — first scan of day {today} ({now})")
 
     held = get_held()
     # Tickers with a resting BUY order on Alpaca — skip them to prevent duplicate submissions.
@@ -1402,13 +1421,16 @@ def main():
     except Exception as e:
         log.warning(f"[edge] startup refresh failed: {e}")
 
-    tg(
-        f"🤖 <b>Bot started</b>\n"
-        f"Gate: 2am–4pm MT (4am–6pm ET)  |  {MAX_POSITIONS} positions max\n"
-        f"Universe: NASDAQ $0.10–$15, vol>1M, chg>10%, relVol>{REL_VOL_MIN}x\n"
-        f"Conditions: Supertrend ✓  K>D+rising ✓  price>ZLSMA ✓  MACD(5,10,16)>0 ✓  vol>{REL_VOL_MIN}x ✓\n"
-        f"Edge: grade-scaled sizing + learn→tighten ({phase_for(_edge_n_closed, LEARN_THRESHOLD)}, {_edge_n_closed}/{LEARN_THRESHOLD})"
-    )
+    if not QUIET_ALERTS:
+        tg(
+            f"🤖 <b>Bot started</b>\n"
+            f"Gate: 2am–4pm MT (4am–6pm ET)  |  {MAX_POSITIONS} positions max\n"
+            f"Universe: NASDAQ $0.10–$15, vol>1M, chg>10%, relVol>{REL_VOL_MIN}x\n"
+            f"Conditions: Supertrend ✓  K>D+rising ✓  price>ZLSMA ✓  MACD(5,10,16)>0 ✓  vol>{REL_VOL_MIN}x ✓\n"
+            f"Edge: grade-scaled sizing + learn→tighten ({phase_for(_edge_n_closed, LEARN_THRESHOLD)}, {_edge_n_closed}/{LEARN_THRESHOLD})"
+        )
+    log.info(f"[startup] bot started — {MAX_POSITIONS} pos max · edge {phase_for(_edge_n_closed, LEARN_THRESHOLD)} "
+             f"({_edge_n_closed}/{LEARN_THRESHOLD}) · QUIET_ALERTS={QUIET_ALERTS}")
 
     schedule.every(SCAN_INTERVAL_MIN).minutes.do(scan)
     schedule.every(30).minutes.do(heartbeat)             # every 30 min — alive + top blockers
