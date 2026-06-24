@@ -52,6 +52,11 @@ alter table public.w118_trades add column if not exists grade    text;
 alter table public.w118_trades add column if not exists catalyst text;
 alter table public.w118_trades add column if not exists session  text;
 
+-- Pattern-learning columns (MFE/MAE — added 2026-06-24):
+alter table public.w118_trades add column if not exists mfe_pct   numeric(6,2);  -- max favorable excursion % during hold
+alter table public.w118_trades add column if not exists mae_pct   numeric(6,2);  -- max adverse excursion % during hold
+alter table public.w118_trades add column if not exists bars_held integer;        -- 5m bars held before exit
+
 -- Indexes
 create index if not exists w118_trades_date_idx   on public.w118_trades (date desc);
 create index if not exists w118_trades_ticker_idx on public.w118_trades (ticker);
