@@ -97,6 +97,17 @@ def _vol_bucket(t: dict) -> str | None:
     return "5x+"
 
 
+def _k_bucket(t: dict) -> str | None:
+    k = t.get("k_value")
+    if k is None:
+        return None
+    k = float(k)
+    if k <= 30: return "0-30 deep reset"
+    if k <= 55: return "30-55 mid"
+    if k <= 75: return "55-75 rising"
+    return "75-85 high"
+
+
 def compute_edge_profile(closed_trades: list[dict]) -> dict:
     """Bucket closed trades by every dimension that might carry edge."""
     return {
@@ -106,6 +117,7 @@ def compute_edge_profile(closed_trades: list[dict]) -> dict:
         "deep_curl": _bucket_stats(closed_trades,
                                    lambda t: "deep" if t.get("deep_curl") else "standard"),
         "vol":       _bucket_stats(closed_trades, _vol_bucket),
+        "k_entry":   _bucket_stats(closed_trades, _k_bucket),
     }
 
 

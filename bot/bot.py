@@ -288,7 +288,9 @@ def tg(msg: str):
 
 # ── Supabase P&L dashboard ────────────────────────────────────────────────────
 
-_sb_row_id: dict = {}   # ticker → UUID of the open trade row in Supabase
+_sb_row_id:    dict = {}   # ticker → UUID of the open trade row in Supabase
+_sb_entry_px:  dict = {}   # ticker → entry price (for MFE/MAE at close)
+_sb_entry_ts:  dict = {}   # ticker → entry bar timestamp (to filter bars during hold)
 
 def _sb(method: str, path: str, **kwargs) -> dict | list | None:
     if not _SB_ENABLED:
@@ -382,11 +384,15 @@ def sb_log_trade(ticker: str, price: float, qty: int, info: dict):
     if result and isinstance(result, list) and result:
         _sb_row_id[ticker] = result[0].get("id")
         log.info(f"[supabase] logged {ticker} → id {_sb_row_id.get(ticker)}")
+    _sb_entry_px[ticker] = price
+    _sb_entry_ts[ticker] = datetime.now(ET).isoformat()
 
 def sb_close_trade(ticker: str, exit_price: float, exit_reason: str, entry_price: float,
                    qty: int = 1, note: str | None = None):
     row_id = _sb_row_id.pop(ticker, None)
-    realized = round((exit_price - entry_price) * qty, 2) if entry_price else None
+    ep     = _sb_entry_px.pop(ticker, entry_price)
+    _sb_entry_ts.pop(ticker, None)
+    realized = round((exit_price - ep) * qty, 2) if ep else None
     patch = {
         "status":       "closed",
         "exit_price":   exit_price,
@@ -395,12 +401,28 @@ def sb_close_trade(ticker: str, exit_price: float, exit_reason: str, entry_price
     }
     if note:
         patch["notes"] = note
+
+    # MFE / MAE — fetch recent bars and compute peak gain / max drawdown during hold.
+    # Uses the last 100 5m bars as a proxy for the hold period (bars_held approximation).
+    # Nullable: if bars unavailable the trade still closes cleanly.
+    try:
+        bars = get_bars(ticker, limit=100)
+        if bars and ep:
+            highs = [b["h"] for b in bars]
+            lows  = [b["l"] for b in bars]
+            patch["mfe_pct"]   = round((max(highs) - ep) / ep * 100, 2)
+            patch["mae_pct"]   = round((min(lows)  - ep) / ep * 100, 2)
+            patch["bars_held"] = len(bars)
+    except Exception:
+        pass
+
     if row_id:
         _sb("PATCH", f"/rest/v1/w118_trades?id=eq.{row_id}", json=patch)
     else:
         # fallback: update by ticker + today's date
         _sb("PATCH", f"/rest/v1/w118_trades?ticker=eq.{ticker}&date=eq.{date.today().isoformat()}&status=eq.open", json=patch)
-    log.info(f"[supabase] closed {ticker} exit={exit_price} pnl={realized}")
+    log.info(f"[supabase] closed {ticker} exit={exit_price} pnl={realized} "
+             f"mfe={patch.get('mfe_pct','?')}% mae={patch.get('mae_pct','?')}%")
 
 # ── Stock discovery ───────────────────────────────────────────────────────────
 
@@ -845,6 +867,28 @@ def _self_audit_insights() -> str:
         if worst[0] != best[0]:
             lines.append(f"Worst session: {worst[0]} ${worst[1]['pnl']:+.2f} ({w_n} trades)")
 
+    # Catalyst breakdown — which tier drives the biggest wins?
+    cats: dict = {}
+    for t in closed:
+        c = t.get("catalyst") or "none"
+        cats.setdefault(c, {"w": 0, "l": 0, "pnl": 0.0})
+        pnl = float(t.get("realized_pnl", 0))
+        cats[c]["pnl"] += pnl
+        if pnl > 0:
+            cats[c]["w"] += 1
+        else:
+            cats[c]["l"] += 1
+    cat_parts = []
+    for c in ["tier_1", "tier_2", "tier_3", "none"]:
+        d = cats.get(c)
+        if not d:
+            continue
+        n = d["w"] + d["l"]
+        wr_c = d["w"] / n * 100 if n else 0
+        cat_parts.append(f"{c}: {wr_c:.0f}%({n}) ${d['pnl']:+.2f}")
+    if cat_parts:
+        lines.append("Catalyst: " + " · ".join(cat_parts))
+
     # Exit reason analysis — which exit reasons lose money?
     exits: dict = {}
     for t in closed:
@@ -860,13 +904,43 @@ def _self_audit_insights() -> str:
         for r, d in leaky[:3]:
             lines.append(f"  {r}: ${d['pnl']:+.2f} over {d['count']} trades")
 
-    # K-at-entry sweet spot
-    k_wins = [float(t.get("k_value", 0)) for t in wins if t.get("k_value") is not None]
-    k_losses = [float(t.get("k_value", 0)) for t in losses if t.get("k_value") is not None]
-    if k_wins and k_losses:
-        avg_k_w = sum(k_wins) / len(k_wins)
-        avg_k_l = sum(k_losses) / len(k_losses)
-        lines.append(f"K at entry: wins avg {avg_k_w:.0f} · losses avg {avg_k_l:.0f}")
+    # K-at-entry range performance (from edge profile k_entry dimension)
+    k_profile = (_edge_profile.get("k_entry") or {})
+    if k_profile:
+        k_parts = []
+        for bucket in ["0-30 deep reset", "30-55 mid", "55-75 rising", "75-85 high"]:
+            d = k_profile.get(bucket)
+            if d and d["count"] >= 2:
+                k_parts.append(f"{bucket}: {d['win_rate']:.0f}%({d['count']}) ${d['avg_pnl']:+.2f}/trade")
+        if k_parts:
+            lines.append("K-entry zones:")
+            for p in k_parts:
+                lines.append(f"  {p}")
+    elif wins or losses:
+        k_wins = [float(t.get("k_value", 0)) for t in wins if t.get("k_value") is not None]
+        k_losses = [float(t.get("k_value", 0)) for t in losses if t.get("k_value") is not None]
+        if k_wins and k_losses:
+            lines.append(f"K at entry: wins avg {sum(k_wins)/len(k_wins):.0f} · losses avg {sum(k_losses)/len(k_losses):.0f}")
+
+    # MFE vs exit — are we leaving money on the table?
+    mfe_vals = [float(t.get("mfe_pct", 0)) for t in closed if t.get("mfe_pct") is not None]
+    exit_pcts = []
+    for t in closed:
+        ep = t.get("entry_price")
+        xp = t.get("exit_price")
+        if ep and xp and float(ep) > 0:
+            exit_pcts.append((float(xp) - float(ep)) / float(ep) * 100)
+    if mfe_vals and exit_pcts and len(mfe_vals) >= 3:
+        avg_mfe  = sum(mfe_vals) / len(mfe_vals)
+        avg_exit = sum(exit_pcts) / len(exit_pcts)
+        left_on_table = avg_mfe - avg_exit
+        lines.append(f"MFE avg {avg_mfe:+.1f}% vs exit avg {avg_exit:+.1f}% → leaving ~{left_on_table:.1f}% per trade")
+
+    # MAE vs stop — how far against us before exit?
+    mae_vals = [float(t.get("mae_pct", 0)) for t in closed if t.get("mae_pct") is not None]
+    if mae_vals and len(mae_vals) >= 3:
+        avg_mae = sum(mae_vals) / len(mae_vals)
+        lines.append(f"MAE avg {avg_mae:.1f}% adverse (stop is -{STOP_PCT*100:.0f}%)")
 
     # Grade breakdown
     grades: dict = {}
@@ -898,6 +972,15 @@ def _self_audit_insights() -> str:
     if losses:
         worst_t = min(losses, key=lambda t: float(t.get("realized_pnl", 0)))
         lines.append(f"Worst trade: {worst_t.get('ticker')} ${float(worst_t['realized_pnl']):+.2f} ({worst_t.get('session','?')} {worst_t.get('grade','?')})")
+
+    # WATCH near-miss conversion — how many WATCH tickers later became actual buys?
+    if _watch_sent:
+        watched_tickers = set(_watch_sent.keys())
+        bought_tickers = {t.get("ticker") for t in closed}
+        converted = watched_tickers & bought_tickers
+        if watched_tickers:
+            lines.append(f"WATCH→BUY: {len(converted)}/{len(watched_tickers)} near-misses eventually bought"
+                         + (f" ({', '.join(sorted(converted)[:3])})" if converted else ""))
 
     # Learning phase progress
     phase = phase_for(total, LEARN_THRESHOLD)
@@ -1048,7 +1131,7 @@ def _blocker_bucket(reason: str) -> str:
 
 _first_scan_of_day: str = ""
 _last_summary: dict = {}     # populated each scan, read by the hourly heartbeat
-_watch_sent: dict  = {}      # ticker → timestamp; throttle WATCH alerts to 1 per 10 min
+_watch_sent: dict  = {}      # ticker → {"ts": float, "price": float, "score": int}; throttle + outcome tracking
 _setup_sent: dict  = {}      # ticker → timestamp; throttle MANUAL SETUP alerts to 1 per 10 min
 _bought_today: dict = {}     # ticker → epoch-timestamp; 24h rolling cooldown (no re-buy within 24h)
 _last_board_key: str = ""    # fingerprint of last scanner-board Telegram message (dedup)
@@ -1115,10 +1198,11 @@ def _send_watch_alert(ticker: str, info: dict) -> None:
     if k_val >= OVERBOUGHT_K:
         log.info(f"[skip-watch] {ticker}: K={k_val} overbought — not a reset setup")
         return
-    last = _watch_sent.get(ticker, 0)
+    entry = _watch_sent.get(ticker)
+    last = entry["ts"] if isinstance(entry, dict) else (entry or 0)
     if time.time() - last < 600:   # don't re-alert same ticker within 10 min
         return
-    _watch_sent[ticker] = time.time()
+    _watch_sent[ticker] = {"ts": time.time(), "price": info.get("price", 0), "score": info.get("score", 0)}
     _save_watch_sent()
     score    = info["score"]
     max_     = info["max"]
@@ -1524,10 +1608,16 @@ def main():
         pass
 
     # Reload WATCH sent times so restarts don't re-fire alerts within the 10-min throttle.
+    # Old format was {ticker: float}; new format is {ticker: {"ts": float, "price": float, "score": int}}.
+    # Migrate on load so old-format entries still work as throttle keys.
     global _watch_sent
     try:
         if WATCH_SENT_FILE.exists():
-            _watch_sent = json.loads(WATCH_SENT_FILE.read_text())
+            raw = json.loads(WATCH_SENT_FILE.read_text())
+            _watch_sent = {
+                tk: (v if isinstance(v, dict) else {"ts": v, "price": 0, "score": 0})
+                for tk, v in raw.items()
+            }
             log.info(f"[watch] restored sent cache ({len(_watch_sent)} tickers)")
     except Exception:
         pass
