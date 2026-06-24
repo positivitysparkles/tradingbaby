@@ -86,7 +86,7 @@ def fetch_supabase_entries() -> list[dict]:
     r = requests.get(
         f"{SUPABASE_URL}/rest/v1/w118_trades",
         headers=SUPABASE_HEADERS,
-        params={"select": "*", "order": "ts.asc", "limit": 5000},
+        params={"select": "*", "order": "date.asc,time_et.asc", "limit": 5000},
         timeout=15,
     )
     r.raise_for_status()
@@ -101,10 +101,12 @@ def pair_trades(fills: list[dict]) -> list[dict]:
     Uses FIFO: oldest buy shares matched against oldest sell shares.
     Returns a list of closed-trade dicts with realized P&L.
     """
-    # Group fills by ticker
+    # Group fills by ticker — skip non-equity fills that have no symbol
     by_ticker: dict[str, list] = defaultdict(list)
     for f in fills:
-        by_ticker[f["symbol"]].append(f)
+        sym = f.get("symbol") or f.get("ticker", "")
+        if sym:
+            by_ticker[sym].append(f)
 
     closed: list[dict] = []
 
@@ -161,22 +163,32 @@ def enrich_with_supabase(trades: list[dict], entries: list[dict]) -> list[dict]:
         except Exception:
             return 0.0
 
+    def sb_ts(row: dict) -> str:
+        """Build ISO timestamp from Supabase date + time_et columns."""
+        d = row.get("date") or ""
+        t = row.get("time_et") or ""
+        if d and t:
+            return f"{d}T{t}:00-04:00"  # ET = UTC-4 in summer
+        return ""
+
     sb_by_ticker: dict[str, list] = defaultdict(list)
     for e in entries:
-        sb_by_ticker[e["ticker"]].append(e)
+        sb_by_ticker[e.get("ticker", "")].append(e)
 
     for t in trades:
         candidates = sb_by_ticker.get(t["ticker"], [])
         best = None
         for c in candidates:
-            price_match = (abs(float(c.get("price") or 0) - t["entry_price"]) / max(t["entry_price"], 0.01)) < 0.02
-            time_diff = abs(ts_epoch(c.get("ts", "")) - ts_epoch(t["entry_ts"]))
+            # Supabase stores entry_price not price
+            sb_price = float(c.get("entry_price") or c.get("price") or 0)
+            price_match = (abs(sb_price - t["entry_price"]) / max(t["entry_price"], 0.01)) < 0.02
+            time_diff = abs(ts_epoch(sb_ts(c)) - ts_epoch(t["entry_ts"]))
             if price_match and time_diff < 1800:  # within 30 min
-                if best is None or time_diff < abs(ts_epoch(best.get("ts", "")) - ts_epoch(t["entry_ts"])):
+                if best is None or time_diff < abs(ts_epoch(sb_ts(best)) - ts_epoch(t["entry_ts"])):
                     best = c
         if best:
             t["grade"]      = best.get("grade")
-            t["k"]          = best.get("k")
+            t["k"]          = best.get("k_value")   # Supabase column is k_value
             t["vol_ratio"]  = best.get("vol_ratio")
             t["session"]    = best.get("session")
             t["deep_curl"]  = best.get("deep_curl", False)

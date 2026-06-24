@@ -30,15 +30,15 @@ def fetch_all_trades(days: int | None = None, ticker: str | None = None) -> list
     url = f"{SUPABASE_URL}/rest/v1/w118_trades"
     params = {
         "select": "*",
-        "order": "ts.desc",
+        "order": "date.desc,time_et.desc",
         "limit": 5000,
     }
     if ticker:
         params["ticker"] = f"eq.{ticker.upper()}"
     if days:
-        from datetime import timedelta
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-        params["ts"] = f"gte.{cutoff}"
+        from datetime import timedelta, date as date_
+        cutoff = (date_.today() - timedelta(days=days)).isoformat()
+        params["date"] = f"gte.{cutoff}"
 
     r = requests.get(url, headers=HEADERS, params=params, timeout=10)
     r.raise_for_status()
@@ -109,7 +109,7 @@ def summarize(trades: list[dict]) -> None:
         print(f"  Entries below 1.5x: {under_1_5} ({under_1_5/len(vol_ratios)*100:.0f}%) — passed as soft condition")
 
     # ── K / D at entry ────────────────────────────────────────────
-    k_vals = [t.get("k") for t in trades if t.get("k") is not None]
+    k_vals = [t.get("k_value") for t in trades if t.get("k_value") is not None]
     if k_vals:
         print(f"\n── StochRSI K at entry ──")
         print(f"  Avg K: {sum(k_vals)/len(k_vals):.1f}   Min: {min(k_vals):.1f}   Max: {max(k_vals):.1f}")
@@ -136,11 +136,11 @@ def summarize(trades: list[dict]) -> None:
     # ── Recent entries (last 20) ──────────────────────────────────
     print(f"\n── Most recent 20 entries ──")
     for t in trades[:20]:
-        ts = (t.get("ts") or "")[:16].replace("T", " ")
+        ts = f"{t.get('date','?')} {t.get('time_et','?')}"
         grade = t.get("grade") or "?"
         star = "⭐" if t.get("deep_curl") else "  "
-        price = t.get("price") or 0
-        k = t.get("k") or 0
+        price = t.get("entry_price") or t.get("price") or 0
+        k = t.get("k_value") or 0
         vol = t.get("vol_ratio") or 0
         print(f"  {ts}  {t['ticker']:8s}  [{grade}]{star}  ${price:.3f}  K={k:.0f}  Vol={vol:.1f}x")
 
