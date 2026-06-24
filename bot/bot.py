@@ -59,10 +59,12 @@ import config as _cfg
 LEARN_THRESHOLD    = getattr(_cfg, "LEARN_THRESHOLD", 30)       # closed trades before tightening
 EDGE_WINRATE_FLOOR = getattr(_cfg, "EDGE_WINRATE_FLOOR", 0.45)  # min win-rate to keep a grade live
 EDGE_MIN_SAMPLE    = getattr(_cfg, "EDGE_MIN_SAMPLE", 8)        # min trades before judging a grade
+LEARNING_FLAT_SIZE = getattr(_cfg, "LEARNING_FLAT_SIZE", 100)    # flat $/trade during learning phase
 DOLLARS_BY_GRADE   = getattr(_cfg, "DOLLARS_BY_GRADE",
-                             {"A+": 150, "A": 100, "B": 60, "C": 50})
-DOLLARS_MIN        = getattr(_cfg, "DOLLARS_MIN", 50)           # hard floor per trade
-DOLLARS_MAX        = getattr(_cfg, "DOLLARS_MAX", 200)          # hard ceiling per trade (never exceeded)
+                             {"A+": LEARNING_FLAT_SIZE, "A": LEARNING_FLAT_SIZE,
+                              "B": LEARNING_FLAT_SIZE, "C": LEARNING_FLAT_SIZE})
+DOLLARS_MIN        = getattr(_cfg, "DOLLARS_MIN", LEARNING_FLAT_SIZE)
+DOLLARS_MAX        = getattr(_cfg, "DOLLARS_MAX", LEARNING_FLAT_SIZE)
 CATALYST_PROXY     = getattr(_cfg, "CATALYST_PROXY", True)      # price-action catalyst detection
 
 # ── Scanner / VWAP / Chandelier (defaults baked in — no config.py edit needed) ──
@@ -936,9 +938,10 @@ _first_scan_of_day: str = ""
 _last_summary: dict = {}     # populated each scan, read by the hourly heartbeat
 _watch_sent: dict  = {}      # ticker → timestamp; throttle WATCH alerts to 1 per 10 min
 _setup_sent: dict  = {}      # ticker → timestamp; throttle MANUAL SETUP alerts to 1 per 10 min
-_bought_today: set = set()   # tickers already bought today — never double-buy the same name
+_bought_today: dict = {}     # ticker → epoch-timestamp; 24h rolling cooldown (no re-buy within 24h)
 _last_board_key: str = ""    # fingerprint of last scanner-board Telegram message (dedup)
-_bought_day: str   = ""      # date the set above belongs to (reset on rollover)
+_bought_day: str   = ""      # date for resetting daily counters (buys_today, buy_attempts)
+TICKER_COOLDOWN_H   = getattr(_cfg, "TICKER_COOLDOWN_H", 24)  # hours before same ticker can re-buy
 _exiting_now: set  = set()   # tickers with a submitted exit order — prevents duplicate Telegram alerts
 _buys_today: int   = 0       # count of buy orders actually submitted today (hard cap = MAX_DAILY_BUYS)
 _buy_attempts: Counter = Counter()  # ticker → failed-submission count; give up after MAX_BUY_ATTEMPTS
@@ -1147,12 +1150,13 @@ def scan():
     today  = date.today().isoformat()
     log.info(f"[scan] ── {now} ─────────────────────────────────────")
 
-    # Reset the once-per-day guards when the date rolls over.
+    # Reset daily counters + prune expired cooldowns (24h rolling, not midnight wipe).
     if _bought_day != today:
         _bought_day    = today
-        _bought_today  = set()
         _buys_today    = 0
         _buy_attempts  = Counter()
+    cutoff = time.time() - TICKER_COOLDOWN_H * 3600
+    _bought_today = {t: ts for t, ts in _bought_today.items() if ts > cutoff}
 
     # Send one "I'm alive" Telegram at the first scan of each day
     if _first_scan_of_day != today:
@@ -1270,7 +1274,8 @@ def scan():
             # Can we actually auto-buy? Re-check live caps each pass so a buy made
             # earlier in THIS loop correctly flips later passes to alert-only.
             if ticker in _bought_today:
-                why = "already bought today"
+                hrs_ago = (time.time() - _bought_today[ticker]) / 3600
+                why = f"bought {hrs_ago:.0f}h ago (24h cooldown)"
             elif ticker in open_buy_tickers:
                 why = "order already resting on Alpaca"
             elif _buys_today >= MAX_DAILY_BUYS:
@@ -1295,7 +1300,7 @@ def scan():
             tag = "FULL 6/6" if info.get("full_pass") else f"CORE {info['score']}/{info['max']}"
             if why is None:
                 log.info(f"[SIGNAL] {ticker} [{grade}] — {tag} (auto-buy): price=${info['price']} K={info['k']}↑ MACD▲ vol={info['vol_ratio']}x{curl}")
-                _bought_today.add(ticker)   # mark BEFORE the order so a slow fill can't trigger a repeat
+                _bought_today[ticker] = time.time()  # mark BEFORE the order so a slow fill can't trigger a repeat
                 bought = execute_buy(ticker, info["price"], info)
                 if bought is False:
                     # Genuine submission failure (halted / API rejection). Track attempts and
@@ -1303,7 +1308,7 @@ def scan():
                     # so no more tries fire today (prevents the 300-retry storm).
                     _buy_attempts[ticker] += 1
                     if _buy_attempts[ticker] < MAX_BUY_ATTEMPTS:
-                        _bought_today.discard(ticker)
+                        _bought_today.pop(ticker, None)
                     else:
                         log.warning(f"[buy] {ticker}: {MAX_BUY_ATTEMPTS} submission failures — blocked for today")
                 elif bought is True:
