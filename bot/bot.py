@@ -808,6 +808,112 @@ def _realized_pnl_today() -> tuple[dict, float, int, int]:
     return result, net, wins, losses
 
 
+def _self_audit_insights() -> str:
+    """Mine ALL closed trades from Supabase for actionable patterns.
+    Returns a formatted insights block for the daily Telegram audit.
+    Runs after refresh_edge() so _edge_profile is fresh."""
+    rows = _sb("GET", "/rest/v1/w118_trades?status=in.(closed,stopped)&select=*&limit=2000") or []
+    closed = [r for r in rows if r.get("realized_pnl") is not None]
+    if len(closed) < 3:
+        return ""
+
+    lines = []
+    wins = [t for t in closed if float(t.get("realized_pnl", 0)) > 0]
+    losses = [t for t in closed if float(t.get("realized_pnl", 0)) <= 0]
+    total = len(closed)
+    wr = len(wins) / total * 100 if total else 0
+    net = sum(float(t.get("realized_pnl", 0)) for t in closed)
+    lines.append(f"All-time: {total} trades · {wr:.0f}% win · ${net:+.2f} net")
+
+    # Best/worst session
+    sessions: dict = {}
+    for t in closed:
+        s = t.get("session") or "unknown"
+        sessions.setdefault(s, {"w": 0, "l": 0, "pnl": 0.0})
+        pnl = float(t.get("realized_pnl", 0))
+        sessions[s]["pnl"] += pnl
+        if pnl > 0:
+            sessions[s]["w"] += 1
+        else:
+            sessions[s]["l"] += 1
+    if sessions:
+        best = max(sessions.items(), key=lambda x: x[1]["pnl"])
+        worst = min(sessions.items(), key=lambda x: x[1]["pnl"])
+        b_n = best[1]["w"] + best[1]["l"]
+        w_n = worst[1]["w"] + worst[1]["l"]
+        lines.append(f"Best session: {best[0]} ${best[1]['pnl']:+.2f} ({b_n} trades)")
+        if worst[0] != best[0]:
+            lines.append(f"Worst session: {worst[0]} ${worst[1]['pnl']:+.2f} ({w_n} trades)")
+
+    # Exit reason analysis — which exit reasons lose money?
+    exits: dict = {}
+    for t in closed:
+        er = t.get("exit_reason") or "unknown"
+        er = er.split("(")[0].strip()
+        exits.setdefault(er, {"count": 0, "pnl": 0.0})
+        exits[er]["count"] += 1
+        exits[er]["pnl"] += float(t.get("realized_pnl", 0))
+    leaky = [(r, d) for r, d in exits.items() if d["pnl"] < 0 and d["count"] >= 2]
+    if leaky:
+        leaky.sort(key=lambda x: x[1]["pnl"])
+        lines.append("Leaky exits:")
+        for r, d in leaky[:3]:
+            lines.append(f"  {r}: ${d['pnl']:+.2f} over {d['count']} trades")
+
+    # K-at-entry sweet spot
+    k_wins = [float(t.get("k_value", 0)) for t in wins if t.get("k_value") is not None]
+    k_losses = [float(t.get("k_value", 0)) for t in losses if t.get("k_value") is not None]
+    if k_wins and k_losses:
+        avg_k_w = sum(k_wins) / len(k_wins)
+        avg_k_l = sum(k_losses) / len(k_losses)
+        lines.append(f"K at entry: wins avg {avg_k_w:.0f} · losses avg {avg_k_l:.0f}")
+
+    # Grade breakdown
+    grades: dict = {}
+    for t in closed:
+        g = t.get("grade") or "?"
+        grades.setdefault(g, {"w": 0, "l": 0, "pnl": 0.0})
+        pnl = float(t.get("realized_pnl", 0))
+        grades[g]["pnl"] += pnl
+        if pnl > 0:
+            grades[g]["w"] += 1
+        else:
+            grades[g]["l"] += 1
+    if grades:
+        parts = []
+        for g in ["A+", "A", "B", "C"]:
+            d = grades.get(g)
+            if not d:
+                continue
+            n = d["w"] + d["l"]
+            wr_g = d["w"] / n * 100 if n else 0
+            parts.append(f"{g}: {wr_g:.0f}%({n}) ${d['pnl']:+.2f}")
+        if parts:
+            lines.append("Grades: " + " · ".join(parts))
+
+    # Biggest single win / loss (learn from extremes)
+    if wins:
+        best_t = max(wins, key=lambda t: float(t.get("realized_pnl", 0)))
+        lines.append(f"Best trade: {best_t.get('ticker')} ${float(best_t['realized_pnl']):+.2f} ({best_t.get('session','?')} {best_t.get('grade','?')})")
+    if losses:
+        worst_t = min(losses, key=lambda t: float(t.get("realized_pnl", 0)))
+        lines.append(f"Worst trade: {worst_t.get('ticker')} ${float(worst_t['realized_pnl']):+.2f} ({worst_t.get('session','?')} {worst_t.get('grade','?')})")
+
+    # Learning phase progress
+    phase = phase_for(total, LEARN_THRESHOLD)
+    if phase == "learning":
+        lines.append(f"Learning: {total}/{LEARN_THRESHOLD} closed — {LEARN_THRESHOLD - total} more before auto-tighten")
+    else:
+        blocked = [g for g, d in grades.items() if d["w"] + d["l"] >= EDGE_MIN_SAMPLE
+                   and d["w"] / (d["w"] + d["l"]) < EDGE_WINRATE_FLOOR]
+        if blocked:
+            lines.append(f"Auto-blocked grades (weak win rate): {', '.join(blocked)}")
+
+    if not lines:
+        return ""
+    return "\n<b>🔍 Self-Audit Insights:</b>\n" + "\n".join(f"  {l}" for l in lines)
+
+
 def daily_audit():
     today = date.today().isoformat()
     log_data = _load_log()
@@ -852,6 +958,12 @@ def daily_audit():
         msg += f"\n<b>🧠 Edge:</b> {refresh_edge()}"
     except Exception as e:
         log.warning(f"[edge] refresh in audit failed: {e}")
+
+    # Self-audit insights: mine all-time closed trades for patterns + lessons
+    try:
+        msg += _self_audit_insights()
+    except Exception as e:
+        log.warning(f"[self-audit] insights failed: {e}")
 
     tg(msg)
     log.info("[audit] Daily audit sent to Telegram")
