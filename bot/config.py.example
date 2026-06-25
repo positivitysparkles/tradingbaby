@@ -57,7 +57,7 @@ GATE_CLOSE_UTC = 22           # 4:00pm MT / 6:00pm ET  (run all day, end at MT c
 # Session timing — avoid the midday chop (W118: 56% of wins are premarket;
 # 10:30am-3pm ET is the dead zone). NEW ENTRIES are paused midday; exits on
 # open positions ALWAYS run regardless of time. Power hour (3-4pm) stays open.
-AVOID_MIDDAY    = False
+AVOID_MIDDAY    = True      # June-25 audit: midday = 15 trades, -$23.24; back ON
 MIDDAY_START_ET = 10.5        # 10:30am ET — entries pause
 MIDDAY_END_ET   = 15.0        # 3:00pm ET  — entries resume (power hour)
 
