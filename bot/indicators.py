@@ -9,6 +9,19 @@ def _ema(values: list, period: int) -> list:
     return out
 
 
+def rsi(closes: list, period: int = 14) -> float | None:
+    """RSI(period). Returns 0–100 or None when insufficient data."""
+    if len(closes) < period + 1:
+        return None
+    ch = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
+    ag = sum(max(c, 0) for c in ch[:period]) / period
+    al = sum(max(-c, 0) for c in ch[:period]) / period
+    for c in ch[period:]:
+        ag = (ag * (period - 1) + max(c, 0)) / period
+        al = (al * (period - 1) + max(-c, 0)) / period
+    return 100 - 100 / (1 + ag / al) if al else 100
+
+
 def zlsma(closes: list, period: int = 50) -> float | None:
     """Zero-Lag SMA: 2×EMA(n) − EMA(EMA(n)). Price must be ABOVE this to enter."""
     if len(closes) < period * 2:
@@ -126,6 +139,55 @@ def supertrend(bars: list, period: int = 10, mult: float = 2.0) -> int | None:
     return d[-1]
 
 
+def pivot_point_supertrend(bars: list, pivot_period: int = 2,
+                           atr_factor: float = 3.0, atr_period: int = 10) -> int | None:
+    """
+    Pivot Point SuperTrend. Returns 1=bullish, -1=bearish.
+    Settings from IMG_4105: Pivot Period=2, ATR Factor=3, ATR Period=10.
+    Anchors ATR bands on confirmed swing pivot highs/lows (period bars each side) rather than
+    rolling hl2 — bands only step when a new pivot is confirmed, reducing whipsaw vs. regular ST.
+    """
+    min_bars = pivot_period * 2 + atr_period + 2
+    if len(bars) < min_bars:
+        return None
+    highs  = [b["h"] for b in bars]
+    lows   = [b["l"] for b in bars]
+    closes = [b["c"] for b in bars]
+
+    # Wilder's ATR (same as supertrend())
+    trs = [max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1]))
+           for i in range(1, len(bars))]
+    atr_v = [0.0] * len(trs)
+    atr_v[atr_period - 1] = sum(trs[:atr_period]) / atr_period
+    for i in range(atr_period, len(trs)):
+        atr_v[i] = (atr_v[i - 1] * (atr_period - 1) + trs[i]) / atr_period
+
+    # Track last confirmed pivot high/low.
+    # A pivot at bar index conf_i is confirmed after pivot_period more bars have elapsed.
+    ph = highs[0]
+    pl = lows[0]
+    trend = 1
+
+    for i in range(pivot_period * 2, len(bars)):
+        conf_i = i - pivot_period
+        if conf_i >= pivot_period:
+            lo_w, hi_w = conf_i - pivot_period, conf_i + pivot_period + 1
+            if highs[conf_i] == max(highs[lo_w:hi_w]):
+                ph = highs[conf_i]
+            if lows[conf_i] == min(lows[lo_w:hi_w]):
+                pl = lows[conf_i]
+        atr = atr_v[i - 1] if i - 1 < len(atr_v) else atr_v[-1]
+        upper = ph + atr_factor * atr
+        lower = pl - atr_factor * atr
+        if closes[i] > upper:
+            trend = 1
+        elif closes[i] < lower:
+            trend = -1
+        # else: persist previous trend
+
+    return trend
+
+
 def vwap_session(bars: list) -> float | None:
     """
     Session-anchored VWAP (matches the user's TradingView VWAP: Anchor=Session,
@@ -182,7 +244,8 @@ def chandelier_exit(bars: list, period: int = 10, mult: float = 2.0) -> dict | N
 
 def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min: float,
                     deep_curl_reset: float = 20.0, vwap_tol: float = 0.005,
-                    vwap_gate: bool = True, overbought_k: float = 85.0) -> tuple[bool, dict]:
+                    vwap_gate: bool = True, overbought_k: float = 85.0,
+                    pivot_period: int = 2, atr_factor: float = 3.0) -> tuple[bool, dict]:
     """
     Run all W118 entry conditions. Returns (CORE_pass, details_dict).
 
@@ -215,8 +278,8 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
     passed   = 0
     blockers = []
 
-    # 1. Supertrend bullish — PRIMARY trigger
-    st = supertrend(bars)
+    # 1. Pivot Point SuperTrend bullish — PRIMARY trigger (Period=2, Factor=3, ATR=10)
+    st = pivot_point_supertrend(bars, pivot_period=pivot_period, atr_factor=atr_factor)
     if st == 1:
         passed += 1
     else:
@@ -291,12 +354,21 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
         above_vwap = False
         blockers.append(f"below VWAP ${vw:.3f}")
 
-    # Max possible: start at 5, +1 if VWAP was evaluated, −1 if ZLSMA was skipped
+    # 7. RSI(14) > 50 — soft momentum confirmation (score only, never gates entry)
+    rsi_val = rsi(closes)
+
+    # Max possible: start at 5, +1 if VWAP was evaluated, −1 if ZLSMA was skipped, +1 if RSI data available
     max_possible = 5
     if vw is not None:
         max_possible += 1
     if zl is None:
         max_possible -= 1
+    if rsi_val is not None:
+        max_possible += 1
+        if rsi_val > 50:
+            passed += 1
+        else:
+            blockers.append(f"RSI {rsi_val:.0f} below 50")
 
     # ── CORE auto-buy gate (priority tiers) ───────────────────────────────────
     # MUST: Supertrend green + above VWAP + above ZLSMA + Stoch hook (K>D rising,
@@ -327,8 +399,9 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
         "zlsma":     round(zl, 4)     if zl   is not None else None,
         "vwap":      round(vw, 4)     if vw   is not None else None,
         "above_vwap": above_vwap,
-        "macd_hist": round(hist, 5)   if hist   is not None else None,
-        "macd_line": round(m_line, 5) if m_line is not None else None,
+        "macd_hist": round(hist, 5)     if hist    is not None else None,
+        "macd_line": round(m_line, 5)   if m_line  is not None else None,
+        "rsi":       round(rsi_val, 1)  if rsi_val is not None else None,
         "vol_ratio": round(vol_ratio, 1),
         "full_pass": (passed >= max_possible),
         "blockers":  blockers,
@@ -434,7 +507,8 @@ def catalyst_score(bars_5m: list, daily_bars: list | None = None) -> tuple[str |
 
 
 def check_exit_signal(bars: list, chandelier: bool = True,
-                      ce_period: int = 10, ce_mult: float = 2.0) -> str | None:
+                      ce_period: int = 10, ce_mult: float = 2.0,
+                      pivot_period: int = 2, atr_factor: float = 3.0) -> str | None:
     """
     Check W118 signal-based exits. Returns reason string or None.
     Called on every scan cycle for each open position.
@@ -452,8 +526,8 @@ def check_exit_signal(bars: list, chandelier: bool = True,
     closes = [b["c"] for b in bars]
     price  = closes[-1]
 
-    # Structure exit 1 — trend reversal
-    st = supertrend(bars)
+    # Structure exit 1 — trend reversal (Pivot Point SuperTrend)
+    st = pivot_point_supertrend(bars, pivot_period=pivot_period, atr_factor=atr_factor)
     if st == -1:
         return "supertrend_bearish"
 
@@ -467,6 +541,11 @@ def check_exit_signal(bars: list, chandelier: bool = True,
         ce = chandelier_exit(bars, ce_period, ce_mult)
         if ce and ce["state"] == -1:
             return f"chandelier_stop (close {price:.4f} < {ce['long_stop']:.4f})"
+
+    # Structure exit 4 — MACD bearish crossover (blue line crosses below orange signal)
+    m_line, hist = macd(closes)
+    if hist is not None and hist < 0:
+        return "macd_bearish_cross"
 
     # StochRSI K<20 deliberately does NOT trigger an exit while structure holds.
     # When K resets and then curls back up with structure intact, the scanner

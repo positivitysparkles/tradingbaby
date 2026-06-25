@@ -37,7 +37,7 @@ from config import (
     STOP_PCT, T1_PCT, T2_PCT, T3_PCT,
     MIN_PRICE, MAX_PRICE, MAX_FLOAT, MIN_CHANGE_PCT, MIN_ABS_VOLUME, REL_VOL_MIN,
     SCAN_INTERVAL_MIN, GATE_OPEN_UTC, GATE_CLOSE_UTC,
-    AVOID_MIDDAY, MIDDAY_START_ET, MIDDAY_END_ET, DEEP_CURL_RESET,
+    MIDDAY_START_ET, MIDDAY_END_ET, DEEP_CURL_RESET,
     EXT_HOURS_LIMIT_BUFFER, REQUIRE_1M_FRESH,
 )
 try:
@@ -84,6 +84,9 @@ MAX_BUY_ATTEMPTS    = getattr(_cfg, "MAX_BUY_ATTEMPTS", 2)  # retries before giv
 # daily+weekly audit). WATCH near-misses, scanner board, heartbeat, market-open snapshot and
 # startup banners stay in the journalctl log (Termius) but no longer push. Default on.
 QUIET_ALERTS        = getattr(_cfg, "QUIET_ALERTS", True)
+# AVOID_MIDDAY default changed True after data showed midday = -$23/15 trades (June-25 audit).
+# Override in config.py if needed: AVOID_MIDDAY = False
+AVOID_MIDDAY        = getattr(_cfg, "AVOID_MIDDAY", True)
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -389,9 +392,9 @@ def sb_log_trade(ticker: str, price: float, qty: int, info: dict):
 
 def sb_close_trade(ticker: str, exit_price: float, exit_reason: str, entry_price: float,
                    qty: int = 1, note: str | None = None):
-    row_id = _sb_row_id.pop(ticker, None)
-    ep     = _sb_entry_px.pop(ticker, entry_price)
-    _sb_entry_ts.pop(ticker, None)
+    row_id   = _sb_row_id.pop(ticker, None)
+    ep       = _sb_entry_px.pop(ticker, entry_price)
+    entry_ts = _sb_entry_ts.pop(ticker, "")   # save before pop — needed for MFE/MAE filter
     realized = round((exit_price - ep) * qty, 2) if ep else None
     patch = {
         "status":       "closed",
@@ -402,17 +405,23 @@ def sb_close_trade(ticker: str, exit_price: float, exit_reason: str, entry_price
     if note:
         patch["notes"] = note
 
-    # MFE / MAE — fetch recent bars and compute peak gain / max drawdown during hold.
-    # Uses the last 100 5m bars as a proxy for the hold period (bars_held approximation).
+    # MFE / MAE — fetch recent bars filtered to the hold period only.
+    # Without the timestamp filter the 100-bar window includes pre-entry bars,
+    # making MAE artificially large (avg -23% with an -8% stop is a data artifact).
     # Nullable: if bars unavailable the trade still closes cleanly.
     try:
         bars = get_bars(ticker, limit=100)
         if bars and ep:
-            highs = [b["h"] for b in bars]
-            lows  = [b["l"] for b in bars]
-            patch["mfe_pct"]   = round((max(highs) - ep) / ep * 100, 2)
-            patch["mae_pct"]   = round((min(lows)  - ep) / ep * 100, 2)
-            patch["bars_held"] = len(bars)
+            if entry_ts:
+                trade_bars = [b for b in bars if str(b.get("t", "")) >= entry_ts[:16]]
+            else:
+                trade_bars = bars[-20:]  # fallback: last 20 bars
+            if trade_bars:
+                highs = [b["h"] for b in trade_bars]
+                lows  = [b["l"] for b in trade_bars]
+                patch["mfe_pct"]   = round((max(highs) - ep) / ep * 100, 2)
+                patch["mae_pct"]   = round((ep - min(lows)) / ep * 100, 2)   # positive = adverse
+                patch["bars_held"] = len(trade_bars)
     except Exception:
         pass
 
