@@ -1,6 +1,6 @@
 # tradingbaby — Claude Code Briefing
 
-> Auto-loaded every session. Last manual update: 2026-06-19.
+> Auto-loaded every session. Last manual update: 2026-06-25.
 
 ## What this project is
 
@@ -23,81 +23,91 @@ data/trades-parsed.json            ← 101 historical trades, 98.0% win rate
 
 **Author:** Weatherman118 | **Universe:** NASDAQ small-caps $0.10–$15, float <10M (tightened 2026-06-05)
 
-### Entry System (updated 2026-06-17 — MACD dropped as hard gate)
+### Entry System (updated 2026-06-25)
 
 **Step 1 — Stock Discovery (Scanner):**
-- TradingView scanner (same engine as the Yassss screen) → filter: price $0.10–$15, change > 10%, rel vol > 1.5x
-- Absolute volume > 1M shares (filters out dead stocks like HTLM 69K)
-- Yahoo predefined gainers kept as crumb-free fallback. Price ceiling raised $5→$15 on 2026-06-17 (BIRD lesson)
+- TradingView scanner → filter: price $0.10–$15, change > 10%, rel vol > 1.5x
+- Absolute volume > 1M shares (filters out dead stocks)
+- Yahoo predefined gainers kept as fallback. Price ceiling raised $5→$15 on 2026-06-17 (BIRD lesson)
 
-**Step 2 — Chart Confirmation (ALL required):**
+**Step 2 — Chart Confirmation:**
 | # | Condition | Timeframe | Weight |
 |---|-----------|-----------|--------|
-| 1 | **Supertrend flips bullish (green)** | 5m | PRIMARY trigger |
+| 1 | **Pivot Point SuperTrend flips bullish** (Period=2, Factor=3, ATR=10) | 5m | PRIMARY trigger |
 | 2 | Price above ZLSMA-50 | 5m | critical — NEVER trade below |
-| 3 | StochRSI K > D | 5m | critical |
-| 4 | Volume > 1.5x 20-bar average | 5m | confirming (was 4x — too strict, matched to Colab grader 2026-06-17) |
-| 5 | Catalyst: Tier 1 (FDA/merger) > Tier 2 (halt-resume) > Tier 3 (China momentum) | — | confirming |
-| 6 | **Price holds above Session VWAP** | 5m | hard gate w/ 0.5% tolerance (added 2026-06-19) |
+| 3 | StochRSI K > D AND K rising | 5m | critical |
+| 4 | Volume > 1.5x 20-bar average | 5m | soft (score only — dries up during coil) |
+| 5 | Catalyst: Tier 1 (FDA/merger) > Tier 2 (halt-resume) > Tier 3 (momentum) | — | confirming |
+| 6 | **Price holds above Session VWAP** | 5m | hard gate w/ 0.5% tolerance |
+| 7 | **RSI(14) > 50** | 5m | soft confirmation (score only, never blocks) |
 
-**Note:** MACD settings changed to (5,10,16) on 2026-06-17 — faster than standard 12,26,9, fires in sync with Supertrend rather than lagging. Blue line above red = histogram > 0 = hard gate. StochRSI now requires K rising (K > K_prev) in addition to K > D. **MACD stays 5/10/16 — confirmed by owner 2026-06-19** (charts also show 12/26/9 but the bot uses the faster one).
+**Note:** MACD settings (5,10,16) — faster than standard 12,26,9, fires in sync with PPST. `hist > 0` = hard gate in CORE. StochRSI requires K rising (K > K_prev) in addition to K > D.
 
-### Condition priority tiers (which of the 6 are MUST vs soft)
-Not all 6 carry equal weight. From the chart study:
-- **Tier 1 — Structure (hard MUST, never trade without):** Supertrend green (5m) · Price > VWAP · Price > ZLSMA-50. These define "is this even an uptrend." Every June-19 runner had all three; the WKSP chop broke VWAP.
-- **Tier 2 — Ignition (the entry timing):** StochRSI K>D & rising (the *hook* = the trigger) · MACD hist > 0.
-- **Tier 3 — Quality/context (soft):** Volume > 1.5× · MACD line > 0. **Volume is the soft one** — by design it DRIES UP during the coil; the surge prints on the breakout candle, so a hard volume gate can make us enter late.
-- **Supertrend is a hard gate to BUY, not to WATCH.** Red-supertrend scanner names STAY on the watchlist — the flip back to green IS the entry. 5m = the gun; 1m = entry-price fine-tuning (`REQUIRE_1M_FRESH`, off).
-- **Auto-buy = CORE, not 6/6 (2026-06-19, owner decision):** 6/6 rarely lines up, so AUTO-BUY now fires on the **CORE** gate = Supertrend green + above VWAP + above ZLSMA + Stoch hook (K>D & rising) + **MACD histogram > 0** + K < `OVERBOUGHT_K` (85). **Volume and MACD-line>0 are SOFT** — they raise the score/grade but never block. Relaxed entries grade C ($50, small) and the Edge Engine prunes them via learn→tighten if they lose. `check_all_entry` returns `core_pass` as the auto-buy flag; `score`/`max`/`full_pass` still tally all 6 for grading + display. Overbought K (e.g. NUCL K=98.8) is now blocked from auto-buy too, not just WATCH. (This supersedes the earlier `🌀 COIL` manual alert — those dry-coil setups are now CORE auto-buys.)
+### Condition priority tiers (MUST vs soft)
+- **Tier 1 — Structure (hard MUST):** PPST green (5m) · Price > VWAP · Price > ZLSMA-50
+- **Tier 2 — Ignition (entry timing):** StochRSI K>D & rising · MACD hist > 0
+- **Tier 3 — Quality/context (soft):** Volume > 1.5× · RSI > 50 · MACD line > 0
+- **PPST is a hard gate to BUY, not to WATCH.** Bearish-PPST names STAY on watchlist — the flip to bullish IS the entry.
+- **Auto-buy = CORE:** PPST green + above VWAP + above ZLSMA + Stoch hook + MACD hist > 0 + K < 85 (not overbought). Volume/RSI/MACD-line are SOFT — raise grade but never block.
 
 ### ⭐ The A+ "Shelf Bounce" pattern (codified from June-19 chart study)
 The highest-probability entry is the **second-leg continuation**, not the first vertical spike:
-1. **Anchor spike** breaks above Session VWAP + pushes the Curl cloud solid green
+1. **Anchor spike** breaks above Session VWAP + pushes PPST cloud solid bullish
 2. **Shelf compression** — price pulls back and trades flat ON the ZLSMA-50 / VWAP, volume dries up
 3. **Reset + hook** — StochRSI K resets low (≲30) then hooks up (K>D and **rising**); MACD hist flips dark-red→green near zero
-4. **Trigger** — Supertrend prints a fresh green flip
-- **VWAP is the divider:** every June-19 runner (ATPC +42%, CRVO, CDT +47%) held above VWAP; the WKSP chop did not.
-- **Reset zone = ≤30, NOT <25.** The owner's own A+ CDT entry was K=33.9 — a stricter floor would have blocked the best trade. The *hook* is the trigger, not the absolute low.
+4. **Trigger** — PPST prints a fresh bullish flip
+- **VWAP is the divider:** every June-19 runner (ATPC +42%, CRVO, CDT +47%) held above VWAP.
+- **Reset zone = ≤30, NOT <25.** Owner's A+ CDT entry was K=33.9.
 
 **Step 3 — Entry:**
-- Enter on 5m Supertrend buy signal, OR zoom to 1m for a better price if signal already fired
-- **Session gate (2026-06-17):** bot pauses NEW entries 10:30am–3pm ET (midday chop). Exits still run all day. Premarket + open + power hour only. Toggle: `AVOID_MIDDAY` in config.
-- **Deep-curl flag (2026-06-17):** if StochRSI K reloaded near 0 (≤20) within the last ~12 bars before curling up, the setup is marked ⭐ in alerts (stronger entry). Informational only — does not gate entry yet; feeds the audit.
+- Enter on 5m PPST buy signal, OR zoom to 1m for a better price if signal already fired
+- **Session gate:** bot pauses NEW entries 10:30am–3pm ET (midday chop, re-enabled June-25). Exits still run all day.
+- **Deep-curl flag:** if StochRSI K reloaded near 0 (≤30) within last ~12 bars before curling up → ⭐ in alerts (stronger entry). Feeds audit.
 
 ### Indicator Settings (all confirmed)
-- **Supertrend:** ATR Period=10, Source=(H+L)/2, ATR Multiplier=2, Change ATR Calc=✓
+- **Pivot Point SuperTrend:** Pivot Period=2, ATR Factor=3, ATR Period=10 (replaces regular Supertrend — June-25)
 - **Stoch RSI:** RSI=14, Stoch=14, K_smooth=3, D_smooth=3, Source=Close
 - **ZLSMA-50:** 2×EMA(close,50) − EMA(EMA(close,50),50) | color: yellow
-- **MACD:** 5, 10, 16 (bot uses this — faster, fires with Supertrend) | line>0 AND hist>0 = hard gate
-- **VWAP:** Anchor=Session, Source=HL2, Bands ×1 (added 2026-06-19) — `vwap_session()` in indicators.py
-- **Chandelier Exit (CE):** ATR Period=10, Multiplier=2, Use Close for Extremums=✓ (added 2026-06-19)
-- **SHA:** Double EMA(10,10) on Heikin Ashi values (visual reference only)
-
-### Why Supertrend > W118 Buy Signal as trigger
-The W118 Pine Script Buy label fires AFTER the move starts (lagging). Supertrend flips
-at the trend change itself. Use W118 indicators as confirmation filters, Supertrend as the gun.
+- **MACD:** 5, 10, 16 (faster than standard — fires in sync with PPST)
+- **RSI:** 14-period standalone (soft confirmation, June-25)
+- **VWAP:** Anchor=Session, Source=HL2 — `vwap_session()` in indicators.py
+- **Chandelier Exit (CE):** ATR Period=10, Multiplier=2, Use Close for Extremums=✓
 
 ### Exit Rules
 | Exit | Trigger | Action |
 |------|---------|--------|
 | Stop | -8% from entry | Hard stop, no exceptions |
-| T1 | +15% | Trim 1/3, move stop to breakeven |
-| T2 | +30% | Trim 1/3, trail stop 10% |
+| T1 | +15% | Trim 1/3; software trailing stop moves to breakeven |
+| T2 | +30% | Trim 1/3; software trailing stop trails 10% below current price |
 | T3 | +60% | Trail 10% on final 1/3 — let it run |
-| SHA exit | SHA red 2+ consecutive candles | Exit |
-| ZLSMA exit | Price closes below ZLSMA-50 | Exit |
-| Stoch exit | K crosses back below 20 | Exit |
-| **Chandelier exit** | Full candle closes below CE line (ATR 10/2) | Exit — ride the runner until this prints (added 2026-06-19, RTH-only) |
+| PPST exit | PPST flips bearish | Exit (structure reversed) |
+| ZLSMA exit | Price closes below ZLSMA-50 | Exit (uptrend support gone) |
+| Chandelier exit | Close below CE line (ATR 10/2) | Exit — ride the runner (RTH-only) |
+| MACD crossover | MACD histogram < 0 (blue below orange) | Exit (momentum reversing, June-25) |
+| Trailing stop | Price retreats to raised stop after T1/T2 | Software exit (June-25) |
+
+**Software trailing stop** (`_trail` dict, persisted to `data/trail_state.json`):
+- T1 hit (+15%) → stop moves from -8% to breakeven (entry price)
+- T2 hit (+30%) → stop trails 10% below current, updates every scan
+- Only fires after T1 (never locks in a loss beyond the hard -8%)
 
 ### Session Priority
 - **Premarket 4am–9:30am EST** = highest priority (56% of wins)
 - RTH open 9:30–10:30am = high priority
-- Midday 10:30am–3pm = **AVOID** (chop kills momentum)
+- Midday 10:30am–3pm = **AVOID** (confirmed -$23.24 over 15 trades, June-25 audit)
 - Power hour 3–4pm = small size only
 
 ## Trade Data Summary (Historical)
 - **101 trades** | 2026-03-23 to 2026-04-30 | 99W / 2L | **98.0% win rate**
 - Avg winner: +53.7% | Avg loser: -13.5% | Best: UGRO +692.0%
+
+## Pattern-Learning Data (live bot, as of 2026-06-25)
+- **26 closed trades** | 23% win rate | -$53.39 net (learning phase — bot taking all signals)
+- 4 trades remain until Edge Engine shifts from LEARNING → TIGHTENING (auto-blocks losing grades)
+- C grades: 25% win rate, 20 trades — bulk of losses, will be pruned at tightening
+- K=75-85: 0% win rate over 7 trades — overbought at entry confirmed bad
+- Midday: 15 trades, -$23.24 — chop confirmed, AVOID_MIDDAY re-enabled
+- MFE avg +19.7% vs exit avg -3.0% — exits too early on winners; trailing stop addresses this
 
 ## Automation — Python Bot (replaces n8n, 2026-06-15)
 
@@ -112,15 +122,16 @@ data/watchlist.json          ←  manual tickers (python bot/add_ticker.py TICKE
         │
         ▼
 bot/bot.py  (runs every 1 min, 2am–4pm MT / 4am–6pm ET — all-day observation)
-        │  checks all 5 W118 conditions via bot/indicators.py
+        │  checks all 7 W118 conditions via bot/indicators.py
         │
-        ├── ALL PASS → Alpaca paper buy + STOP(-8%) + T1(+15%) + T2(+30%) + T3(+60%)
+        ├── CORE PASS → Alpaca paper buy + STOP(-8%) + T1(+15%) + T2(+30%) + T3(+60%)
+        │              + software trailing stop initialized
         │              + Telegram BUY alert
         │
-        ├── Open position check → signal exits (K<20, price<ZLSMA, ST bearish)
-        │              → cancel orders + market sell + Telegram EXIT alert
+        ├── Open position check → trailing stop update + signal exits
+        │              → market sell + Telegram EXIT alert
         │
-        └── 4:30pm ET daily → Telegram audit (trades, P&L, positions)
+        └── 4:30pm ET daily → Telegram audit (trades, P&L, pattern insights)
             Monday 5pm ET  → Telegram weekly win rate summary
 ```
 
@@ -129,21 +140,21 @@ bot/bot.py  (runs every 1 min, 2am–4pm MT / 4am–6pm ET — all-day observati
 |------|---------|
 | `bot/config.py` | API keys + trade rules (edit this once) |
 | `bot/bot.py` | Main loop — run this |
-| `bot/indicators.py` | Supertrend, StochRSI, ZLSMA, MACD, catalyst proxy |
-| `bot/edge.py` | Edge Engine — A+/A/B/C grading, grade-scaled sizing, learn→tighten gate |
+| `bot/indicators.py` | PPST, RSI, StochRSI, ZLSMA, MACD, VWAP, Chandelier, catalyst proxy |
+| `bot/edge.py` | Edge Engine — A+/A/B/C grading, grade-scaled sizing, learn→tighten gate, K-range bucketing |
 | `bot/add_ticker.py` | `python bot/add_ticker.py AHMA JRSH` |
 | `bot/status.py` | Quick positions/P&L check |
 
-### Edge Engine (self-improving, caged) — added 2026-06-19
-Every entry is graded **A+/A/B/C** (full 5/5 + deep-curl + price-action catalyst =
-A+). Sizing is **grade-scaled** ($150 A+ → $50 C) but hard-clamped to
-`[DOLLARS_MIN, DOLLARS_MAX]`. The bot **learns then tightens**: it takes every valid
-signal until `LEARN_THRESHOLD` (30) closed trades exist, then auto-buys only grades
-proven to win (≥`EDGE_WINRATE_FLOOR` over ≥`EDGE_MIN_SAMPLE`) — restrict-only, never
-loosens a cap. Edge profile recomputed on startup + daily audit, cached to
-`data/edge_profile.json` + `w118_edge` (Supabase) for the dashboard. `MAX_POSITIONS`
-raised 3→5 for the paper learning phase. All new knobs default in-code (no config.py
-edit needed). Concurrency knob aside, a plain `git pull` + restart picks it all up.
+### Edge Engine (self-improving, caged)
+Every entry is graded **A+/A/B/C**. Sizing is **flat $100/trade** during the learning phase (all grades equal — gathering data). The bot **learns then tightens**: it takes every valid signal until `LEARN_THRESHOLD` (30) closed trades exist, then auto-buys only grades proven to win (≥`EDGE_WINRATE_FLOOR` over ≥`EDGE_MIN_SAMPLE`). Edge profile buckets by: grade, session, catalyst, deep_curl, vol ratio, K-at-entry range. Recomputed on startup + daily audit, cached to `data/edge_profile.json` + `w118_edge` (Supabase).
+
+### Key data files (runtime, gitignored)
+| File | Contents |
+|------|----------|
+| `data/trail_state.json` | Trailing stop state per ticker (entry, stop, t1_hit, t2_hit) |
+| `data/exit_pending.json` | In-flight exit orders (restart-safe dedup) |
+| `data/watch_sent.json` | WATCH alert throttle + outcome tracking |
+| `data/edge_profile.json` | Edge Engine cached profile |
 
 ### Quick start
 ```bash
@@ -154,6 +165,7 @@ python bot/bot.py
 
 ### Telegram
 - Bot: @RichAlertOls_bot | Chat ID: 8223032422 | Token: in config.py (never in chat)
+- **QUIET_ALERTS = True** — only trade alerts + daily/weekly audit push to Telegram. Everything else is log-only (journalctl).
 
 ### Alpaca Paper Trading
 - **Recommended balance: $10,000** (reset at alpaca.markets → Paper Trading → Reset Account)
@@ -176,16 +188,21 @@ if not os.path.isdir('/content/drive/MyDrive'):
     drive.mount('/content/drive')
 print("✅ Drive ready")
 ```
-One click, then it connects without re-asking within the same session.
 
-## Infrastructure — Confirmed Working (2026-06-19)
+## Infrastructure — Confirmed Working
 
 ### Supabase
 - **Trading project:** `lgzzuppprbokfobhycov.supabase.co` — this is the ONLY Supabase project for trading
-- **Tables:** `w118_trades` (logs every entry) + `w118_edge` (edge engine snapshots)
+- **Tables:** `w118_trades` (logs every entry + MFE/MAE/bars_held) + `w118_edge` (edge engine snapshots)
 - **RLS:** anon key = read-only (dashboard). Service role key in VPS `bot/config.py` = write.
 - **Dashboard anon key:** `sb_publishable_qIqnOFvjWSVquqlCpDIj2Q_t468MohI` (public/safe)
 - **DO NOT TOUCH** the healing project (`suqfqnrxkjhmrzbkzrze`) — unrelated to trading
+- **Pending migration** (run once in SQL Editor if not done):
+  ```sql
+  ALTER TABLE w118_trades ADD COLUMN IF NOT EXISTS mfe_pct   numeric(6,2);
+  ALTER TABLE w118_trades ADD COLUMN IF NOT EXISTS mae_pct   numeric(6,2);
+  ALTER TABLE w118_trades ADD COLUMN IF NOT EXISTS bars_held integer;
+  ```
 
 ### VPS Bot (Hostinger)
 - Bot lives at: `/root/tradingbaby/bot/bot.py`
@@ -206,67 +223,62 @@ One click, then it connects without re-asking within the same session.
   - `NEXT_PUBLIC_SUPABASE_URL` = `https://lgzzuppprbokfobhycov.supabase.co`
   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` = `sb_publishable_qIqnOFvjWSVquqlCpDIj2Q_t468MohI`
 
-### Current config on VPS (as of 2026-06-19)
-- `MAX_POSITIONS = 5` ✅ (raised from 3 for paper learning phase)
-- `MAX_DAILY_TRADES = 9999` ✅ (effectively unlimited — run `grep MAX_DAILY_TRADES /root/tradingbaby/bot/config.py` to confirm)
-
-## Bug fixes shipped (2026-06-19)
-| Fix | PR | Status |
-|-----|----|--------|
-| `buy_$` SyntaxError crash-loop | earlier | ✅ merged |
-| Edge Engine (A+/A/B/C grading, learn→tighten) | #59 | ✅ merged |
-| Exit spam loop (100+ TNON alerts) | #63 | ✅ merged |
-| Premarket OPG sell (bracket orders blocked shares) | #63 | ✅ merged |
-| Restart re-alert dedup (`exit_pending.json`) | #63 | ✅ merged |
-| RTH hard stop blocked by bracket orders | #63 | ✅ merged |
-| [skip] logging at INFO level + 9:30am bell + 30min heartbeat | #63 | ✅ merged |
-| AVOID_MIDDAY disabled for data collection phase | #67 | ✅ merged |
-| get_bars silent failure: `feed=sip` + min 10 bars + visible logging | #67 | ✅ merged |
-| yfinance bars (Alpaca SIP unavailable on paper) + vol-0 fix | #70 | ✅ merged |
-
-## System upgrade shipped (2026-06-19) — VWAP + Chandelier + tighter scanner
-From the June-19 chart study (`june 19 2026/` folder). All knobs default in-code — a plain
-`git pull` + restart picks it up, no config.py edit needed.
-| Change | Detail |
-|--------|--------|
-| **Session VWAP entry gate** | New condition #6. `price ≥ VWAP×(1−0.5%)` to auto-buy. Fail-open when no bars/volume. Feeds the A+ grade. `VWAP_GATE`, `VWAP_TOLERANCE`. |
-| **Chandelier Exit** | New trailing exit (ATR 10/2). Fires alongside Supertrend/ZLSMA/-8%, RTH-only. `CHANDELIER_EXIT`, `CE_ATR_PERIOD`, `CE_ATR_MULT`. |
-| **Scanner tightened** | `MAX_FLOAT` 20M→10M. New `SCANNER_REL_VOL_MIN=3.0` for TradingView discovery — **separate** from `REL_VOL_MIN=1.5` (the 5-min bar volume check, which must stay 1.5). |
-| **Reset zone** | `DEEP_CURL_RESET` 20→30 (owner's A+ CDT entry was K=33.9; ≤25 would block it). |
-| **Grade** | A+ now = full pass + deep curl + (strong catalyst OR clean above-VWAP). |
-| `get_bars` carries `"t"` | ISO timestamp added per bar so session VWAP can reset daily. |
-
-## Critical lessons learned (2026-06-19) — DO NOT REPEAT
-1. **`feed=sip` is correct** for Alpaca paper trading. SIP covers all exchanges incl. NASDAQ.
-   `feed=iex` only covers stocks that trade on IEX exchange — our small-cap NASDAQ universe
-   has ZERO IEX coverage. Every stock returns empty bars on IEX. DO NOT switch to iex.
-2. **30-bar minimum was too strict.** Individual indicator functions handle sparse data
-   gracefully (return None → blocker added). Bar minimum is now 10.
-3. **`REQUIRE_1M_FRESH = False`** — this gate was added in the Edge Engine PR overnight.
-   It blocks 5/5 setups when 1m is consolidating. Leave it False.
-4. **`AVOID_MIDDAY = False`** during data collection phase so bot trades all session hours.
-5. **After ANY PR merge → always `git pull origin main && sudo systemctl restart w118bot` on VPS.**
-   The VPS bot does not auto-update. Silence after a merge = old code still running.
-6. **Heartbeat "No candidates found this scan"** = blockers Counter is empty = get_bars()
-   returning None for every ticker (feed issue or bars < minimum). Not a conditions problem.
-7. **TWO relative-volume knobs — never conflate them.** `SCANNER_REL_VOL_MIN` (3.0) is the
-   TradingView *discovery* filter (which stocks get scanned). `REL_VOL_MIN` (1.5) is the
-   *5-min bar* volume confirmation (vol > 1.5× 20-bar avg). The bar one being 4.0 is what
-   blocked every entry — KEEP it at 1.5. Tighten discovery via `SCANNER_REL_VOL_MIN` only.
-8. **VWAP gate fails open.** If a name has no timestamps/volume, the VWAP condition is
-   skipped (max drops 6→5), not failed — a thin/halted name isn't blocked just for that.
-
-## What "no alerts" means
-The **30-min heartbeat** (💓) shows TOP BLOCKERS — exact condition failing most.
-- "No candidates found this scan" → bars fetch failing (check feed, API key, bot restart)
-- Any other blocker → conditions failing (expected during slow market periods)
-If no heartbeat for >1 hour → `sudo systemctl status w118bot`
-
-## Current config on VPS (as of 2026-06-19 ~11am ET)
+### Current config on VPS (as of 2026-06-25) — MUST be set manually in config.py
 - `MAX_POSITIONS = 5`
 - `MAX_DAILY_TRADES = 9999`
-- `AVOID_MIDDAY = False` (disabled for data collection)
+- `AVOID_MIDDAY = True` ← **MUST set this in VPS config.py** (explicit False in config overrides in-code default)
 - `REQUIRE_1M_FRESH = False`
+- `LEARNING_FLAT_SIZE = 100` (all grades flat $100/trade during learning phase)
+- `TICKER_COOLDOWN_H = 24` (24h before same ticker can re-buy)
+
+## All PRs / Bug fixes shipped
+| Fix | PR | Date |
+|-----|----|------|
+| `buy_$` SyntaxError crash-loop | earlier | 2026-06 |
+| Edge Engine (A+/A/B/C grading, learn→tighten) | #59 | 2026-06-19 |
+| Exit spam loop (100+ TNON alerts) | #63 | 2026-06-19 |
+| Premarket OPG sell / bracket orders blocked shares | #63 | 2026-06-19 |
+| Restart re-alert dedup (`exit_pending.json`) | #63 | 2026-06-19 |
+| RTH hard stop blocked by bracket orders | #63 | 2026-06-19 |
+| AVOID_MIDDAY disabled for data collection | #67 | 2026-06-19 |
+| get_bars `feed=sip` + min 10 bars | #67 | 2026-06-19 |
+| yfinance bars fallback + vol-0 fix | #70 | 2026-06-19 |
+| VWAP entry gate (condition #6) | #71 | 2026-06-19 |
+| Chandelier Exit trailing stop | #71 | 2026-06-19 |
+| Scanner tightened (MAX_FLOAT 20M→10M) | #71 | 2026-06-19 |
+| 24h ticker cooldown + $100 flat sizing | #83 | 2026-06-22 |
+| Daily self-audit Telegram (`_self_audit_insights`) | #84 | 2026-06-22 |
+| MFE/MAE tracking + WATCH outcomes + K-range bucketing | #85 | 2026-06-22 |
+| Pivot Point SuperTrend (Period=2, Factor=3, ATR=10) | #86 | 2026-06-25 |
+| RSI(14) soft entry confirmation | #86 | 2026-06-25 |
+| MACD bearish crossover exit signal | #86 | 2026-06-25 |
+| MAE/MFE bug fix (filter to post-entry bars, fix sign) | #86 | 2026-06-25 |
+| AVOID_MIDDAY re-enabled (default True) | #86 | 2026-06-25 |
+| Software trailing stop (T1→breakeven, T2→trail 10%) | #87 | 2026-06-25 |
+
+## Pending features (roadmap)
+- [ ] Historical backtesting — run `check_all_entry()` on 6-month bar history for our early-bird tickers. Needs Polygon.io (~$30/mo) or Alpaca historical 5m data. See June-25 conversation.
+- [ ] Short selling — Phase 2 after longs hit 60%+ win rate. Small-caps have hard-to-borrow issues.
+- [ ] Multi-agent coworker — research agent (backtesting), pattern agent (nightly Supabase mining), risk monitor (parallel to bot).
+
+## Critical lessons learned — DO NOT REPEAT
+1. **`feed=sip` is correct** for Alpaca paper trading. DO NOT switch to iex — our small-cap NASDAQ universe has ZERO IEX coverage.
+2. **30-bar minimum was too strict.** Indicator functions handle sparse data (return None → blocker). Bar minimum is 10.
+3. **`REQUIRE_1M_FRESH = False`** — this gate blocks 5/5 setups when 1m is consolidating. Leave it False.
+4. **`AVOID_MIDDAY = True` must be set explicitly in VPS config.py.** The getattr default (True) does NOT override an explicit `AVOID_MIDDAY = False` in config.py. Always check: `grep AVOID_MIDDAY /root/tradingbaby/bot/config.py`.
+5. **After ANY PR merge → always `git pull origin main && sudo systemctl restart w118bot` on VPS.** The VPS bot does not auto-update.
+6. **Heartbeat "No candidates found this scan"** = bars fetch failing (feed issue or bars < minimum). Not a conditions problem.
+7. **TWO relative-volume knobs — never conflate them.** `SCANNER_REL_VOL_MIN` (3.0) = TradingView discovery filter. `REL_VOL_MIN` (1.5) = 5-min bar volume check. KEEP bar check at 1.5.
+8. **VWAP gate fails open.** No timestamps/volume → VWAP condition skipped (not failed).
+9. **Exit timing:** June-25 audit showed MFE avg +19.7% vs exit avg -3.0%. Bot was exiting at losses while stocks later went up 19%. Root cause: ZLSMA/Chandelier signal exits firing during healthy pullbacks. PPST reduces whipsaws; trailing stop preserves profit once T1 hits.
+10. **MAE -23.7% was a data artifact.** Fixed in PR #86 — now filters to bars after `_sb_entry_ts[ticker]`. Real MAE on a -8% stop system should be 2–8%.
+11. **PPST replaced regular Supertrend (June-25).** Uses confirmed swing pivot highs/lows as band anchors instead of rolling hl2 → fewer whipsaw flips during consolidation. Settings: Period=2, Factor=3, ATR=10.
+
+## What "no alerts" means
+The **30-min heartbeat** (💓) shows TOP BLOCKERS in journalctl (not Telegram — QUIET_ALERTS is on).
+- "No candidates found this scan" → bars fetch failing (check feed, API key, bot restart)
+- Any other blocker → conditions failing (expected during slow market)
+If no heartbeat for >1 hour → `sudo systemctl status w118bot`
 
 ## Security Rules
 - **NEVER paste API keys or secret keys in chat** — only in VPS config.py directly

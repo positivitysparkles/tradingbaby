@@ -103,8 +103,9 @@ UTC = timezone.utc
 DATA_DIR     = Path(__file__).parent.parent / "data"
 TRADE_LOG    = DATA_DIR / "trade_log.json"
 MANUAL_WL    = DATA_DIR / "watchlist.json"
-EXIT_PENDING  = DATA_DIR / "exit_pending.json"   # survives restarts — no re-alert on stuck exits
-WATCH_SENT_FILE = DATA_DIR / "watch_sent.json"  # survives restarts — no re-alert on same WATCH
+EXIT_PENDING    = DATA_DIR / "exit_pending.json"    # survives restarts — no re-alert on stuck exits
+WATCH_SENT_FILE = DATA_DIR / "watch_sent.json"   # survives restarts — no re-alert on same WATCH
+TRAIL_FILE      = DATA_DIR / "trail_state.json"  # survives restarts — trailing stop state per ticker
 
 # ── Alpaca REST helpers ───────────────────────────────────────────────────────
 
@@ -274,6 +275,23 @@ def _save_exit_pending():
         EXIT_PENDING.write_text(json.dumps({"tickers": list(_exiting_now)}))
     except Exception:
         pass
+
+
+def _save_trail_state():
+    try:
+        TRAIL_FILE.write_text(json.dumps(_trail))
+    except Exception:
+        pass
+
+
+def _load_trail_state():
+    global _trail
+    try:
+        if TRAIL_FILE.exists():
+            _trail = json.loads(TRAIL_FILE.read_text())
+            log.info(f"[trail] restored {len(_trail)} ticker(s): {list(_trail)}")
+    except Exception:
+        _trail = {}
 
 def tg(msg: str):
     try:
@@ -733,6 +751,18 @@ def execute_buy(ticker: str, price: float, info: dict):
     log_trade(ticker, price, info)
     sb_log_trade(ticker, price, qty, info)
 
+    # Initialize software trailing stop state. Starts at -8% floor; moves to
+    # breakeven when T1 hits, then trails 10% below current after T2.
+    _trail[ticker] = {
+        "entry":    price,
+        "stop":     stop,
+        "t1_price": t1,
+        "t2_price": t2,
+        "t1_hit":   False,
+        "t2_hit":   False,
+    }
+    _save_trail_state()
+
     msg = (
         f"<b>🟢 AUTO BUY — {html.escape(ticker)}</b>  <b>[{grade}]</b>{' ⭐ DEEP CURL' if info.get('deep_curl') else ''}\n"
         f"Entry: ${price:.4f}  ×{qty} shares (~${qty*price:.0f})  ·  grade {grade}\n"
@@ -787,6 +817,8 @@ def execute_exit(ticker: str, reason: str):
         tg(f"<b>🔴 EXIT — {ticker}</b>\nReason: {reason}  ({pct:+.1f}%)")
         log.info(f"[exit] {ticker}: {reason} ({pct:+.1f}%)")
         sb_close_trade(ticker, exit_price, reason, entry_price or 0.0, pos_qty, note)
+        _trail.pop(ticker, None)
+        _save_trail_state()
 
 # ── Self-audit ────────────────────────────────────────────────────────────────
 
@@ -1147,6 +1179,7 @@ _last_board_key: str = ""    # fingerprint of last scanner-board Telegram messag
 _bought_day: str   = ""      # date for resetting daily counters (buys_today, buy_attempts)
 TICKER_COOLDOWN_H   = getattr(_cfg, "TICKER_COOLDOWN_H", 24)  # hours before same ticker can re-buy
 _exiting_now: set  = set()   # tickers with a submitted exit order — prevents duplicate Telegram alerts
+_trail: dict       = {}      # ticker → {entry, stop, t1_price, t2_price, t1_hit, t2_hit}
 _buys_today: int   = 0       # count of buy orders actually submitted today (hard cap = MAX_DAILY_BUYS)
 _buy_attempts: Counter = Counter()  # ticker → failed-submission count; give up after MAX_BUY_ATTEMPTS
 _trading_day_cache: dict = {}       # date-str → bool; avoids repeated Alpaca calendar calls
@@ -1386,6 +1419,42 @@ def scan():
     positions = get_positions()
     pos_map = {p["symbol"]: p for p in positions}
     for ticker in list(held):
+        # Software trailing stop — updates stop price as T1/T2 levels are hit,
+        # then fires a market exit when price retreats to the raised stop.
+        if ticker in _trail and ticker in pos_map:
+            t    = _trail[ticker]
+            curr = float(pos_map[ticker].get("current_price") or
+                         pos_map[ticker].get("avg_entry_price") or 0)
+            if curr > 0:
+                # T1 hit (+15%) → move stop to breakeven
+                if not t["t1_hit"] and curr >= t["t1_price"]:
+                    t["t1_hit"] = True
+                    t["stop"]   = t["entry"]
+                    log.info(f"[trail] {ticker} T1 ${curr:.2f} hit — stop → breakeven ${t['stop']:.2f}")
+                    _save_trail_state()
+
+                # T2 hit (+30%) → begin trailing 10% below current
+                if not t["t2_hit"] and curr >= t["t2_price"]:
+                    t["t2_hit"] = True
+                    t["stop"]   = round(curr * 0.90, 2)
+                    log.info(f"[trail] {ticker} T2 ${curr:.2f} hit — trailing stop ${t['stop']:.2f}")
+                    _save_trail_state()
+
+                # Continuously raise trailing stop as price climbs above T2
+                if t["t2_hit"] and round(curr * 0.90, 2) > t["stop"]:
+                    t["stop"] = round(curr * 0.90, 2)
+                    _save_trail_state()
+
+                # Fire software trailing stop — only once T1 has been hit (protecting profit).
+                # Clamp: never let the software stop drop below the -8% hard floor.
+                effective_stop = max(t["stop"], round(t["entry"] * (1 - STOP_PCT), 2))
+                if t["t1_hit"] and curr <= effective_stop and ticker not in _exiting_now:
+                    execute_exit(ticker, f"trailing_stop (${curr:.2f} ≤ ${effective_stop:.2f})")
+                    held.discard(ticker)
+                    _trail.pop(ticker, None)
+                    _save_trail_state()
+                    continue
+
         # Hard stop: P&L-based exit catches the -8% floor if the Alpaca stop order
         # failed to place (e.g. 403 timing race between buy fill and stop placement)
         if ticker in pos_map:
@@ -1630,6 +1699,9 @@ def main():
             log.info(f"[watch] restored sent cache ({len(_watch_sent)} tickers)")
     except Exception:
         pass
+
+    # Reload trailing stop state so a VPS restart doesn't lose T1/T2 levels mid-trade.
+    _load_trail_state()
 
     # Warm the edge profile from prior closed trades before the first scan.
     try:
