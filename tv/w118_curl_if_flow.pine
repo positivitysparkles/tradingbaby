@@ -1,0 +1,306 @@
+// W118 "Curl if Flow" — Pine Script v5 Strategy
+// Replicates the Python bot's exact entry/exit logic for TradingView backtesting.
+// Chart: 5-minute | Universe: NASDAQ small-caps $0.10–$15, float <10M
+//
+// Indicators required (all computed inline — no external scripts needed):
+//   • Pivot Point SuperTrend  (Period=2, Factor=3, ATR=10)
+//   • ZLSMA-50                (2×EMA50 − EMA(EMA50))
+//   • StochRSI                (RSI=14, Stoch=14, K=3, D=3)
+//   • MACD                    (Fast=5, Slow=10, Signal=16)
+//   • Session VWAP            (Anchor=Session, Source=HL2)
+//   • RSI(14)                 (soft confirmation, score only)
+//   • Chandelier Exit         (ATR 10, Mult 2, Close extremums)
+//@version=5
+strategy("W118 Curl if Flow", shorttitle="W118 CiF",
+         overlay=true,
+         default_qty_type=strategy.percent_of_equity,
+         default_qty_value=10,
+         initial_capital=10000,
+         commission_type=strategy.commission.percent,
+         commission_value=0.005,
+         max_bars_back=500)
+
+// ═══════════════════════════════ INPUTS ══════════════════════════════════════
+i_pivot_period    = input.int(2,      "PPST Pivot Period",           minval=1,   group="Pivot Point SuperTrend")
+i_atr_factor      = input.float(3.0,  "PPST ATR Factor",             minval=0.1, step=0.1, group="Pivot Point SuperTrend")
+i_atr_period      = input.int(10,     "ATR Period (PPST + CE share)", minval=1,   group="Pivot Point SuperTrend")
+
+i_stop_pct        = input.float(0.08, "Stop Loss %",   minval=0.01, step=0.01, group="Trade Rules")
+i_t1_pct          = input.float(0.15, "T1 % target",  minval=0.01, step=0.01, group="Trade Rules")
+i_t2_pct          = input.float(0.30, "T2 % target",  minval=0.01, step=0.01, group="Trade Rules")
+i_t3_pct          = input.float(0.60, "T3 % target",  minval=0.01, step=0.01, group="Trade Rules")
+i_overbought_k    = input.float(85.0, "Overbought K ceiling", minval=50.0,     group="Trade Rules")
+i_deep_curl_reset = input.float(30.0, "Deep Curl: K dipped below",  minval=5.0, group="Trade Rules")
+i_deep_curl_bars  = input.int(12,     "Deep Curl: lookback bars",    minval=3,   group="Trade Rules")
+
+i_vwap_tol        = input.float(0.005,"VWAP Tolerance (0.5%)",  minval=0.0, step=0.001, group="Filters")
+i_avoid_midday    = input.bool(true,   "Avoid Midday 10:30am–3pm ET",            group="Filters")
+i_ce_rth_only     = input.bool(true,   "Chandelier Exit: RTH only",              group="Filters")
+
+// ═══════════════════════ PIVOT POINT SUPERTREND (PPST) ═══════════════════════
+// Anchors ATR bands on confirmed swing pivot highs/lows (pivot_period bars each
+// side) instead of rolling hl2 — fewer whipsaw flips during consolidation.
+// Direction: bullish when close > last_pivot_high + factor*ATR; vice-versa.
+
+atr_val  = ta.atr(i_atr_period)
+ph_found = ta.pivothigh(high, i_pivot_period, i_pivot_period)
+pl_found = ta.pivotlow(low,   i_pivot_period, i_pivot_period)
+
+var float last_ph  = na
+var float last_pl  = na
+var int   ppst_dir = 0    // 1 = bullish  |  -1 = bearish  |  0 = initialising
+
+if not na(ph_found)
+    last_ph := ph_found
+if not na(pl_found)
+    last_pl := pl_found
+
+ppst_upper = not na(last_ph) ? last_ph + i_atr_factor * atr_val : na
+ppst_lower = not na(last_pl) ? last_pl - i_atr_factor * atr_val : na
+
+if not na(ppst_upper) and close > ppst_upper
+    ppst_dir := 1
+else if not na(ppst_lower) and close < ppst_lower
+    ppst_dir := -1
+
+ppst_bull = ppst_dir ==  1
+ppst_bear = ppst_dir == -1
+
+// ════════════════════════════ ZLSMA-50 ═══════════════════════════════════════
+e1    = ta.ema(close, 50)
+e2    = ta.ema(e1, 50)
+zlsma = 2.0 * e1 - e2
+
+// ════════════════════════ STOCHRSI (14,14,3,3) ═══════════════════════════════
+rsi_src    = ta.rsi(close, 14)
+k_raw      = ta.stoch(rsi_src, rsi_src, rsi_src, 14)
+k          = ta.sma(k_raw, 3)
+d          = ta.sma(k, 3)
+k_rising   = k > k[1]
+stoch_hook = k > d and k_rising
+
+// ═══════════════════════════ MACD (5,10,16) ══════════════════════════════════
+[macd_line, sig_line, hist] = ta.macd(close, 5, 10, 16)
+
+// ══════════════════════ SESSION VWAP (Anchor=Session, HL2) ═══════════════════
+vwap_val = ta.vwap(hl2)
+
+// ══════════════════════════════ RSI (14) ═════════════════════════════════════
+rsi_val = ta.rsi(close, 14)
+
+// ════════════════ CHANDELIER EXIT (ATR 10, Mult 2, Use Close) ════════════════
+ce_stop = ta.highest(close, i_atr_period) - 2.0 * atr_val
+ce_bear = close < ce_stop and (not i_ce_rth_only or session.ismarket)
+
+// ═════════════════════════ SESSION / TIME GATE ════════════════════════════════
+et_h      = hour(time,   "America/New_York")
+et_m      = minute(time, "America/New_York")
+et_mins   = et_h * 60 + et_m
+is_midday = et_mins >= 630 and et_mins < 900    // 10:30am (630 min) – 3:00pm (900 min) ET
+time_ok   = not i_avoid_midday or not is_midday
+
+// ═══════════════════════════ CORE ENTRY GATE ═════════════════════════════════
+// All 6 MUST conditions — score/grade uses RSI as a 7th soft point.
+above_vwap     = not na(vwap_val) and close >= vwap_val * (1.0 - i_vwap_tol)
+above_zlsma    = close > zlsma
+not_overbought = k < i_overbought_k
+macd_pos       = hist > 0
+
+core_pass = ppst_bull       and
+            above_vwap      and
+            above_zlsma     and
+            stoch_hook      and
+            not_overbought  and
+            macd_pos        and
+            time_ok
+
+// ════════════════════════ GRADE / DEEP-CURL FLAG ══════════════════════════════
+// Deep curl: K dipped below reset level in the last N bars then hooked up.
+// Matches bot's ⭐ A+ signal — strongest reload pattern.
+deep_curl = ta.lowest(k, i_deep_curl_bars) < i_deep_curl_reset
+
+grade_str = core_pass and deep_curl ? "A+" :
+            core_pass               ? "A"  :
+            ppst_bull and stoch_hook? "B"  : "C"
+
+// ═══════════════════════════ EXIT SIGNALS ════════════════════════════════════
+exit_ppst  = ppst_bear                // structure reversed
+exit_zlsma = close < zlsma           // uptrend support gone
+exit_macd  = hist < 0                 // momentum reversing (MACD bearish cross)
+exit_ce    = ce_bear                  // Chandelier Exit fires
+
+// ══════════════════════ SOFTWARE TRAILING STOP STATE ══════════════════════════
+// Mirrors bot/bot.py's _trail dict.
+// T1 hit (+15%) → stop moves from -8% to breakeven (entry price).
+// T2 hit (+30%) → stop trails 10% below current price, updated every bar.
+// Hard -8% floor applies until T1 (never locks in a loss beyond that).
+
+var float entry_px  = na
+var float trail_stp = na
+var bool  t1_hit    = false
+var bool  t2_hit    = false
+
+if strategy.position_size > 0 and not na(entry_px)
+    // T1: breakeven
+    if not t1_hit and close >= entry_px * (1.0 + i_t1_pct)
+        t1_hit    := true
+        trail_stp := entry_px
+
+    // T2: 10% trailing
+    if t1_hit and not t2_hit and close >= entry_px * (1.0 + i_t2_pct)
+        t2_hit    := true
+        trail_stp := math.max(trail_stp, close * 0.90)
+
+    // Keep trailing after T2
+    if t2_hit
+        trail_stp := math.max(trail_stp, close * 0.90)
+
+    // Hard -8% floor before T1
+    if not t1_hit
+        trail_stp := entry_px * (1.0 - i_stop_pct)
+
+// ════════════════════════════ STRATEGY LOGIC ══════════════════════════════════
+// Entry
+if core_pass and strategy.position_size == 0
+    strategy.entry("Long", strategy.long)
+    entry_px  := close
+    trail_stp := close * (1.0 - i_stop_pct)
+    t1_hit    := false
+    t2_hit    := false
+
+// Exits — checked in priority order; first match wins
+if strategy.position_size > 0
+    if exit_ppst
+        strategy.close("Long", comment="PPST Bear")
+    else if exit_zlsma
+        strategy.close("Long", comment="ZLSMA Exit")
+    else if exit_macd
+        strategy.close("Long", comment="MACD Cross")
+    else if exit_ce
+        strategy.close("Long", comment="CE Exit")
+    else if not na(trail_stp) and close <= trail_stp
+        strategy.close("Long", comment=t1_hit ? "Trail Stop" : "Hard Stop -8%")
+
+// Reset state after flat
+if strategy.position_size == 0 and strategy.position_size[1] > 0
+    entry_px  := na
+    trail_stp := na
+    t1_hit    := false
+    t2_hit    := false
+
+// ══════════════════════════════ VISUALS ═══════════════════════════════════════
+// PPST cloud background
+bgcolor(ppst_bull ? color.new(color.green, 88) :
+        ppst_bear ? color.new(color.red,   88) : na,
+        title="PPST Cloud")
+
+// Indicator overlays
+plot(zlsma,    "ZLSMA-50",  color=color.yellow, linewidth=2)
+plot(vwap_val, "VWAP",      color=color.white,  linewidth=1)
+plot(ce_stop,  "CE Stop",   color=color.orange, linewidth=1, style=plot.style_stepline)
+
+// Active trailing stop (red)
+plot(strategy.position_size > 0 ? trail_stp : na, "Trail Stop",
+     color=color.red, linewidth=1, style=plot.style_stepline)
+
+// Target levels — visible only while in a position
+in_pos = strategy.position_size > 0
+plot(in_pos ? entry_px * (1.0 + i_t1_pct) : na, "T1 +15%",
+     color=color.new(color.yellow, 40), linewidth=1, style=plot.style_stepline)
+plot(in_pos ? entry_px * (1.0 + i_t2_pct) : na, "T2 +30%",
+     color=color.new(color.orange, 40), linewidth=1, style=plot.style_stepline)
+plot(in_pos ? entry_px * (1.0 + i_t3_pct) : na, "T3 +60%",
+     color=color.new(color.purple, 40), linewidth=1, style=plot.style_stepline)
+
+// Buy signal markers
+plotshape(core_pass and strategy.position_size == 0, "BUY",
+          style=shape.triangleup, location=location.belowbar,
+          color=color.green, textcolor=color.white,
+          text="BUY", size=size.normal)
+
+// A+ deep-curl star (overlaid on BUY bar)
+plotshape(core_pass and deep_curl and strategy.position_size == 0, "A+ Curl",
+          style=shape.star, location=location.belowbar,
+          color=color.lime, size=size.small)
+
+// Exit marker
+exit_bar = strategy.position_size[1] > 0 and strategy.position_size == 0
+plotshape(exit_bar, "EXIT",
+          style=shape.triangledown, location=location.abovebar,
+          color=color.red, textcolor=color.white,
+          text="EXIT", size=size.normal)
+
+// ═══════════════════════════ INFO TABLE (top-right) ═══════════════════════════
+var table info = table.new(position.top_right, 2, 9,
+                           bgcolor=color.new(color.black, 25),
+                           frame_color=color.gray, frame_width=1,
+                           border_color=color.new(color.gray, 60), border_width=1)
+
+if barstate.islast
+    // Soft score (RSI is the 6th point — never gates, just scores)
+    score = (ppst_bull    ? 1 : 0) +
+            (above_vwap   ? 1 : 0) +
+            (above_zlsma  ? 1 : 0) +
+            (stoch_hook   ? 1 : 0) +
+            (macd_pos     ? 1 : 0) +
+            (rsi_val > 50 ? 1 : 0)
+
+    c_g    = color.new(color.green,  0)
+    c_r    = color.new(color.red,    0)
+    c_y    = color.new(color.yellow, 0)
+    c_lime = color.new(color.lime,   0)
+    c_gray = color.new(color.gray,   0)
+
+    // Row 0 — CORE gate result
+    table.cell(info, 0, 0, "CORE",    text_color=c_gray)
+    table.cell(info, 1, 0, core_pass ? "▲ BUY" : "— wait",
+               text_color=core_pass ? c_g : c_gray)
+
+    // Row 1 — Grade
+    table.cell(info, 0, 1, "Grade",   text_color=c_gray)
+    table.cell(info, 1, 1, grade_str,
+               text_color=grade_str == "A+" ? c_lime :
+                          grade_str == "A"  ? c_g    :
+                          grade_str == "B"  ? c_y    : c_r)
+
+    // Row 2 — Score
+    table.cell(info, 0, 2, "Score",   text_color=c_gray)
+    table.cell(info, 1, 2, str.tostring(score) + " / 6",
+               text_color=score >= 5 ? c_g : score >= 3 ? c_y : c_r)
+
+    // Row 3 — PPST direction
+    table.cell(info, 0, 3, "PPST",    text_color=c_gray)
+    table.cell(info, 1, 3, ppst_bull ? "BULL" : "BEAR",
+               text_color=ppst_bull ? c_g : c_r)
+
+    // Row 4 — StochRSI K / D
+    table.cell(info, 0, 4, "K / D",   text_color=c_gray)
+    table.cell(info, 1, 4, str.tostring(math.round(k, 1)) + " / " +
+                           str.tostring(math.round(d, 1)),
+               text_color=stoch_hook ? c_g : c_r)
+
+    // Row 5 — MACD histogram
+    table.cell(info, 0, 5, "MACD",    text_color=c_gray)
+    table.cell(info, 1, 5, str.tostring(math.round(hist, 4)),
+               text_color=hist > 0 ? c_g : c_r)
+
+    // Row 6 — RSI (soft)
+    table.cell(info, 0, 6, "RSI",     text_color=c_gray)
+    table.cell(info, 1, 6, str.tostring(math.round(rsi_val, 1)) + " (soft)",
+               text_color=rsi_val > 50 ? c_g : c_r)
+
+    // Row 7 — VWAP gate
+    table.cell(info, 0, 7, "VWAP",    text_color=c_gray)
+    table.cell(info, 1, 7, above_vwap ? "✓ above" : "✗ below",
+               text_color=above_vwap ? c_g : c_r)
+
+    // Row 8 — Session label
+    sess_label = session.ispremarket             ? "Pre-mkt"   :
+                 is_midday and i_avoid_midday    ? "Midday ⛔"  :
+                 session.ismarket                ? "RTH"       :
+                 session.ispostmarket            ? "AH"        : "Closed"
+    sess_color = session.ispremarket or
+                 (session.ismarket and not is_midday) ? c_g : c_gray
+
+    table.cell(info, 0, 8, "Session", text_color=c_gray)
+    table.cell(info, 1, 8, sess_label, text_color=sess_color)
