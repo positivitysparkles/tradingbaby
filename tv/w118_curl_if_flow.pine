@@ -11,14 +11,7 @@
 //   • RSI(14)                 (soft confirmation, score only)
 //   • Chandelier Exit         (ATR 10, Mult 2, Close extremums)
 //@version=5
-strategy("W118 Curl if Flow", shorttitle="W118 CiF",
-         overlay=true,
-         default_qty_type=strategy.percent_of_equity,
-         default_qty_value=10,
-         initial_capital=10000,
-         commission_type=strategy.commission.percent,
-         commission_value=0.005,
-         max_bars_back=500)
+strategy("W118 Curl if Flow", shorttitle="W118 CiF", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=10, initial_capital=10000, commission_type=strategy.commission.percent, commission_value=0.005, max_bars_back=500)
 
 // ═══════════════════════════════ INPUTS ══════════════════════════════════════
 i_pivot_period    = input.int(2,      "PPST Pivot Period",           minval=1,   group="Pivot Point SuperTrend")
@@ -80,7 +73,7 @@ k_rising   = k > k[1]
 stoch_hook = k > d and k_rising
 
 // ═══════════════════════════ MACD (5,10,16) ══════════════════════════════════
-[macd_line, sig_line, hist] = ta.macd(close, 5, 10, 16)
+[_macd_line, _sig_line, hist] = ta.macd(close, 5, 10, 16)
 
 // ══════════════════════ SESSION VWAP (Anchor=Session, HL2) ═══════════════════
 vwap_val = ta.vwap(hl2)
@@ -220,7 +213,7 @@ plotshape(buy_sig, "BUY", style=shape.triangleup, location=location.belowbar, co
 
 // A+ deep-curl star (overlaid on BUY bar)
 curl_sig = core_pass and deep_curl and strategy.position_size == 0
-plotshape(curl_sig, "A+ Curl", style=shape.star, location=location.belowbar, color=color.lime, size=size.small)
+plotshape(curl_sig, "A+ Curl", style=shape.diamond, location=location.belowbar, color=color.lime, size=size.small)
 
 // Exit marker
 exit_bar = strategy.position_size[1] > 0 and strategy.position_size == 0
