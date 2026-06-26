@@ -106,22 +106,23 @@ above_zlsma    = close > zlsma
 not_overbought = k < i_overbought_k
 macd_pos       = hist > 0
 
-core_pass = ppst_bull       and
-            above_vwap      and
-            above_zlsma     and
-            stoch_hook      and
-            not_overbought  and
-            macd_pos        and
-            time_ok
+core_pass = ppst_bull
+     and above_vwap
+     and above_zlsma
+     and stoch_hook
+     and not_overbought
+     and macd_pos
+     and time_ok
 
 // ════════════════════════ GRADE / DEEP-CURL FLAG ══════════════════════════════
 // Deep curl: K dipped below reset level in the last N bars then hooked up.
 // Matches bot's ⭐ A+ signal — strongest reload pattern.
 deep_curl = ta.lowest(k, i_deep_curl_bars) < i_deep_curl_reset
 
-grade_str = core_pass and deep_curl ? "A+" :
-            core_pass               ? "A"  :
-            ppst_bull and stoch_hook? "B"  : "C"
+grade_str = core_pass and deep_curl ? "A+"
+     : core_pass ? "A"
+     : ppst_bull and stoch_hook ? "B"
+     : "C"
 
 // ═══════════════════════════ EXIT SIGNALS ════════════════════════════════════
 exit_ppst  = ppst_bear                // structure reversed
@@ -190,9 +191,10 @@ if strategy.position_size == 0 and strategy.position_size[1] > 0
 
 // ══════════════════════════════ VISUALS ═══════════════════════════════════════
 // PPST cloud background
-bgcolor(ppst_bull ? color.new(color.green, 88) :
-        ppst_bear ? color.new(color.red,   88) : na,
-        title="PPST Cloud")
+ppst_bg = ppst_bull ? color.new(color.green, 88)
+     : ppst_bear ? color.new(color.red, 88)
+     : na
+bgcolor(ppst_bg, title="PPST Cloud")
 
 // Indicator overlays
 plot(zlsma,    "ZLSMA-50",  color=color.yellow, linewidth=2)
@@ -200,50 +202,41 @@ plot(vwap_val, "VWAP",      color=color.white,  linewidth=1)
 plot(ce_stop,  "CE Stop",   color=color.orange, linewidth=1, style=plot.style_stepline)
 
 // Active trailing stop (red)
-plot(strategy.position_size > 0 ? trail_stp : na, "Trail Stop",
-     color=color.red, linewidth=1, style=plot.style_stepline)
+trail_plot = strategy.position_size > 0 ? trail_stp : na
+plot(trail_plot, "Trail Stop", color=color.red, linewidth=1, style=plot.style_stepline)
 
 // Target levels — visible only while in a position
 in_pos = strategy.position_size > 0
-plot(in_pos ? entry_px * (1.0 + i_t1_pct) : na, "T1 +15%",
-     color=color.new(color.yellow, 40), linewidth=1, style=plot.style_stepline)
-plot(in_pos ? entry_px * (1.0 + i_t2_pct) : na, "T2 +30%",
-     color=color.new(color.orange, 40), linewidth=1, style=plot.style_stepline)
-plot(in_pos ? entry_px * (1.0 + i_t3_pct) : na, "T3 +60%",
-     color=color.new(color.purple, 40), linewidth=1, style=plot.style_stepline)
+t1_plot = in_pos ? entry_px * (1.0 + i_t1_pct) : na
+t2_plot = in_pos ? entry_px * (1.0 + i_t2_pct) : na
+t3_plot = in_pos ? entry_px * (1.0 + i_t3_pct) : na
+plot(t1_plot, "T1 +15%", color=color.new(color.yellow, 40), linewidth=1, style=plot.style_stepline)
+plot(t2_plot, "T2 +30%", color=color.new(color.orange, 40), linewidth=1, style=plot.style_stepline)
+plot(t3_plot, "T3 +60%", color=color.new(color.purple, 40), linewidth=1, style=plot.style_stepline)
 
 // Buy signal markers
-plotshape(core_pass and strategy.position_size == 0, "BUY",
-          style=shape.triangleup, location=location.belowbar,
-          color=color.green, textcolor=color.white,
-          text="BUY", size=size.normal)
+buy_sig = core_pass and strategy.position_size == 0
+plotshape(buy_sig, "BUY", style=shape.triangleup, location=location.belowbar, color=color.green, textcolor=color.white, text="BUY", size=size.normal)
 
 // A+ deep-curl star (overlaid on BUY bar)
-plotshape(core_pass and deep_curl and strategy.position_size == 0, "A+ Curl",
-          style=shape.star, location=location.belowbar,
-          color=color.lime, size=size.small)
+curl_sig = core_pass and deep_curl and strategy.position_size == 0
+plotshape(curl_sig, "A+ Curl", style=shape.star, location=location.belowbar, color=color.lime, size=size.small)
 
 // Exit marker
 exit_bar = strategy.position_size[1] > 0 and strategy.position_size == 0
-plotshape(exit_bar, "EXIT",
-          style=shape.triangledown, location=location.abovebar,
-          color=color.red, textcolor=color.white,
-          text="EXIT", size=size.normal)
+plotshape(exit_bar, "EXIT", style=shape.triangledown, location=location.abovebar, color=color.red, textcolor=color.white, text="EXIT", size=size.normal)
 
 // ═══════════════════════════ INFO TABLE (top-right) ═══════════════════════════
-var table info = table.new(position.top_right, 2, 9,
-                           bgcolor=color.new(color.black, 25),
-                           frame_color=color.gray, frame_width=1,
-                           border_color=color.new(color.gray, 60), border_width=1)
+var table info = table.new(position.top_right, 2, 9, bgcolor=color.new(color.black, 25), frame_color=color.gray, frame_width=1, border_color=color.new(color.gray, 60), border_width=1)
 
 if barstate.islast
-    // Soft score (RSI is the 6th point — never gates, just scores)
-    score = (ppst_bull    ? 1 : 0) +
-            (above_vwap   ? 1 : 0) +
-            (above_zlsma  ? 1 : 0) +
-            (stoch_hook   ? 1 : 0) +
-            (macd_pos     ? 1 : 0) +
-            (rsi_val > 50 ? 1 : 0)
+    s1 = ppst_bull    ? 1 : 0
+    s2 = above_vwap   ? 1 : 0
+    s3 = above_zlsma  ? 1 : 0
+    s4 = stoch_hook   ? 1 : 0
+    s5 = macd_pos     ? 1 : 0
+    s6 = rsi_val > 50 ? 1 : 0
+    score = s1 + s2 + s3 + s4 + s5 + s6
 
     c_g    = color.new(color.green,  0)
     c_r    = color.new(color.red,    0)
@@ -251,56 +244,46 @@ if barstate.islast
     c_lime = color.new(color.lime,   0)
     c_gray = color.new(color.gray,   0)
 
-    // Row 0 — CORE gate result
-    table.cell(info, 0, 0, "CORE",    text_color=c_gray)
-    table.cell(info, 1, 0, core_pass ? "▲ BUY" : "— wait",
-               text_color=core_pass ? c_g : c_gray)
+    core_txt = core_pass ? "▲ BUY" : "— wait"
+    core_clr = core_pass ? c_g : c_gray
+    table.cell(info, 0, 0, "CORE", text_color=c_gray)
+    table.cell(info, 1, 0, core_txt, text_color=core_clr)
 
-    // Row 1 — Grade
-    table.cell(info, 0, 1, "Grade",   text_color=c_gray)
-    table.cell(info, 1, 1, grade_str,
-               text_color=grade_str == "A+" ? c_lime :
-                          grade_str == "A"  ? c_g    :
-                          grade_str == "B"  ? c_y    : c_r)
+    grade_clr = grade_str == "A+" ? c_lime : grade_str == "A" ? c_g : grade_str == "B" ? c_y : c_r
+    table.cell(info, 0, 1, "Grade", text_color=c_gray)
+    table.cell(info, 1, 1, grade_str, text_color=grade_clr)
 
-    // Row 2 — Score
-    table.cell(info, 0, 2, "Score",   text_color=c_gray)
-    table.cell(info, 1, 2, str.tostring(score) + " / 6",
-               text_color=score >= 5 ? c_g : score >= 3 ? c_y : c_r)
+    score_clr = score >= 5 ? c_g : score >= 3 ? c_y : c_r
+    table.cell(info, 0, 2, "Score", text_color=c_gray)
+    table.cell(info, 1, 2, str.tostring(score) + " / 6", text_color=score_clr)
 
-    // Row 3 — PPST direction
-    table.cell(info, 0, 3, "PPST",    text_color=c_gray)
-    table.cell(info, 1, 3, ppst_bull ? "BULL" : "BEAR",
-               text_color=ppst_bull ? c_g : c_r)
+    ppst_clr = ppst_bull ? c_g : c_r
+    table.cell(info, 0, 3, "PPST", text_color=c_gray)
+    table.cell(info, 1, 3, ppst_bull ? "BULL" : "BEAR", text_color=ppst_clr)
 
-    // Row 4 — StochRSI K / D
-    table.cell(info, 0, 4, "K / D",   text_color=c_gray)
-    table.cell(info, 1, 4, str.tostring(math.round(k, 1)) + " / " +
-                           str.tostring(math.round(d, 1)),
-               text_color=stoch_hook ? c_g : c_r)
+    kd_txt = str.tostring(math.round(k, 1)) + " / " + str.tostring(math.round(d, 1))
+    kd_clr = stoch_hook ? c_g : c_r
+    table.cell(info, 0, 4, "K / D", text_color=c_gray)
+    table.cell(info, 1, 4, kd_txt, text_color=kd_clr)
 
-    // Row 5 — MACD histogram
-    table.cell(info, 0, 5, "MACD",    text_color=c_gray)
-    table.cell(info, 1, 5, str.tostring(math.round(hist, 4)),
-               text_color=hist > 0 ? c_g : c_r)
+    macd_clr = hist > 0 ? c_g : c_r
+    table.cell(info, 0, 5, "MACD", text_color=c_gray)
+    table.cell(info, 1, 5, str.tostring(math.round(hist, 4)), text_color=macd_clr)
 
-    // Row 6 — RSI (soft)
-    table.cell(info, 0, 6, "RSI",     text_color=c_gray)
-    table.cell(info, 1, 6, str.tostring(math.round(rsi_val, 1)) + " (soft)",
-               text_color=rsi_val > 50 ? c_g : c_r)
+    rsi_clr = rsi_val > 50 ? c_g : c_r
+    table.cell(info, 0, 6, "RSI", text_color=c_gray)
+    table.cell(info, 1, 6, str.tostring(math.round(rsi_val, 1)) + " (soft)", text_color=rsi_clr)
 
-    // Row 7 — VWAP gate
-    table.cell(info, 0, 7, "VWAP",    text_color=c_gray)
-    table.cell(info, 1, 7, above_vwap ? "✓ above" : "✗ below",
-               text_color=above_vwap ? c_g : c_r)
+    vwap_clr = above_vwap ? c_g : c_r
+    table.cell(info, 0, 7, "VWAP", text_color=c_gray)
+    table.cell(info, 1, 7, above_vwap ? "✓ above" : "✗ below", text_color=vwap_clr)
 
-    // Row 8 — Session label
-    sess_label = session.ispremarket             ? "Pre-mkt"   :
-                 is_midday and i_avoid_midday    ? "Midday ⛔"  :
-                 session.ismarket                ? "RTH"       :
-                 session.ispostmarket            ? "AH"        : "Closed"
-    sess_color = session.ispremarket or
-                 (session.ismarket and not is_midday) ? c_g : c_gray
-
+    sess_label = session.ispremarket ? "Pre-mkt"
+         : is_midday and i_avoid_midday ? "Midday ⛔"
+         : session.ismarket ? "RTH"
+         : session.ispostmarket ? "AH"
+         : "Closed"
+    sess_ok = session.ispremarket or (session.ismarket and not is_midday)
+    sess_color = sess_ok ? c_g : c_gray
     table.cell(info, 0, 8, "Session", text_color=c_gray)
     table.cell(info, 1, 8, sess_label, text_color=sess_color)
