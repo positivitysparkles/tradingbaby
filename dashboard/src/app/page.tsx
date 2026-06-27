@@ -43,11 +43,24 @@ type Trade = {
   grade: string | null
   catalyst: string | null
   session: string | null
+  setup: string | null
+  dna_score: number | null
+  momentum_5: number | null
+  momentum_10: number | null
+  vwap_dist_pct: number | null
+  zlsma_dist_pct: number | null
+  k_reset_depth: number | null
+  vol_accel: number | null
+  range_compression: number | null
+  day_range_pct: number | null
+  rsi_entry: number | null
+  macd_slope: number | null
+  mfe_pct: number | null
+  mae_pct: number | null
+  bars_held: number | null
 }
 
-// Closed trades before the bot stops "learning" and starts "tightening"
-// (mirrors LEARN_THRESHOLD in bot/edge config).
-const LEARN_THRESHOLD = 30
+const LEARN_THRESHOLD = 50
 const GRADES = ['A+', 'A', 'B', 'C'] as const
 const SESSIONS = ['premarket', 'open', 'midday', 'power hour', 'after-hours'] as const
 
@@ -124,6 +137,30 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
+function SetupBadge({ setup }: { setup: string | null }) {
+  if (!setup) return null
+  const isB = setup === 'B'
+  return (
+    <span style={{
+      background: isB ? 'rgba(231,199,156,0.12)' : 'rgba(255,95,162,0.08)',
+      color: isB ? C.gold : C.pinkDim,
+      border: `1px solid ${isB ? 'rgba(231,199,156,0.25)' : 'rgba(255,95,162,0.15)'}`,
+    }} className="text-[9px] px-1.5 py-0.5 rounded font-semibold tracking-wider uppercase mono">
+      {isB ? 'B' : 'A'}
+    </span>
+  )
+}
+
+function DnaScore({ score }: { score: number | null }) {
+  if (score === null || score === undefined) return null
+  const color = score >= 65 ? C.win : score >= 40 ? C.gold : C.loss
+  return (
+    <span style={{ color }} className="text-[10px] mono font-semibold">
+      {score}
+    </span>
+  )
+}
+
 function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
     <div style={{ background: C.surface, border: `1px solid ${C.line}`, boxShadow: '0 0 0 1px rgba(255,95,162,0.06), 0 18px 50px rgba(0,0,0,0.5)' }}
@@ -191,6 +228,24 @@ export default function Dashboard() {
   const avgWin  = winners.length ? winners.reduce((s, t) => s + (t.realized_pnl ?? 0), 0) / winners.length : 0
   const avgLoss = losers.length ? losers.reduce((s, t) => s + (t.realized_pnl ?? 0), 0) / losers.length : 0
   const goalFuel = Math.max(0, netPnl)
+
+  // Setup A vs B
+  const closedA = closed.filter(t => (t.setup ?? 'A') === 'A')
+  const closedB = closed.filter(t => t.setup === 'B')
+  const openA   = open.filter(t => (t.setup ?? 'A') === 'A')
+  const openB   = open.filter(t => t.setup === 'B')
+  const winRateA = closedA.length ? Math.round(closedA.filter(t => (t.realized_pnl ?? 0) > 0).length / closedA.length * 100) : 0
+  const winRateB = closedB.length ? Math.round(closedB.filter(t => (t.realized_pnl ?? 0) > 0).length / closedB.length * 100) : 0
+  const pnlA = closedA.reduce((s, t) => s + (t.realized_pnl ?? 0), 0)
+  const pnlB = closedB.reduce((s, t) => s + (t.realized_pnl ?? 0), 0)
+
+  // DNA stats
+  const dnaScored = closed.filter(t => t.dna_score !== null && t.dna_score !== undefined)
+  const avgDna    = dnaScored.length ? dnaScored.reduce((s, t) => s + (t.dna_score ?? 0), 0) / dnaScored.length : null
+  const dnaWinners = dnaScored.filter(t => (t.realized_pnl ?? 0) > 0)
+  const dnaLosers  = dnaScored.filter(t => (t.realized_pnl ?? 0) < 0)
+  const avgDnaWin  = dnaWinners.length ? dnaWinners.reduce((s, t) => s + (t.dna_score ?? 0), 0) / dnaWinners.length : null
+  const avgDnaLoss = dnaLosers.length ? dnaLosers.reduce((s, t) => s + (t.dna_score ?? 0), 0) / dnaLosers.length : null
 
   // Cumulative P&L chart
   const byDate: Record<string, number> = {}
@@ -324,6 +379,78 @@ export default function Dashboard() {
         <Kpi label="Live" value={`${open.length}`} color={C.pink}
           sub={open.length ? open.map(t => t.ticker).join(', ') : 'flat'} />
       </div>
+
+      {/* ── Dual Strategy + DNA ── */}
+      {(closedB.length > 0 || dnaScored.length > 0) && (
+        <div className="grid md:grid-cols-2 gap-4 mb-8">
+          {/* Setup A vs B */}
+          <Card className="p-5">
+            <Label>Dual Strategy</Label>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <SetupBadge setup="A" />
+                  <span className="text-sm" style={{ color: C.ink }}>Curl if Flow</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs mono" style={{ color: winRateA >= 50 ? C.win : C.loss }}>{winRateA}% win</span>
+                  <span className="text-xs mono" style={{ color: pnlA >= 0 ? C.win : C.loss }}>{pnlA >= 0 ? '+' : ''}${pnlA.toFixed(2)}</span>
+                  <span className="text-[10px] mono" style={{ color: C.inkSoft }}>{closedA.length} closed · {openA.length} open</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <SetupBadge setup="B" />
+                  <span className="text-sm" style={{ color: C.ink }}>Trend Rider</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  {closedB.length > 0 ? (
+                    <>
+                      <span className="text-xs mono" style={{ color: winRateB >= 50 ? C.win : C.loss }}>{winRateB}% win</span>
+                      <span className="text-xs mono" style={{ color: pnlB >= 0 ? C.win : C.loss }}>{pnlB >= 0 ? '+' : ''}${pnlB.toFixed(2)}</span>
+                      <span className="text-[10px] mono" style={{ color: C.inkSoft }}>{closedB.length} closed · {openB.length} open</span>
+                    </>
+                  ) : (
+                    <span className="text-[10px] mono" style={{ color: C.inkSoft }}>{openB.length > 0 ? `${openB.length} open` : 'collecting data'}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {/* DNA Score */}
+          <Card className="p-5">
+            <Label>Chart DNA</Label>
+            {dnaScored.length > 0 ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm" style={{ color: C.ink }}>Avg DNA Score</span>
+                  <span className="text-2xl font-bold mono" style={{ color: (avgDna ?? 50) >= 55 ? C.win : (avgDna ?? 50) >= 45 ? C.gold : C.loss }}>
+                    {avgDna?.toFixed(0)}<span className="text-sm font-normal" style={{ color: C.inkSoft }}>/100</span>
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span style={{ color: C.inkSoft }}>Winners avg</span>
+                  <span className="mono font-semibold" style={{ color: C.win }}>{avgDnaWin !== null ? avgDnaWin.toFixed(0) : '—'}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span style={{ color: C.inkSoft }}>Losers avg</span>
+                  <span className="mono font-semibold" style={{ color: C.loss }}>{avgDnaLoss !== null ? avgDnaLoss.toFixed(0) : '—'}</span>
+                </div>
+                <p className="text-xs" style={{ color: C.inkSoft }}>
+                  {avgDnaWin !== null && avgDnaLoss !== null && avgDnaWin > avgDnaLoss + 5
+                    ? `DNA separates winners (+${(avgDnaWin - avgDnaLoss).toFixed(0)}pts). Pattern learning is working.`
+                    : dnaScored.length < 10
+                      ? `${dnaScored.length} scored trades — need more data for pattern separation.`
+                      : 'DNA not yet separating winners from losers. More data needed.'}
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm" style={{ color: C.inkSoft }}>No DNA-scored trades yet. Seeded with 26k backtested patterns.</p>
+            )}
+          </Card>
+        </div>
+      )}
 
       {/* ── Goals ── */}
       <Card className="p-5 mb-8">
@@ -466,7 +593,7 @@ export default function Dashboard() {
         </div>
 
         <div className="grid md:grid-cols-2 gap-6 text-sm">
-          {/* By grade */}
+          {/* By grade — show setup split if B exists */}
           <div>
             <p style={{ color: C.ink }} className="text-xs font-semibold tracking-wide uppercase mb-3 mono">Win Rate by Grade</p>
             {gradeStats.length ? gradeStats.map(s => (
@@ -511,7 +638,7 @@ export default function Dashboard() {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ borderBottom: `1px solid ${C.line}` }}>
-                {['Date', 'Ticker', 'Grade', 'Status', 'Entry', 'Exit', 'P&L', 'Setup', 'K/D', 'Vol', 'Note'].map(h => (
+                {['Date', 'Ticker', 'Setup', 'Grade', 'DNA', 'Status', 'Entry', 'Exit', 'P&L', 'Score', 'K/D', 'Vol', 'Note'].map(h => (
                   <th key={h} style={{ color: C.inkSoft }} className="px-4 py-2 text-left text-[10px] tracking-[0.15em] uppercase mono">{h}</th>
                 ))}
               </tr>
@@ -526,7 +653,9 @@ export default function Dashboard() {
                   <td className="px-4 py-3 font-semibold" style={{ color: C.ink }}>
                     {t.ticker}{t.deep_curl && <span style={{ color: C.pink }} className="ml-1 text-xs">⭐</span>}
                   </td>
+                  <td className="px-4 py-3"><SetupBadge setup={t.setup} /></td>
                   <td className="px-4 py-3"><GradeBadge grade={t.grade} /></td>
+                  <td className="px-4 py-3"><DnaScore score={t.dna_score} /></td>
                   <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
                   <td className="px-4 py-3 mono" style={{ color: C.ink }}>${t.entry_price?.toFixed(3)}</td>
                   <td className="px-4 py-3 mono" style={{ color: C.inkSoft }}>{t.exit_price ? `$${t.exit_price.toFixed(3)}` : '—'}</td>
@@ -540,7 +669,7 @@ export default function Dashboard() {
                 </tr>
               ))}
               {!loading && trades.length === 0 && (
-                <tr><td colSpan={11} className="px-4 py-12 text-center font-display text-lg" style={{ color: C.inkSoft }}>
+                <tr><td colSpan={13} className="px-4 py-12 text-center font-display text-lg" style={{ color: C.inkSoft }}>
                   No trades in the last {range} days. The patient win.
                 </td></tr>
               )}
@@ -556,7 +685,9 @@ export default function Dashboard() {
                 <div className="flex items-center gap-2">
                   <span className="font-semibold" style={{ color: C.ink }}>{t.ticker}</span>
                   {t.deep_curl && <span style={{ color: C.pink }}>⭐</span>}
+                  <SetupBadge setup={t.setup} />
                   <GradeBadge grade={t.grade} />
+                  {t.dna_score !== null && <DnaScore score={t.dna_score} />}
                   <StatusBadge status={t.status} />
                 </div>
                 <span className="font-semibold mono" style={pnlStyle(t.realized_pnl)}>
