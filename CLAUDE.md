@@ -170,6 +170,7 @@ bot/bot.py  (runs every 1 min, 2am–4pm MT / 4am–6pm ET — all-day observati
 | `bot/edge.py` | Edge Engine — A+/A/B/C grading, grade-scaled sizing, learn→tighten gate, K-range bucketing, Chart DNA mining + scoring; `grade_setup_b()` for Setup B grading |
 | `bot/add_ticker.py` | `python bot/add_ticker.py AHMA JRSH` |
 | `bot/status.py` | Quick positions/P&L check |
+| `bot/backtest.py` | Historical backtester — replays 5m bars through entry/exit logic, seeds DNA profiles |
 
 ### Edge Engine (self-improving, caged)
 Every entry is graded **A+/A/B/C**. Sizing is **flat $100/trade** during the learning phase (all grades equal — gathering data). The bot **learns then tightens**: it takes every valid signal until `LEARN_THRESHOLD` (50) closed trades exist, then auto-buys only grades proven to win (≥`EDGE_WINRATE_FLOOR` over ≥`EDGE_MIN_SAMPLE`). Edge profile buckets by: grade, session, catalyst, deep_curl, vol ratio, K-at-entry range. Recomputed on startup + daily audit, cached to `data/edge_profile.json` + `w118_edge` (Supabase). Setup B has its own independent edge profile and learning phase, starting at 0 closed trades.
@@ -197,6 +198,17 @@ Every entry is graded **A+/A/B/C**. Sizing is **flat $100/trade** during the lea
 
 **Supabase:** 11 new columns on `w118_trades` (10 features + `dna_score`). Run the ALTER TABLE statements from `supabase/schema.sql` in the SQL Editor.
 
+**DNA Evolution (intraday pattern tracking):** At entry, DNA snapshot is saved to `_entry_dna[ticker]`. At exit, current DNA is recomputed and the drift (exit - entry) is logged to `data/dna_drift.json`. The daily self-audit compares drift patterns between winners and losers — e.g. "winners' momentum_5 drifts +3.2 vs losers -1.1" reveals which chart shapes deteriorate vs accelerate during the hold.
+
+### Historical Backtester (added 2026-06-27)
+`python bot/backtest.py [TICKER...] [--days N] [--seed]`
+- Uses yfinance (free, no API key) for 5m bars (max 60 days back)
+- Replays bars through the exact same `check_all_entry()` / `check_setup_b_entry()` + `check_exit_signal()` logic
+- Simulates each trade: -8% stop, trailing stop (T1→breakeven, T2→10% trail), signal exits, T3 target
+- Computes DNA at entry + snapshots every 10 bars during hold for evolution analysis
+- `--seed` saves DNA profile to `data/backtest_dna_profile.json` for the live bot to bootstrap from
+- With no tickers given, uses all tickers from `data/trades-parsed.json`
+
 ### Key data files (runtime, gitignored)
 | File | Contents |
 |------|----------|
@@ -204,6 +216,10 @@ Every entry is graded **A+/A/B/C**. Sizing is **flat $100/trade** during the lea
 | `data/exit_pending.json` | In-flight exit orders (restart-safe dedup) |
 | `data/watch_sent.json` | WATCH alert throttle + outcome tracking |
 | `data/edge_profile.json` | Edge Engine cached profile |
+| `data/entry_dna.json` | Entry-time DNA snapshots for open positions (restart-safe) |
+| `data/dna_drift.json` | Accumulated entry→exit DNA drift for all closed trades |
+| `data/backtest_results.json` | Latest backtest output (trades + DNA analysis) |
+| `data/backtest_dna_profile.json` | Backtester-seeded DNA pattern profile (--seed flag) |
 
 ### Quick start
 ```bash
@@ -307,9 +323,10 @@ print("✅ Drive ready")
 | Setup B "Trend Rider" dual-strategy architecture | #91 | 2026-06-27 |
 | Learning threshold raised 30→50 (both setups) | #92 | 2026-06-27 |
 | Chart DNA pattern learning (10 features + mining + scoring) | #93 | 2026-06-27 |
+| Historical backtester + DNA evolution tracking | — | 2026-06-27 |
 
 ## Pending features (roadmap)
-- [ ] Historical backtesting — run `check_all_entry()` on 6-month bar history for our early-bird tickers. Needs Polygon.io (~$30/mo) or Alpaca historical 5m data. See June-25 conversation.
+- [x] Historical backtesting — `python bot/backtest.py` uses yfinance 5m bars (60 days, free). Done 2026-06-27.
 - [ ] Short selling — Phase 2 after longs hit 60%+ win rate. Small-caps have hard-to-borrow issues.
 - [ ] Multi-agent coworker — research agent (backtesting), pattern agent (nightly Supabase mining), risk monitor (parallel to bot).
 

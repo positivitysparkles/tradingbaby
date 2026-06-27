@@ -121,6 +121,8 @@ MANUAL_WL    = DATA_DIR / "watchlist.json"
 EXIT_PENDING    = DATA_DIR / "exit_pending.json"    # survives restarts — no re-alert on stuck exits
 WATCH_SENT_FILE = DATA_DIR / "watch_sent.json"   # survives restarts — no re-alert on same WATCH
 TRAIL_FILE      = DATA_DIR / "trail_state.json"  # survives restarts — trailing stop state per ticker
+ENTRY_DNA_FILE  = DATA_DIR / "entry_dna.json"   # entry-time DNA snapshot per open ticker (restart-safe)
+DNA_DRIFT_FILE  = DATA_DIR / "dna_drift.json"   # accumulated entry→exit DNA drift for closed trades
 
 # ── Alpaca REST helpers ───────────────────────────────────────────────────────
 
@@ -306,6 +308,52 @@ def _load_trail_state():
             log.info(f"[trail] restored {len(_trail)} ticker(s): {list(_trail)}")
     except Exception:
         _trail = {}
+
+_entry_dna: dict = {}  # ticker → DNA snapshot dict at buy time
+
+def _save_entry_dna():
+    try:
+        ENTRY_DNA_FILE.write_text(json.dumps(_entry_dna))
+    except Exception:
+        pass
+
+def _load_entry_dna():
+    global _entry_dna
+    try:
+        if ENTRY_DNA_FILE.exists():
+            _entry_dna = json.loads(ENTRY_DNA_FILE.read_text())
+            log.info(f"[dna] restored entry DNA for {len(_entry_dna)} ticker(s)")
+    except Exception:
+        _entry_dna = {}
+
+def _save_dna_drift(ticker: str, entry_dna: dict, exit_dna: dict,
+                    pct_return: float, exit_reason: str, setup: str = "A"):
+    drift = {}
+    for feat in ["momentum_5", "momentum_10", "vwap_dist_pct", "zlsma_dist_pct",
+                 "k_reset_depth", "vol_accel", "range_compression", "day_range_pct",
+                 "rsi_entry", "macd_slope"]:
+        ev = entry_dna.get(feat)
+        xv = exit_dna.get(feat)
+        if ev is not None and xv is not None:
+            drift[feat] = round(xv - ev, 4)
+    record = {
+        "ticker": ticker,
+        "setup": setup,
+        "entry_dna": {k: v for k, v in entry_dna.items() if v is not None},
+        "exit_dna": {k: v for k, v in exit_dna.items() if v is not None},
+        "drift": drift,
+        "pct_return": pct_return,
+        "exit_reason": exit_reason,
+        "ts": datetime.now(UTC).isoformat(),
+    }
+    try:
+        existing = []
+        if DNA_DRIFT_FILE.exists():
+            existing = json.loads(DNA_DRIFT_FILE.read_text())
+        existing.append(record)
+        DNA_DRIFT_FILE.write_text(json.dumps(existing, indent=2))
+    except Exception as e:
+        log.warning(f"[dna-drift] save failed: {e}")
 
 def tg(msg: str):
     try:
@@ -495,6 +543,23 @@ def sb_close_trade(ticker: str, exit_price: float, exit_reason: str, entry_price
                 patch["bars_held"] = len(trade_bars)
     except Exception:
         pass
+
+    # DNA drift — compare entry DNA to exit DNA for pattern evolution tracking
+    try:
+        if ticker in _entry_dna:
+            exit_bars = get_bars(ticker, limit=100)
+            if exit_bars and len(exit_bars) >= 20:
+                exit_dna = compute_chart_dna(exit_bars)
+                if exit_dna:
+                    pct = ((exit_price - ep) / ep * 100) if ep else 0.0
+                    setup = _setup_map.get(ticker, "A")
+                    _save_dna_drift(ticker, _entry_dna[ticker], exit_dna, round(pct, 2),
+                                   exit_reason, setup)
+            _entry_dna.pop(ticker, None)
+            _save_entry_dna()
+    except Exception as e:
+        log.warning(f"[dna-drift] {ticker}: {e}")
+        _entry_dna.pop(ticker, None)
 
     if row_id:
         _sb("PATCH", f"/rest/v1/w118_trades?id=eq.{row_id}", json=patch)
@@ -822,6 +887,10 @@ def execute_buy(ticker: str, price: float, info: dict):
     }
     _save_trail_state()
 
+    if info.get("chart_dna"):
+        _entry_dna[ticker] = info["chart_dna"]
+        _save_entry_dna()
+
     setup_label = "Setup B" if is_b else "Setup A"
     dna_line = ""
     if info.get("dna_score") is not None:
@@ -1139,6 +1208,28 @@ def _self_audit_insights() -> str:
                          f"{combo['win_rate']:.0f}% (n={combo['count']})")
         if not (_dna_profile.get("sweet_spots") or _dna_profile.get("danger_zones")):
             lines.append(f"  collecting data ({_dna_profile['dna_trades']} trades with DNA)")
+
+    # DNA evolution — how features drift from entry to exit (winners vs losers)
+    try:
+        if DNA_DRIFT_FILE.exists():
+            drift_data = json.loads(DNA_DRIFT_FILE.read_text())
+            if len(drift_data) >= 3:
+                w_drifts = [d["drift"] for d in drift_data if d.get("pct_return", 0) > 0 and d.get("drift")]
+                l_drifts = [d["drift"] for d in drift_data if d.get("pct_return", 0) <= 0 and d.get("drift")]
+                if w_drifts and l_drifts:
+                    lines.append("")
+                    lines.append(f"📈 DNA evolution ({len(drift_data)} exits tracked):")
+                    for feat in ["momentum_5", "vol_accel", "range_compression", "rsi_entry", "macd_slope"]:
+                        wv = [d[feat] for d in w_drifts if feat in d]
+                        lv = [d[feat] for d in l_drifts if feat in d]
+                        if wv and lv:
+                            aw = sum(wv) / len(wv)
+                            al = sum(lv) / len(lv)
+                            if abs(aw - al) > 0.5:
+                                arrow = "▲" if aw > al else "▼"
+                                lines.append(f"  {feat}: W drift {aw:+.1f} vs L drift {al:+.1f} {arrow}")
+    except Exception:
+        pass
 
     if not lines:
         return ""
@@ -1928,6 +2019,7 @@ def main():
 
     # Reload trailing stop state so a VPS restart doesn't lose T1/T2 levels mid-trade.
     _load_trail_state()
+    _load_entry_dna()
 
     # Reconstruct _setup_map for open positions from Supabase (which positions are Setup A vs B)
     if _SB_ENABLED:
