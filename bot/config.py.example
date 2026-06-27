@@ -52,6 +52,12 @@ SETUP_B_DOLLARS_MAX       = 100
 SETUP_B_LEARN_THRESHOLD   = 50       # closed Setup B trades before tightening
 SETUP_B_MTF_ENABLED       = True     # fetch 15m/1H bars for MTF grade bonus
 
+# ── Chart DNA — pattern learning from chart shape at entry ───────────────────
+# 10 numerical features (momentum, VWAP distance, range compression, etc.) are
+# captured at every entry, mined for winning patterns during the daily audit,
+# and scored 0-100 for new entries. Advisory-only until DNA_GATE_ENABLED = True.
+DNA_GATE_ENABLED          = False    # when True, low DNA scores can block auto-buy
+
 # Scanner filters (W118 universe — matches Colab scanner exactly)
 MIN_PRICE         = 0.10
 MAX_PRICE         = 15.00     # matches TradingView Yassss screen

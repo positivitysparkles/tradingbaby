@@ -47,10 +47,10 @@ except ImportError:
     SUPABASE_URL = SUPABASE_KEY = ""
     _SB_ENABLED = False
 from indicators import (check_all_entry, check_exit_signal, is_fresh_1m, catalyst_score,
-                        check_setup_b_entry, check_setup_b_exit)
+                        check_setup_b_entry, check_setup_b_exit, compute_chart_dna)
 from edge import (
     grade_setup, grade_setup_b, size_for_grade, compute_edge_profile,
-    should_autobuy, phase_for, edge_summary,
+    should_autobuy, phase_for, edge_summary, mine_chart_patterns, chart_dna_score,
 )
 
 # ── Edge Engine config ────────────────────────────────────────────────────────
@@ -101,6 +101,7 @@ QUIET_ALERTS        = getattr(_cfg, "QUIET_ALERTS", True)
 # AVOID_MIDDAY default changed True after data showed midday = -$23/15 trades (June-25 audit).
 # Override in config.py if needed: AVOID_MIDDAY = False
 AVOID_MIDDAY        = getattr(_cfg, "AVOID_MIDDAY", True)
+DNA_GATE_ENABLED    = getattr(_cfg, "DNA_GATE_ENABLED", False)  # advisory-only during learning
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -354,6 +355,7 @@ def _sb(method: str, path: str, **kwargs) -> dict | list | None:
 EDGE_CACHE     = DATA_DIR / "edge_profile.json"
 _edge_profile: dict = {}    # latest per-bucket win-rate map (from compute_edge_profile)
 _edge_n_closed: int = 0     # how many closed trades the profile is built on
+_dna_profile: dict  = {}    # Chart DNA pattern profile (sweet spots, danger zones, combos)
 
 
 def refresh_edge() -> str:
@@ -362,7 +364,7 @@ def refresh_edge() -> str:
     cache locally, and snapshot to w118_edge for the dashboard.
     Called on startup and in the daily audit. Returns the Setup A one-line summary.
     """
-    global _edge_profile, _edge_n_closed, _edge_profile_b, _edge_n_closed_b
+    global _edge_profile, _edge_n_closed, _edge_profile_b, _edge_n_closed_b, _dna_profile
     rows = _sb("GET", "/rest/v1/w118_trades?status=in.(closed,stopped)&select=*&limit=2000") or []
     closed = [r for r in rows if r.get("realized_pnl") is not None]
 
@@ -380,18 +382,36 @@ def refresh_edge() -> str:
     phase_b   = phase_for(_edge_n_closed_b, SETUP_B_LEARN_THRESHOLD)
     summary_b = edge_summary(_edge_profile_b, _edge_n_closed_b, phase_b)
 
+    # Chart DNA pattern mining (all closed trades, both setups)
     try:
-        EDGE_CACHE.write_text(json.dumps({
+        _dna_profile = mine_chart_patterns(closed)
+        dna_n = _dna_profile.get("dna_trades", 0)
+        if dna_n:
+            log.info(f"[dna] mined {dna_n} trades — "
+                     f"{len(_dna_profile.get('sweet_spots', []))} sweet spots, "
+                     f"{len(_dna_profile.get('danger_zones', []))} danger zones")
+    except Exception as e:
+        log.warning(f"[dna] pattern mining failed: {e}")
+        _dna_profile = {}
+
+    try:
+        edge_data = {
             "computed_at": datetime.now(UTC).isoformat(),
             "n_closed": _edge_n_closed, "phase": phase_a,
             "summary": summary, "profile": _edge_profile,
-        }, indent=2))
+        }
+        if _dna_profile:
+            edge_data["dna_profile"] = _dna_profile
+        EDGE_CACHE.write_text(json.dumps(edge_data, indent=2))
     except Exception:
         pass
 
+    sb_profile = dict(_edge_profile)
+    if _dna_profile:
+        sb_profile["dna_profile"] = _dna_profile
     _sb("POST", "/rest/v1/w118_edge", json={
         "n_closed": _edge_n_closed, "phase": phase_a,
-        "summary": summary, "profile": _edge_profile,
+        "summary": summary, "profile": sb_profile,
     })
     log.info(f"[edge] A: {summary}")
     if SETUP_B_ENABLED:
@@ -426,6 +446,14 @@ def sb_log_trade(ticker: str, price: float, qty: int, info: dict):
         "blockers":    info.get("fail"),
         "setup":       info.get("setup", "A"),
     }
+    dna = info.get("chart_dna") or {}
+    if dna:
+        for col in ("momentum_5", "momentum_10", "vwap_dist_pct", "zlsma_dist_pct",
+                     "k_reset_depth", "vol_accel", "range_compression", "day_range_pct",
+                     "rsi_entry", "macd_slope", "dna_score"):
+            v = dna.get(col)
+            if v is not None:
+                row[col] = v
     result = _sb("POST", "/rest/v1/w118_trades", json=row)
     if result and isinstance(result, list) and result:
         _sb_row_id[ticker] = result[0].get("id")
@@ -795,12 +823,15 @@ def execute_buy(ticker: str, price: float, info: dict):
     _save_trail_state()
 
     setup_label = "Setup B" if is_b else "Setup A"
+    dna_line = ""
+    if info.get("dna_score") is not None:
+        dna_line = f"\n🧬 DNA: {info['dna_score']}/100 · {info.get('dna_reason', '')}"
     if is_b:
         msg = (
             f"<b>🟢 AUTO BUY — {html.escape(ticker)}</b>  <b>[{grade}]</b>  [{setup_label}]\n"
             f"Entry: ${price:.4f}  ×{qty} shares (~${qty*price:.0f})  ·  grade {grade}\n"
             f"MACD(12,26,9) {'▲rising' if info.get('macd_rising') else '▽'}  RSI {info.get('rsi', '?')}  Vol {info.get('vol_ratio', '?')}x\n"
-            f"MTF: 15m {'✓' if info.get('mtf_15m') else '✗'}  1H {'✓' if info.get('mtf_1h') else '✗'}\n"
+            f"MTF: 15m {'✓' if info.get('mtf_15m') else '✗'}  1H {'✓' if info.get('mtf_1h') else '✗'}{dna_line}\n"
             f"🛑 Stop: ${stop}  (-8%) — {stop_note}\n"
             f"🎯 T1: ${t1}  (+15%)  ×{t1_qty} — {'✓' if res['T1'] else '❌ FAILED'}\n"
             f"   T2: ${t2}  (+30%)  ×{t2_qty} — {'✓' if res['T2'] else '❌ FAILED'}\n"
@@ -811,7 +842,7 @@ def execute_buy(ticker: str, price: float, info: dict):
             f"<b>🟢 AUTO BUY — {html.escape(ticker)}</b>  <b>[{grade}]</b>  [{setup_label}]{' ⭐ DEEP CURL' if info.get('deep_curl') else ''}\n"
             f"Entry: ${price:.4f}  ×{qty} shares (~${qty*price:.0f})  ·  grade {grade}\n"
             f"K={info['k']}↑  D={info['d']}  MACD(5,10,16)={'▲' if info['macd_hist'] > 0 else '▽'}  Vol {info['vol_ratio']}x\n"
-            f"VWAP {_vwap_tag(info)}  ·  ZLSMA ${info.get('zlsma')}\n"
+            f"VWAP {_vwap_tag(info)}  ·  ZLSMA ${info.get('zlsma')}{dna_line}\n"
             f"🛑 Stop: ${stop}  (-8%) — {stop_note}\n"
             f"🎯 T1: ${t1}  (+15%)  ×{t1_qty} — {'✓' if res['T1'] else '❌ FAILED'}\n"
             f"   T2: ${t2}  (+30%)  ×{t2_qty} — {'✓' if res['T2'] else '❌ FAILED'}\n"
@@ -1092,6 +1123,22 @@ def _self_audit_insights() -> str:
             pnl_b = sum(float(t.get("realized_pnl", 0)) for t in setup_b)
             lines.append(f"Setup A: {len(setup_a)} trades · {wr_a:.0f}% win · ${pnl_a:+.2f}")
             lines.append(f"Setup B: {len(setup_b)} trades · {wr_b:.0f}% win · ${pnl_b:+.2f}")
+
+    # Chart DNA pattern insights
+    if _dna_profile and _dna_profile.get("dna_trades", 0) >= 3:
+        lines.append("")
+        lines.append("🧬 Chart DNA patterns:")
+        for spot in (_dna_profile.get("sweet_spots") or [])[:3]:
+            lines.append(f"  ✅ {spot['feature']}={spot['bucket']}: "
+                         f"{spot['win_rate']:.0f}% (+{spot['lift']:.0f}pp, n={spot['count']})")
+        for zone in (_dna_profile.get("danger_zones") or [])[:3]:
+            lines.append(f"  ⚠️ {zone['feature']}={zone['bucket']}: "
+                         f"{zone['win_rate']:.0f}% ({zone['lift']:.0f}pp, n={zone['count']})")
+        for combo in (_dna_profile.get("top_combos") or [])[:2]:
+            lines.append(f"  🔗 {combo['features']}: {combo['combo']} → "
+                         f"{combo['win_rate']:.0f}% (n={combo['count']})")
+        if not (_dna_profile.get("sweet_spots") or _dna_profile.get("danger_zones")):
+            lines.append(f"  collecting data ({_dna_profile['dna_trades']} trades with DNA)")
 
     if not lines:
         return ""
@@ -1649,6 +1696,15 @@ def scan():
             info["catalyst"] = catalyst_tier
             info["session"]  = _session_label()
 
+            # Chart DNA — capture chart shape at entry for pattern learning
+            dna = compute_chart_dna(bars)
+            if dna:
+                dna_sc, dna_reason = chart_dna_score(dna, _dna_profile)
+                dna["dna_score"] = dna_sc
+                info["chart_dna"]  = dna
+                info["dna_score"]  = dna_sc
+                info["dna_reason"] = dna_reason
+
             # Can we actually auto-buy? Re-check live caps each pass so a buy made
             # earlier in THIS loop correctly flips later passes to alert-only.
             if ticker in _bought_today:
@@ -1733,6 +1789,15 @@ def scan():
                     info_b["grade"]    = grade_b
                     info_b["catalyst"] = catalyst_tier_b
                     info_b["session"]  = _session_label()
+
+                    # Chart DNA for Setup B
+                    dna_b = compute_chart_dna(bars)
+                    if dna_b:
+                        dna_sc_b, dna_reason_b = chart_dna_score(dna_b, _dna_profile)
+                        dna_b["dna_score"] = dna_sc_b
+                        info_b["chart_dna"]  = dna_b
+                        info_b["dna_score"]  = dna_sc_b
+                        info_b["dna_reason"] = dna_reason_b
 
                     cur_held = get_held()
                     n_b_open = sum(1 for t, s in _setup_map.items() if s == "B" and t in cur_held)
