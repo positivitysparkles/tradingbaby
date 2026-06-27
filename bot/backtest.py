@@ -9,14 +9,18 @@ Usage:
   python bot/backtest.py AHMA CRVO CDT         # specific tickers only
   python bot/backtest.py --days 30             # last 30 days
   python bot/backtest.py --seed                # save DNA profile for live bot
+  python bot/backtest.py --discover            # find 200-500 recent small-cap runners
+  python bot/backtest.py --discover --seed     # discover + seed DNA profile
 """
 
 import json
+import re
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+import requests
 import yfinance as yf
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -72,6 +76,136 @@ def fetch_daily(ticker: str) -> list | None:
         ]
     except Exception:
         return None
+
+
+def discover_runners(max_price: float = 15.0, pages: int = 10) -> list:
+    """Find small-cap stocks under max_price that had big moves recently via finviz."""
+    headers = {
+        "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                       "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
+    }
+    tickers = set()
+    print(f"Discovering small-cap runners under ${max_price:.0f}...")
+
+    for page in range(pages):
+        offset = page * 20 + 1
+        url = (f"https://finviz.com/screener.ashx?v=111"
+               f"&f=cap_micro,sh_price_u{max_price:.0f},ta_change_u20"
+               f"&ft=4&o=-change&r={offset}")
+        try:
+            r = requests.get(url, headers=headers, timeout=15)
+            if not r.ok:
+                break
+            found = re.findall(r'class="screener-link-primary"[^>]*>([A-Z]{1,5})</a>', r.text)
+            if not found:
+                break
+            tickers.update(found)
+            print(f"  Page {page + 1}: found {len(found)} tickers (total: {len(tickers)})")
+            time.sleep(1.5)
+        except Exception as e:
+            print(f"  Page {page + 1} failed: {e}")
+            break
+
+    # Also try Yahoo Finance trending/gainers for broader coverage
+    try:
+        from yfinance import Tickers
+        for screener_key in ["day_gainers", "most_actives"]:
+            try:
+                screener = yf.Screener()
+                screener.set_default_body({"query": {"operator": "and", "operands": [
+                    {"operator": "lt", "operands": ["regularmarketprice", max_price]},
+                    {"operator": "gt", "operands": ["regularmarketchangepercent", 10]},
+                ]}})
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    if not tickers:
+        # Fallback: scan a curated list of known small-cap runner tickers
+        print("  Finviz unavailable, using expanded universe from yfinance...")
+        fallback = _scan_yfinance_gainers(max_price)
+        tickers.update(fallback)
+
+    print(f"Discovered {len(tickers)} unique tickers\n")
+    return sorted(tickers)
+
+
+def _scan_yfinance_gainers(max_price: float = 15.0) -> set:
+    """Scan daily bars of a broad small-cap list to find recent 10%+ movers."""
+    broad_list = []
+    # Pull tickers from multiple NASDAQ/OTC small-cap ETF holdings as a seed universe
+    seed_tickers_url = [
+        "ABTS", "ACHR", "ACRV", "AEMD", "AEVA", "AGFY", "AHMA", "AIMD", "AIRI",
+        "AITX", "AIXI", "AKAN", "AKTS", "ALBT", "ALLR", "ALTO", "ALVR", "AMST",
+        "AMPS", "ANGH", "ANNA", "ANTE", "APDN", "APLT", "APRE", "ARTL", "ASNS",
+        "ASTS", "ATAI", "ATER", "ATGL", "ATPC", "AUVI", "AVDL", "AVTE", "AYRO",
+        "BACK", "BCAN", "BCDA", "BEAT", "BENF", "BFRG", "BGXX", "BHAT", "BIAF",
+        "BIMI", "BJDX", "BLBX", "BLFY", "BLIN", "BLNK", "BNAI", "BNED", "BNOX",
+        "BNTX", "BOLT", "BOXL", "BPTS", "BREZ", "BSFC", "BTAI", "BTBT", "BTMD",
+        "BURU", "BVFL", "BYND", "BYRN", "CAPR", "CARM", "CBAT", "CBRG", "CDIO",
+        "CDT", "CELU", "CENN", "CETX", "CFRX", "CGBS", "CGTX", "CHCI", "CHEK",
+        "CHMG", "CISS", "CKPT", "CLBS", "CLDI", "CLNN", "CLPS", "CLVR", "CMND",
+        "CMPX", "CNSP", "COOK", "CORZ", "COSM", "COYA", "CPOP", "CRIS", "CRVO",
+        "CSLR", "CTHR", "CUEN", "CYTH", "DAVE", "DATS", "DBGI", "DERM", "DFLI",
+        "DGLY", "DMAC", "DRUG", "DUNE", "DUOT", "EAST", "EDBL", "EFTR", "EGAN",
+        "ELEV", "ELSE", "ELTX", "EMKR", "ENSC", "ENVB", "EOSE", "EPOW", "ESGL",
+        "EVFM", "EVGO", "EVLV", "FAMI", "FANH", "FBIO", "FBRX", "FCEL", "FFIE",
+        "FGFPP", "FIGS", "FINW", "FLUX", "FMST", "FNVT", "FOMC", "FORD", "FOXO",
+        "FREY", "FRGE", "FROG", "FTCI", "FUBO", "FUSN", "GALT", "GANX", "GASS",
+        "GBIO", "GBOX", "GDEV", "GDTC", "GFAI", "GGR", "GHSI", "GILT", "GIPR",
+        "GLBE", "GLBS", "GLDG", "GLER", "GMBL", "GNPX", "GOEV", "GRCL", "GREE",
+        "GROM", "GRPN", "GSAT", "GSMG", "GTBP", "GWAV", "HCWB", "HEPS", "HFFG",
+        "HGEN", "HLAH", "HLIT", "HMPT", "HOOD", "HPCO", "HSTO", "HTOO", "HUGE",
+        "HUSA", "HYMC", "IBRX", "ICAD", "ICCT", "ICLK", "IDAI", "IDEX", "IFRX",
+        "IGMS", "IMNN", "IMPL", "IMPP", "INBS", "INDO", "INFI", "INKW", "INPX",
+        "INSW", "INTJ", "INTZ", "IONQ", "IPDN", "IRIX", "ISEE", "ISIG", "ISPC",
+        "ISRL", "IZEA", "JAGX", "JFIN", "JOBY", "JSPR", "JTAI", "JWEL", "KAVL",
+        "KBNT", "KDLY", "KERO", "KGEI", "KILI", "KIRK", "KORE", "KPLT", "KPRX",
+        "KRTX", "KULR", "KVSA", "LABP", "LASE", "LAZR", "LCID", "LEXX", "LIDR",
+        "LIQT", "LITB", "LLAP", "LMFA", "LNSR", "LOAN", "LOOP", "LPCN", "LQDA",
+        "LTRN", "LUCY", "LXRX", "MAQC", "MASS", "MATH", "MBIO", "MBOT", "MBRX",
+        "MCAG", "MEGL", "MELI", "MEOA", "MESA", "MGAM", "MGOL", "MGRM", "MGTX",
+        "MIRA", "MIRM", "MKFG", "MNDO", "MNDY", "MNKD", "MNTS", "MOGO", "MOLN",
+        "MOMO", "MOXC", "MPLN", "MRSN", "MRVI", "MSAI", "MTEM", "MTNB", "MULN",
+        "MURA", "MVST", "NAUT", "NBEV", "NBRV", "NCPL", "NDRA", "NEGG", "NEON",
+        "NEPT", "NERV", "NILE", "NISN", "NKLA", "NKTX", "NLSP", "NMRD", "NNVC",
+        "NOTA", "NRBO", "NRGV", "NRIX", "NSPR", "NTES", "NUKK", "NUVB", "NVAX",
+        "NVOS", "NWTN", "NYAX", "OBLG", "OCGN", "OCSF", "OCUT", "OLLI", "ONCT",
+        "ONFO", "OPGN", "OPRA", "OPRT", "ORMP", "OUST", "OWLT", "OXBR", "PALI",
+        "PARA", "PAYS", "PBLA", "PCSA", "PDFS", "PDSB", "PFIE", "PGEN", "PHGE",
+        "PHIO", "PHUN", "PIXY", "PLBY", "PLTK", "PLUG", "PMVP", "PNTG", "POAI",
+    ]
+    found = set()
+    batch_size = 50
+    for i in range(0, len(seed_tickers_url), batch_size):
+        batch = seed_tickers_url[i:i + batch_size]
+        try:
+            data = yf.download(batch, period="60d", interval="1d",
+                               progress=False, threads=True)
+            if data.empty:
+                continue
+            for t in batch:
+                try:
+                    if t not in data.columns.get_level_values(1):
+                        continue
+                    closes = data[("Close", t)].dropna()
+                    if closes.empty:
+                        continue
+                    last_price = float(closes.iloc[-1])
+                    if last_price > max_price or last_price < 0.10:
+                        continue
+                    daily_returns = closes.pct_change() * 100
+                    if (daily_returns > 10).any():
+                        found.add(t)
+                except Exception:
+                    continue
+        except Exception:
+            continue
+        print(f"  Scanned {min(i + batch_size, len(seed_tickers_url))}/{len(seed_tickers_url)}"
+              f" seed tickers, found {len(found)} runners")
+        time.sleep(0.5)
+    return found
 
 
 def simulate_trade(bars: list, entry_idx: int, entry_price: float) -> dict:
@@ -348,6 +482,7 @@ def main():
     args = sys.argv[1:]
     days = 60
     seed = False
+    discover = False
     tickers: list = []
 
     i = 0
@@ -358,9 +493,27 @@ def main():
         elif args[i] == "--seed":
             seed = True
             i += 1
+        elif args[i] == "--discover":
+            discover = True
+            i += 1
         else:
             tickers.append(args[i].upper())
             i += 1
+
+    if discover:
+        discovered = discover_runners(MAX_PRICE)
+        # Merge with historical tickers for maximum coverage
+        trades_file = DATA_DIR / "trades-parsed.json"
+        if trades_file.exists():
+            raw = json.loads(trades_file.read_text())
+            historical = raw.get("trades", raw) if isinstance(raw, dict) else raw
+            hist_tickers = set(t["ticker"] for t in historical if isinstance(t, dict))
+            discovered_set = set(discovered)
+            tickers = sorted(discovered_set | hist_tickers)
+            print(f"Combined: {len(discovered)} discovered + {len(hist_tickers)} historical "
+                  f"= {len(tickers)} unique tickers")
+        else:
+            tickers = discovered
 
     if not tickers:
         trades_file = DATA_DIR / "trades-parsed.json"
@@ -370,7 +523,7 @@ def main():
             tickers = sorted(set(t["ticker"] for t in historical if isinstance(t, dict)))
             print(f"Using {len(tickers)} tickers from historical trades")
         else:
-            print("Usage: python bot/backtest.py [TICKER ...] [--days N] [--seed]")
+            print("Usage: python bot/backtest.py [TICKER ...] [--days N] [--seed] [--discover]")
             sys.exit(1)
 
     print(f"\n{'=' * 60}")
