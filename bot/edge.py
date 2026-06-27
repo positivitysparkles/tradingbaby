@@ -51,6 +51,29 @@ def grade_setup(info: dict, catalyst_tier: str | None) -> str:
     return "B"
 
 
+def grade_setup_b(info: dict, catalyst_tier: str | None) -> str:
+    """
+    Setup B grading — uses multi-timeframe confirmation instead of deep curl.
+      A+ = full core pass + MTF (15m AND 1H bullish) + strong catalyst
+      A  = full core pass + MTF (15m OR 1H) OR any catalyst
+      B  = full core pass only
+      C  = below full pass
+    """
+    score = info.get("score", 0) or 0
+    mx    = info.get("max", 4) or 4
+    if score < mx:
+        return "C"
+    mtf_both  = info.get("mtf_15m") and info.get("mtf_1h")
+    mtf_any   = info.get("mtf_15m") or info.get("mtf_1h")
+    strong_cat = catalyst_tier in ("tier_1", "tier_2")
+    has_cat    = catalyst_tier is not None
+    if mtf_both and (strong_cat or has_cat):
+        return "A+"
+    if mtf_any or has_cat:
+        return "A"
+    return "B"
+
+
 # ── 2. Sizing ─────────────────────────────────────────────────────────────────
 
 def size_for_grade(grade: str, by_grade: dict, base: float,

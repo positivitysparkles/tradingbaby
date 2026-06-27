@@ -46,9 +46,10 @@ try:
 except ImportError:
     SUPABASE_URL = SUPABASE_KEY = ""
     _SB_ENABLED = False
-from indicators import check_all_entry, check_exit_signal, is_fresh_1m, catalyst_score
+from indicators import (check_all_entry, check_exit_signal, is_fresh_1m, catalyst_score,
+                        check_setup_b_entry, check_setup_b_exit)
 from edge import (
-    grade_setup, size_for_grade, compute_edge_profile,
+    grade_setup, grade_setup_b, size_for_grade, compute_edge_profile,
     should_autobuy, phase_for, edge_summary,
 )
 
@@ -66,6 +67,19 @@ DOLLARS_BY_GRADE   = getattr(_cfg, "DOLLARS_BY_GRADE",
 DOLLARS_MIN        = getattr(_cfg, "DOLLARS_MIN", LEARNING_FLAT_SIZE)
 DOLLARS_MAX        = getattr(_cfg, "DOLLARS_MAX", LEARNING_FLAT_SIZE)
 CATALYST_PROXY     = getattr(_cfg, "CATALYST_PROXY", True)      # price-action catalyst detection
+
+# ── Setup B "Trend Rider" config ─────────────────────────────────────────────
+SETUP_B_ENABLED         = getattr(_cfg, "SETUP_B_ENABLED", True)
+SETUP_B_MAX_POSITIONS   = getattr(_cfg, "SETUP_B_MAX_POSITIONS", 5)
+MAX_TOTAL_POSITIONS     = getattr(_cfg, "MAX_TOTAL_POSITIONS", 10)
+SETUP_B_DOLLARS_PER     = getattr(_cfg, "SETUP_B_DOLLARS_PER_TRADE", LEARNING_FLAT_SIZE)
+SETUP_B_DOLLARS_BY_GRADE = getattr(_cfg, "SETUP_B_DOLLARS_BY_GRADE",
+                                   {"A+": SETUP_B_DOLLARS_PER, "A": SETUP_B_DOLLARS_PER,
+                                    "B": SETUP_B_DOLLARS_PER, "C": SETUP_B_DOLLARS_PER})
+SETUP_B_DOLLARS_MIN     = getattr(_cfg, "SETUP_B_DOLLARS_MIN", SETUP_B_DOLLARS_PER)
+SETUP_B_DOLLARS_MAX     = getattr(_cfg, "SETUP_B_DOLLARS_MAX", SETUP_B_DOLLARS_PER)
+SETUP_B_LEARN_THRESHOLD = getattr(_cfg, "SETUP_B_LEARN_THRESHOLD", 30)
+SETUP_B_MTF_ENABLED     = getattr(_cfg, "SETUP_B_MTF_ENABLED", True)
 
 # ── Scanner / VWAP / Chandelier (defaults baked in — no config.py edit needed) ──
 SCANNER_REL_VOL_MIN = getattr(_cfg, "SCANNER_REL_VOL_MIN", 3.0) # TV discovery rel-vol floor
@@ -170,11 +184,10 @@ def is_tradeable(ticker: str) -> bool:
 
 def get_bars(ticker: str, limit: int = 100, timeframe: str = "5Min") -> list | None:
     try:
-        interval = "1m" if "1Min" in timeframe else "5m"
-        # Use Ticker.history() — always returns simple columns (Open/High/Low/Close/Volume)
-        # with no MultiIndex confusion. period="5d" gives enough bars for a reliable
-        # 20-bar volume average even on thin premarket sessions.
-        df = yf.Ticker(ticker).history(period="5d", interval=interval, prepost=True)
+        tf_map = {"1Min": "1m", "5Min": "5m", "15Min": "15m", "1Hour": "1h", "1Day": "1d"}
+        interval = tf_map.get(timeframe, "5m")
+        period = {"15m": "1mo", "1h": "1mo", "1d": "3mo"}.get(interval, "5d")
+        df = yf.Ticker(ticker).history(period=period, interval=interval, prepost=True)
         if df is None or df.empty:
             log.info(f"[bars] {ticker} ({timeframe}): no bars from yfinance")
             return None
@@ -345,33 +358,44 @@ _edge_n_closed: int = 0     # how many closed trades the profile is built on
 
 def refresh_edge() -> str:
     """
-    Pull every closed trade from Supabase, recompute the edge profile (win-rate by
-    grade / session / catalyst / deep-curl / vol), cache it locally, and snapshot it
-    to w118_edge for the dashboard. Called on startup and in the daily audit.
-    Safe no-op when Supabase is off. Returns the one-line summary.
+    Pull every closed trade from Supabase, recompute edge profiles for BOTH setups,
+    cache locally, and snapshot to w118_edge for the dashboard.
+    Called on startup and in the daily audit. Returns the Setup A one-line summary.
     """
-    global _edge_profile, _edge_n_closed
+    global _edge_profile, _edge_n_closed, _edge_profile_b, _edge_n_closed_b
     rows = _sb("GET", "/rest/v1/w118_trades?status=in.(closed,stopped)&select=*&limit=2000") or []
     closed = [r for r in rows if r.get("realized_pnl") is not None]
-    _edge_n_closed = len(closed)
-    _edge_profile  = compute_edge_profile(closed)
-    phase   = phase_for(_edge_n_closed, LEARN_THRESHOLD)
-    summary = edge_summary(_edge_profile, _edge_n_closed, phase)
+
+    # Setup A (default for old trades without setup field)
+    closed_a = [r for r in closed if (r.get("setup") or "A") == "A"]
+    _edge_n_closed = len(closed_a)
+    _edge_profile  = compute_edge_profile(closed_a)
+    phase_a  = phase_for(_edge_n_closed, LEARN_THRESHOLD)
+    summary  = edge_summary(_edge_profile, _edge_n_closed, phase_a)
+
+    # Setup B
+    closed_b = [r for r in closed if r.get("setup") == "B"]
+    _edge_n_closed_b = len(closed_b)
+    _edge_profile_b  = compute_edge_profile(closed_b)
+    phase_b   = phase_for(_edge_n_closed_b, SETUP_B_LEARN_THRESHOLD)
+    summary_b = edge_summary(_edge_profile_b, _edge_n_closed_b, phase_b)
 
     try:
         EDGE_CACHE.write_text(json.dumps({
             "computed_at": datetime.now(UTC).isoformat(),
-            "n_closed": _edge_n_closed, "phase": phase,
+            "n_closed": _edge_n_closed, "phase": phase_a,
             "summary": summary, "profile": _edge_profile,
         }, indent=2))
     except Exception:
         pass
 
     _sb("POST", "/rest/v1/w118_edge", json={
-        "n_closed": _edge_n_closed, "phase": phase,
+        "n_closed": _edge_n_closed, "phase": phase_a,
         "summary": summary, "profile": _edge_profile,
     })
-    log.info(f"[edge] {summary}")
+    log.info(f"[edge] A: {summary}")
+    if SETUP_B_ENABLED:
+        log.info(f"[edge] B: {summary_b}")
     return summary
 
 
@@ -400,6 +424,7 @@ def sb_log_trade(ticker: str, price: float, qty: int, info: dict):
         "catalyst":    info.get("catalyst"),
         "session":     info.get("session"),
         "blockers":    info.get("fail"),
+        "setup":       info.get("setup", "A"),
     }
     result = _sb("POST", "/rest/v1/w118_trades", json=row)
     if result and isinstance(result, list) and result:
@@ -680,7 +705,12 @@ def execute_buy(ticker: str, price: float, info: dict):
     # hard ceiling. Split T1/T2/T3 proportionally (30%/30%/40%); ≥3 shares so each
     # leg gets at least 1.
     grade   = info.get("grade", "B")
-    dollars = size_for_grade(grade, DOLLARS_BY_GRADE, DOLLARS_PER_TRADE, DOLLARS_MIN, DOLLARS_MAX)
+    is_b    = info.get("setup") == "B"
+    if is_b:
+        dollars = size_for_grade(grade, SETUP_B_DOLLARS_BY_GRADE, SETUP_B_DOLLARS_PER,
+                                 SETUP_B_DOLLARS_MIN, SETUP_B_DOLLARS_MAX)
+    else:
+        dollars = size_for_grade(grade, DOLLARS_BY_GRADE, DOLLARS_PER_TRADE, DOLLARS_MIN, DOLLARS_MAX)
     qty    = max(3, int(dollars / price))
     t1_qty = qty // 3
     t2_qty = qty // 3
@@ -716,7 +746,7 @@ def execute_buy(ticker: str, price: float, info: dict):
     if not _confirm_position(ticker, timeout=30):
         log.warning(f"[buy] {ticker} order resting — fill unconfirmed after 30s, targets skipped")
         tg(
-            f"<b>🟢 AUTO BUY — {html.escape(ticker)}</b>  <b>[{info.get('grade','B')}]</b>\n"
+            f"<b>🟢 AUTO BUY — {html.escape(ticker)}</b>  <b>[{info.get('grade','B')}]</b>  [{'Setup B' if is_b else 'Setup A'}]\n"
             f"Entry: ${price:.4f}  ×{qty} shares (~${qty*price:.0f})\n"
             f"🛑 Stop: ${stop}  (-8%) — scan-enforced\n"
             f"🎯 T1: ${t1}  T2: ${t2}  T3: ${t3}  — SET MANUALLY\n"
@@ -750,6 +780,7 @@ def execute_buy(ticker: str, price: float, info: dict):
 
     log_trade(ticker, price, info)
     sb_log_trade(ticker, price, qty, info)
+    _setup_map[ticker] = "B" if is_b else "A"
 
     # Initialize software trailing stop state. Starts at -8% floor; moves to
     # breakeven when T1 hits, then trails 10% below current after T2.
@@ -763,16 +794,29 @@ def execute_buy(ticker: str, price: float, info: dict):
     }
     _save_trail_state()
 
-    msg = (
-        f"<b>🟢 AUTO BUY — {html.escape(ticker)}</b>  <b>[{grade}]</b>{' ⭐ DEEP CURL' if info.get('deep_curl') else ''}\n"
-        f"Entry: ${price:.4f}  ×{qty} shares (~${qty*price:.0f})  ·  grade {grade}\n"
-        f"K={info['k']}↑  D={info['d']}  MACD(5,10,16)={'▲' if info['macd_hist'] > 0 else '▽'}  Vol {info['vol_ratio']}x\n"
-        f"VWAP {_vwap_tag(info)}  ·  ZLSMA ${info.get('zlsma')}\n"
-        f"🛑 Stop: ${stop}  (-8%) — {stop_note}\n"
-        f"🎯 T1: ${t1}  (+15%)  ×{t1_qty} — {'✓' if res['T1'] else '❌ FAILED'}\n"
-        f"   T2: ${t2}  (+30%)  ×{t2_qty} — {'✓' if res['T2'] else '❌ FAILED'}\n"
-        f"   T3: ${t3}  (+60%)  ×{t3_qty} — {'✓' if res['T3'] else '❌ FAILED'}"
-    )
+    setup_label = "Setup B" if is_b else "Setup A"
+    if is_b:
+        msg = (
+            f"<b>🟢 AUTO BUY — {html.escape(ticker)}</b>  <b>[{grade}]</b>  [{setup_label}]\n"
+            f"Entry: ${price:.4f}  ×{qty} shares (~${qty*price:.0f})  ·  grade {grade}\n"
+            f"MACD(12,26,9) {'▲rising' if info.get('macd_rising') else '▽'}  RSI {info.get('rsi', '?')}  Vol {info.get('vol_ratio', '?')}x\n"
+            f"MTF: 15m {'✓' if info.get('mtf_15m') else '✗'}  1H {'✓' if info.get('mtf_1h') else '✗'}\n"
+            f"🛑 Stop: ${stop}  (-8%) — {stop_note}\n"
+            f"🎯 T1: ${t1}  (+15%)  ×{t1_qty} — {'✓' if res['T1'] else '❌ FAILED'}\n"
+            f"   T2: ${t2}  (+30%)  ×{t2_qty} — {'✓' if res['T2'] else '❌ FAILED'}\n"
+            f"   T3: ${t3}  (+60%)  ×{t3_qty} — {'✓' if res['T3'] else '❌ FAILED'}"
+        )
+    else:
+        msg = (
+            f"<b>🟢 AUTO BUY — {html.escape(ticker)}</b>  <b>[{grade}]</b>  [{setup_label}]{' ⭐ DEEP CURL' if info.get('deep_curl') else ''}\n"
+            f"Entry: ${price:.4f}  ×{qty} shares (~${qty*price:.0f})  ·  grade {grade}\n"
+            f"K={info['k']}↑  D={info['d']}  MACD(5,10,16)={'▲' if info['macd_hist'] > 0 else '▽'}  Vol {info['vol_ratio']}x\n"
+            f"VWAP {_vwap_tag(info)}  ·  ZLSMA ${info.get('zlsma')}\n"
+            f"🛑 Stop: ${stop}  (-8%) — {stop_note}\n"
+            f"🎯 T1: ${t1}  (+15%)  ×{t1_qty} — {'✓' if res['T1'] else '❌ FAILED'}\n"
+            f"   T2: ${t2}  (+30%)  ×{t2_qty} — {'✓' if res['T2'] else '❌ FAILED'}\n"
+            f"   T3: ${t3}  (+60%)  ×{t3_qty} — {'✓' if res['T3'] else '❌ FAILED'}"
+        )
     tg(msg)
     log.info(f"[buy] {ticker} @ ${price} ×{qty}sh (~${qty*price:.0f})  stop=${stop} ({stop_note})  "
              f"T1={'✓' if res['T1'] else '✗'} T2={'✓' if res['T2'] else '✗'} T3={'✓' if res['T3'] else '✗'}")
@@ -814,10 +858,12 @@ def execute_exit(ticker: str, reason: str):
         note = f"{sess} · {reason} · {pct:+.1f}%"
         if entry_price and exit_price < entry_price:
             note = "LOSS AUTOPSY — " + note
-        tg(f"<b>🔴 EXIT — {ticker}</b>\nReason: {reason}  ({pct:+.1f}%)")
-        log.info(f"[exit] {ticker}: {reason} ({pct:+.1f}%)")
+        setup_label = "Setup B" if _setup_map.get(ticker) == "B" else "Setup A"
+        tg(f"<b>🔴 EXIT — {ticker}</b>  [{setup_label}]\nReason: {reason}  ({pct:+.1f}%)")
+        log.info(f"[exit] {ticker}: {reason} ({pct:+.1f}%) [{setup_label}]")
         sb_close_trade(ticker, exit_price, reason, entry_price or 0.0, pos_qty, note)
         _trail.pop(ticker, None)
+        _setup_map.pop(ticker, None)
         _save_trail_state()
 
 # ── Self-audit ────────────────────────────────────────────────────────────────
@@ -1033,6 +1079,20 @@ def _self_audit_insights() -> str:
         if blocked:
             lines.append(f"Auto-blocked grades (weak win rate): {', '.join(blocked)}")
 
+    # Setup A vs B comparison (when Setup B has trades)
+    if SETUP_B_ENABLED:
+        setup_a = [t for t in closed if (t.get("setup") or "A") == "A"]
+        setup_b = [t for t in closed if t.get("setup") == "B"]
+        if setup_b:
+            wins_a = len([t for t in setup_a if float(t.get("realized_pnl", 0)) > 0])
+            wr_a = wins_a / len(setup_a) * 100 if setup_a else 0
+            pnl_a = sum(float(t.get("realized_pnl", 0)) for t in setup_a)
+            wins_b = len([t for t in setup_b if float(t.get("realized_pnl", 0)) > 0])
+            wr_b = wins_b / len(setup_b) * 100 if setup_b else 0
+            pnl_b = sum(float(t.get("realized_pnl", 0)) for t in setup_b)
+            lines.append(f"Setup A: {len(setup_a)} trades · {wr_a:.0f}% win · ${pnl_a:+.2f}")
+            lines.append(f"Setup B: {len(setup_b)} trades · {wr_b:.0f}% win · ${pnl_b:+.2f}")
+
     if not lines:
         return ""
     return "\n<b>🔍 Self-Audit Insights:</b>\n" + "\n".join(f"  {l}" for l in lines)
@@ -1079,7 +1139,11 @@ def daily_audit():
 
     # Edge Engine: recompute what's working and report the phase + grade win-rates.
     try:
-        msg += f"\n<b>🧠 Edge:</b> {refresh_edge()}"
+        msg += f"\n<b>🧠 Edge A:</b> {refresh_edge()}"
+        if SETUP_B_ENABLED:
+            phase_b = phase_for(_edge_n_closed_b, SETUP_B_LEARN_THRESHOLD)
+            summary_b = edge_summary(_edge_profile_b, _edge_n_closed_b, phase_b)
+            msg += f"\n<b>🧠 Edge B:</b> {summary_b}"
     except Exception as e:
         log.warning(f"[edge] refresh in audit failed: {e}")
 
@@ -1184,6 +1248,13 @@ _buys_today: int   = 0       # count of buy orders actually submitted today (har
 _buy_attempts: Counter = Counter()  # ticker → failed-submission count; give up after MAX_BUY_ATTEMPTS
 _trading_day_cache: dict = {}       # date-str → bool; avoids repeated Alpaca calendar calls
 
+# ── Setup B state (parallel to Setup A) ──────────────────────────────────────
+_setup_map: dict   = {}      # ticker → "A"|"B"; rebuilt from Supabase on startup
+_edge_profile_b: dict = {}   # Setup B edge profile (separate learning phase)
+_edge_n_closed_b: int = 0
+_trail_b: dict     = {}      # Setup B trailing stops
+TRAIL_FILE_B       = DATA_DIR / "trail_state_b.json"
+
 
 def _vwap_tag(info: dict) -> str:
     """Compact VWAP status for alerts: '✓ $1.234', '✗ below $1.234', or 'n/a'."""
@@ -1206,26 +1277,43 @@ def _send_setup_alert(ticker: str, info: dict, why: str) -> None:
     live_price = get_latest_price(ticker)      # real-time last trade
     price = live_price if live_price else bar_price
     price_note = "live" if live_price else "last 5m bar"
-    dollars = size_for_grade(info.get("grade", "B"), DOLLARS_BY_GRADE, DOLLARS_PER_TRADE, DOLLARS_MIN, DOLLARS_MAX)
+    is_b = info.get("setup") == "B"
+    if is_b:
+        dollars = size_for_grade(info.get("grade", "B"), SETUP_B_DOLLARS_BY_GRADE, SETUP_B_DOLLARS_PER,
+                                 SETUP_B_DOLLARS_MIN, SETUP_B_DOLLARS_MAX)
+    else:
+        dollars = size_for_grade(info.get("grade", "B"), DOLLARS_BY_GRADE, DOLLARS_PER_TRADE, DOLLARS_MIN, DOLLARS_MAX)
     qty   = max(3, int(dollars / price))
     stop  = round(price * (1 - STOP_PCT), 2)
     t1    = round(price * (1 + T1_PCT), 2)
     t2    = round(price * (1 + T2_PCT), 2)
     t3    = round(price * (1 + T3_PCT), 2)
-    curl  = " ⭐ DEEP CURL" if info.get("deep_curl") else ""
-    macd  = "▲" if (info.get("macd_hist") or 0) > 0 else "▽"
     grade = info.get("grade")
     gtag  = f"  <b>[{grade}]</b>" if grade else ""
-    tg(
-        f"🔔 <b>MANUAL SETUP — {html.escape(ticker)}</b>{gtag}{curl}\n"
-        f"<i>Bot can't auto-buy ({html.escape(why)}) — you can paper-trade it:</i>\n"
-        f"Entry ~${price:.4f} ({price_note})  ×{qty} shares (~${qty*price:.0f})\n"
-        f"K={info['k']}↑ D={info['d']}  MACD {macd}  Vol {info['vol_ratio']}x\n"
-        f"VWAP {_vwap_tag(info)}\n"
-        f"🛑 Stop ${stop}  (-8%)\n"
-        f"🎯 T1 ${t1} (+15%)   T2 ${t2} (+30%)   T3 ${t3} (+60%)"
-    )
-    log.info(f"[MANUAL] {ticker} full 5/5 setup — alert only ({why})")
+    setup_label = "Setup B" if is_b else "Setup A"
+    if is_b:
+        tg(
+            f"🔔 <b>MANUAL SETUP — {html.escape(ticker)}</b>{gtag}  [{setup_label}]\n"
+            f"<i>Bot can't auto-buy ({html.escape(why)}) — you can paper-trade it:</i>\n"
+            f"Entry ~${price:.4f} ({price_note})  ×{qty} shares (~${qty*price:.0f})\n"
+            f"MACD(12,26,9) {'▲rising' if info.get('macd_rising') else '▽'}  RSI {info.get('rsi', '?')}  Vol {info.get('vol_ratio', '?')}x\n"
+            f"MTF: 15m {'✓' if info.get('mtf_15m') else '✗'}  1H {'✓' if info.get('mtf_1h') else '✗'}\n"
+            f"🛑 Stop ${stop}  (-8%)\n"
+            f"🎯 T1 ${t1} (+15%)   T2 ${t2} (+30%)   T3 ${t3} (+60%)"
+        )
+    else:
+        curl  = " ⭐ DEEP CURL" if info.get("deep_curl") else ""
+        macd  = "▲" if (info.get("macd_hist") or 0) > 0 else "▽"
+        tg(
+            f"🔔 <b>MANUAL SETUP — {html.escape(ticker)}</b>{gtag}{curl}  [{setup_label}]\n"
+            f"<i>Bot can't auto-buy ({html.escape(why)}) — you can paper-trade it:</i>\n"
+            f"Entry ~${price:.4f} ({price_note})  ×{qty} shares (~${qty*price:.0f})\n"
+            f"K={info['k']}↑ D={info['d']}  MACD {macd}  Vol {info['vol_ratio']}x\n"
+            f"VWAP {_vwap_tag(info)}\n"
+            f"🛑 Stop ${stop}  (-8%)\n"
+            f"🎯 T1 ${t1} (+15%)   T2 ${t2} (+30%)   T3 ${t3} (+60%)"
+        )
+    log.info(f"[MANUAL] {ticker} [{setup_label}] full setup — alert only ({why})")
 
 def _save_watch_sent():
     try:
@@ -1313,8 +1401,14 @@ def heartbeat() -> None:
     s = _last_summary
     if QUIET_ALERTS:
         if s:
+            b_info = ""
+            if SETUP_B_ENABLED:
+                cur = get_held()
+                n_a = sum(1 for t, st in _setup_map.items() if st == "A" and t in cur)
+                n_b = sum(1 for t, st in _setup_map.items() if st == "B" and t in cur)
+                b_info = f" · A:{n_a} B:{n_b}"
             log.info(f"[heartbeat] (quiet) {s.get('time','')} · {s.get('candidates',0)} scanned · "
-                     f"{s.get('positions',0)}/{MAX_POSITIONS} open · {s.get('signals',0)} full setups")
+                     f"{s.get('positions',0)}/{MAX_TOTAL_POSITIONS} open{b_info} · {s.get('signals',0)} full setups")
         else:
             log.info("[heartbeat] (quiet) first scan still pending")
         return
@@ -1346,10 +1440,17 @@ def heartbeat() -> None:
             items.append(f"{star}{html.escape(tk)} {sc}/{mx}{vtag}")
         top_line = "\n\n📊 <b>Top setups this scan:</b>\n" + "  ".join(items)
 
+    setup_b_line = ""
+    if SETUP_B_ENABLED:
+        cur = get_held()
+        n_a = sum(1 for t, st in _setup_map.items() if st == "A" and t in cur)
+        n_b = sum(1 for t, st in _setup_map.items() if st == "B" and t in cur)
+        setup_b_line = f"\nSetup A: {n_a}/{MAX_POSITIONS}  ·  Setup B: {n_b}/{SETUP_B_MAX_POSITIONS}"
+
     tg(
         f"💓 <b>Bot alive</b> — {s['time']}\n"
-        f"Scanned {s['candidates']} stocks · {s['positions']}/{MAX_POSITIONS} open · {s['trades']} trades today\n"
-        f"Full 5/5 setups found: <b>{s['signals']}</b>{mode_line}{exit_line}\n\n"
+        f"Scanned {s['candidates']} stocks · {s['positions']}/{MAX_TOTAL_POSITIONS} open · {s['trades']} trades today{setup_b_line}\n"
+        f"Full setups found: <b>{s['signals']}</b>{mode_line}{exit_line}\n\n"
         f"<b>Why no alert</b> (top blockers):\n{blk}"
         f"{top_line}"
     )
@@ -1473,8 +1574,11 @@ def scan():
         # (see ATPC: bought $3.23, exited $3.03 premarket, ran to $6.00 at open).
         # The -8% hard stop above is always active; that's the only premarket exit.
         if _is_rth():
-            reason = check_exit_signal(bars, chandelier=CHANDELIER_EXIT,
-                                       ce_period=CE_ATR_PERIOD, ce_mult=CE_ATR_MULT)
+            if _setup_map.get(ticker) == "B":
+                reason = check_setup_b_exit(bars)
+            else:
+                reason = check_exit_signal(bars, chandelier=CHANDELIER_EXIT,
+                                           ce_period=CE_ATR_PERIOD, ce_mult=CE_ATR_MULT)
             if reason:
                 execute_exit(ticker, reason)
                 held.discard(ticker)
@@ -1489,8 +1593,8 @@ def scan():
         entries_open, pause_reason = False, f"daily buy cap {MAX_DAILY_BUYS} reached"
     elif trades_today() >= MAX_DAILY_TRADES:
         entries_open, pause_reason = False, f"daily cap {MAX_DAILY_TRADES} reached"
-    elif len(held) >= MAX_POSITIONS:
-        entries_open, pause_reason = False, f"{MAX_POSITIONS} positions open"
+    elif len(held) >= MAX_TOTAL_POSITIONS:
+        entries_open, pause_reason = False, f"{MAX_TOTAL_POSITIONS} total positions open"
     elif _in_midday_chop():
         entries_open, pause_reason = False, "midday chop (10:30am-3pm ET)"
 
@@ -1558,8 +1662,10 @@ def scan():
                 why = pause_reason
             elif trades_today() >= MAX_DAILY_TRADES:
                 why = f"daily cap {MAX_DAILY_TRADES} reached"
-            elif len(get_held()) >= MAX_POSITIONS:
-                why = f"{MAX_POSITIONS} positions open"
+            elif sum(1 for t, s in _setup_map.items() if s == "A" and t in get_held()) >= MAX_POSITIONS:
+                why = f"{MAX_POSITIONS} Setup A positions open"
+            elif len(get_held()) >= MAX_TOTAL_POSITIONS:
+                why = f"{MAX_TOTAL_POSITIONS} total positions open"
             elif _buy_attempts[ticker] >= MAX_BUY_ATTEMPTS:
                 why = f"buy rejected {_buy_attempts[ticker]}x — skipping today"
             else:
@@ -1610,6 +1716,61 @@ def scan():
                 _send_watch_alert(ticker, info)
             else:
                 log.info(f"[skip] {ticker} {score}/{max_}: {info.get('fail', 'unknown')}")
+
+            # ── Setup B "Trend Rider" — check if this ticker passes the simpler setup ──
+            if SETUP_B_ENABLED and ticker not in _bought_today and ticker not in open_buy_tickers:
+                bars_15m = get_bars(ticker, limit=100, timeframe="15Min") if SETUP_B_MTF_ENABLED else None
+                bars_1h  = get_bars(ticker, limit=100, timeframe="1Hour") if SETUP_B_MTF_ENABLED else None
+                ok_b, info_b = check_setup_b_entry(bars, MIN_PRICE, MAX_PRICE,
+                                                   bars_15m=bars_15m, bars_1h=bars_1h)
+                if ok_b:
+                    signals += 1
+                    catalyst_tier_b = None
+                    if CATALYST_PROXY:
+                        daily_b = get_bars(ticker, limit=5, timeframe="1Day")
+                        catalyst_tier_b, _ = catalyst_score(bars, daily_b)
+                    grade_b = grade_setup_b(info_b, catalyst_tier_b)
+                    info_b["grade"]    = grade_b
+                    info_b["catalyst"] = catalyst_tier_b
+                    info_b["session"]  = _session_label()
+
+                    cur_held = get_held()
+                    n_b_open = sum(1 for t, s in _setup_map.items() if s == "B" and t in cur_held)
+                    if ticker in _bought_today:
+                        hrs_ago = (time.time() - _bought_today[ticker]) / 3600
+                        why_b = f"bought {hrs_ago:.0f}h ago (24h cooldown)"
+                    elif n_b_open >= SETUP_B_MAX_POSITIONS:
+                        why_b = f"{SETUP_B_MAX_POSITIONS} Setup B positions open"
+                    elif len(cur_held) >= MAX_TOTAL_POSITIONS:
+                        why_b = f"{MAX_TOTAL_POSITIONS} total positions open"
+                    elif _buys_today >= MAX_DAILY_BUYS:
+                        why_b = f"daily buy cap {MAX_DAILY_BUYS} reached"
+                    elif not entries_open:
+                        why_b = pause_reason
+                    elif _buy_attempts[ticker] >= MAX_BUY_ATTEMPTS:
+                        why_b = f"buy rejected {_buy_attempts[ticker]}x — skipping today"
+                    else:
+                        allow_b, edge_reason_b = should_autobuy(
+                            grade_b, _edge_profile_b, _edge_n_closed_b,
+                            SETUP_B_LEARN_THRESHOLD, EDGE_WINRATE_FLOOR, EDGE_MIN_SAMPLE)
+                        why_b = None if allow_b else f"edge hold [{grade_b}] — {edge_reason_b}"
+
+                    if why_b is None:
+                        log.info(f"[SIGNAL-B] {ticker} [{grade_b}] — Setup B CORE {info_b['score']}/{info_b['max']} (auto-buy)")
+                        _bought_today[ticker] = time.time()
+                        bought = execute_buy(ticker, info_b["price"], info_b)
+                        if bought is False:
+                            _buy_attempts[ticker] += 1
+                            if _buy_attempts[ticker] < MAX_BUY_ATTEMPTS:
+                                _bought_today.pop(ticker, None)
+                            else:
+                                log.warning(f"[buy] {ticker}: {MAX_BUY_ATTEMPTS} submission failures — blocked for today")
+                        elif bought is True:
+                            _buys_today += 1
+                        held = get_held()
+                    else:
+                        log.info(f"[SIGNAL-B] {ticker} [{grade_b}] — Setup B (manual, {why_b})")
+                        _send_setup_alert(ticker, info_b, why_b)
 
         time.sleep(0.15)  # ~6 reqs/sec — well under Alpaca's 200/min free limit
 
@@ -1703,6 +1864,19 @@ def main():
     # Reload trailing stop state so a VPS restart doesn't lose T1/T2 levels mid-trade.
     _load_trail_state()
 
+    # Reconstruct _setup_map for open positions from Supabase (which positions are Setup A vs B)
+    if _SB_ENABLED:
+        try:
+            open_trades = _sb("GET", "/rest/v1/w118_trades?status=eq.open&select=ticker,setup") or []
+            for row in open_trades:
+                tk = row.get("ticker")
+                if tk and tk in held_now:
+                    _setup_map[tk] = row.get("setup") or "A"
+            if _setup_map:
+                log.info(f"[setup-map] restored: {_setup_map}")
+        except Exception as e:
+            log.warning(f"[setup-map] rebuild failed: {e}")
+
     # Warm the edge profile from prior closed trades before the first scan.
     try:
         refresh_edge()
@@ -1717,8 +1891,11 @@ def main():
             f"Conditions: Supertrend ✓  K>D+rising ✓  price>ZLSMA ✓  MACD(5,10,16)>0 ✓  vol>{REL_VOL_MIN}x ✓\n"
             f"Edge: grade-scaled sizing + learn→tighten ({phase_for(_edge_n_closed, LEARN_THRESHOLD)}, {_edge_n_closed}/{LEARN_THRESHOLD})"
         )
+    setup_b_status = (f" · Setup B {'ON' if SETUP_B_ENABLED else 'OFF'}"
+                      + (f" edge {phase_for(_edge_n_closed_b, SETUP_B_LEARN_THRESHOLD)} "
+                         f"({_edge_n_closed_b}/{SETUP_B_LEARN_THRESHOLD})" if SETUP_B_ENABLED else ""))
     log.info(f"[startup] bot started — {MAX_POSITIONS} pos max · edge {phase_for(_edge_n_closed, LEARN_THRESHOLD)} "
-             f"({_edge_n_closed}/{LEARN_THRESHOLD}) · QUIET_ALERTS={QUIET_ALERTS}")
+             f"({_edge_n_closed}/{LEARN_THRESHOLD}) · QUIET_ALERTS={QUIET_ALERTS}{setup_b_status}")
 
     schedule.every(SCAN_INTERVAL_MIN).minutes.do(scan)
     schedule.every(30).minutes.do(heartbeat)             # every 30 min — alive + top blockers

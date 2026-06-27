@@ -57,10 +57,14 @@ alter table public.w118_trades add column if not exists mfe_pct   numeric(6,2); 
 alter table public.w118_trades add column if not exists mae_pct   numeric(6,2);  -- max adverse excursion % during hold
 alter table public.w118_trades add column if not exists bars_held integer;        -- 5m bars held before exit
 
+-- Dual-setup support (Setup A = Curl if Flow, Setup B = Trend Rider — added 2026-06-27):
+alter table public.w118_trades add column if not exists setup text default 'A';
+
 -- Indexes
 create index if not exists w118_trades_date_idx   on public.w118_trades (date desc);
 create index if not exists w118_trades_ticker_idx on public.w118_trades (ticker);
 create index if not exists w118_trades_status_idx on public.w118_trades (status);
+create index if not exists w118_trades_setup_idx on public.w118_trades (setup);
 
 -- RLS: anon key can only read; service_role key (bot) can write
 alter table public.w118_trades enable row level security;

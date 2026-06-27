@@ -91,6 +91,32 @@ The highest-probability entry is the **second-leg continuation**, not the first 
 - T2 hit (+30%) → stop trails 10% below current, updates every scan
 - Only fires after T1 (never locks in a loss beyond the hard -8%)
 
+### Setup B "Trend Rider" (dual-strategy, added 2026-06-27)
+
+A second, simpler setup running alongside Setup A. Both collect data independently.
+
+**Entry (all 4 required for CORE pass):**
+| # | Condition | Details |
+|---|-----------|---------|
+| 1 | PPST bullish on 5m | Same Period=2, Factor=3, ATR=10 as Setup A |
+| 2 | Standard MACD (12,26,9) blue > orange AND rising | NOT the fast (5,10,16) |
+| 3 | Volume increasing | Current bar > prev bar OR > 20-bar avg |
+| 4 | RSI(14) > 50 | Hard gate (not soft like Setup A) |
+
+**MTF bonus (not blocking, feeds grade):** 15m PPST bullish +1, 1H PPST bullish +1
+
+**Exit:** PPST bearish flip OR MACD(12,26,9) blue < orange. Same -8% stop + T1/T2/T3 trailing.
+
+**Grading:**
+- A+ = full core pass + MTF (15m AND 1H bullish) + strong catalyst
+- A  = full core pass + MTF (15m OR 1H) OR any catalyst
+- B  = full core pass only
+- C  = below full pass
+
+**Position limits:** 5 simultaneous per setup, 10 total combined. Separate edge profiles.
+
+**Config:** `SETUP_B_ENABLED = True` in config.py. All knobs have getattr defaults.
+
 ### Session Priority
 - **Premarket 4am–9:30am EST** = highest priority (56% of wins)
 - RTH open 9:30–10:30am = high priority
@@ -141,12 +167,12 @@ bot/bot.py  (runs every 1 min, 2am–4pm MT / 4am–6pm ET — all-day observati
 | `bot/config.py` | API keys + trade rules (edit this once) |
 | `bot/bot.py` | Main loop — run this |
 | `bot/indicators.py` | PPST, RSI, StochRSI, ZLSMA, MACD, VWAP, Chandelier, catalyst proxy |
-| `bot/edge.py` | Edge Engine — A+/A/B/C grading, grade-scaled sizing, learn→tighten gate, K-range bucketing |
+| `bot/edge.py` | Edge Engine — A+/A/B/C grading, grade-scaled sizing, learn→tighten gate, K-range bucketing; `grade_setup_b()` for Setup B grading |
 | `bot/add_ticker.py` | `python bot/add_ticker.py AHMA JRSH` |
 | `bot/status.py` | Quick positions/P&L check |
 
 ### Edge Engine (self-improving, caged)
-Every entry is graded **A+/A/B/C**. Sizing is **flat $100/trade** during the learning phase (all grades equal — gathering data). The bot **learns then tightens**: it takes every valid signal until `LEARN_THRESHOLD` (30) closed trades exist, then auto-buys only grades proven to win (≥`EDGE_WINRATE_FLOOR` over ≥`EDGE_MIN_SAMPLE`). Edge profile buckets by: grade, session, catalyst, deep_curl, vol ratio, K-at-entry range. Recomputed on startup + daily audit, cached to `data/edge_profile.json` + `w118_edge` (Supabase).
+Every entry is graded **A+/A/B/C**. Sizing is **flat $100/trade** during the learning phase (all grades equal — gathering data). The bot **learns then tightens**: it takes every valid signal until `LEARN_THRESHOLD` (30) closed trades exist, then auto-buys only grades proven to win (≥`EDGE_WINRATE_FLOOR` over ≥`EDGE_MIN_SAMPLE`). Edge profile buckets by: grade, session, catalyst, deep_curl, vol ratio, K-at-entry range. Recomputed on startup + daily audit, cached to `data/edge_profile.json` + `w118_edge` (Supabase). Setup B has its own independent edge profile and learning phase, starting at 0 closed trades.
 
 ### Key data files (runtime, gitignored)
 | File | Contents |
@@ -255,6 +281,7 @@ print("✅ Drive ready")
 | MAE/MFE bug fix (filter to post-entry bars, fix sign) | #86 | 2026-06-25 |
 | AVOID_MIDDAY re-enabled (default True) | #86 | 2026-06-25 |
 | Software trailing stop (T1→breakeven, T2→trail 10%) | #87 | 2026-06-25 |
+| Setup B "Trend Rider" dual-strategy architecture | #91 | 2026-06-27 |
 
 ## Pending features (roadmap)
 - [ ] Historical backtesting — run `check_all_entry()` on 6-month bar history for our early-bird tickers. Needs Polygon.io (~$30/mo) or Alpaca historical 5m data. See June-25 conversation.
