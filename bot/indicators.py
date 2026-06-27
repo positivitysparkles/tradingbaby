@@ -67,23 +67,19 @@ def stochrsi(closes: list, curl_lookback: int = 12
     return sk[-1], sd[-1], sk[-2], recent_low
 
 
-def macd(closes: list) -> tuple[float | None, float | None]:
+def macd(closes: list, fast: int = 5, slow: int = 10, signal: int = 16) -> tuple[float | None, float | None]:
     """
-    MACD(5,10,16). Returns (macd_line, histogram).
-
-    • macd_line > 0  → fast EMA above slow EMA = stock in a sustained uptrend.
-      Separates real runners (CDT +102%, CAST +118%) from dead-cat bounces
-      (ATPC blipped histogram-green with the line still below zero).
-    • histogram > 0  → macd_line above signal = momentum turning up right now.
-
-    Faster than standard 12,26,9 — fires in sync with Supertrend, not lagging.
+    MACD. Returns (macd_line, histogram).
+    Default (5,10,16) = W118 fast — fires in sync with Supertrend.
+    Call with (12,26,9) for standard MACD (Setup B).
     """
-    if len(closes) < 32:
+    min_len = slow + signal + 2
+    if len(closes) < min_len:
         return None, None
-    e5  = _ema(closes, 5)
-    e10 = _ema(closes, 10)
-    macd_line = [a - b for a, b in zip(e5, e10)]
-    sig_line  = _ema(macd_line, 16)
+    e_fast = _ema(closes, fast)
+    e_slow = _ema(closes, slow)
+    macd_line = [a - b for a, b in zip(e_fast, e_slow)]
+    sig_line  = _ema(macd_line, signal)
     return macd_line[-1], macd_line[-1] - sig_line[-1]
 
 
@@ -504,6 +500,120 @@ def catalyst_score(bars_5m: list, daily_bars: list | None = None) -> tuple[str |
         return "tier_3", "in-momentum (intraday +5%)"
 
     return None, "no catalyst signal"
+
+
+# ── Setup B "Trend Rider" entry/exit ─────────────────────────────────────────
+
+def check_setup_b_entry(bars_5m: list, min_price: float, max_price: float,
+                        bars_15m: list | None = None, bars_1h: list | None = None,
+                        pivot_period: int = 2, atr_factor: float = 3.0) -> tuple[bool, dict]:
+    """
+    Setup B entry check. Simpler than Setup A — no StochRSI, ZLSMA, or VWAP.
+    CORE: PPST bullish + MACD(12,26,9) blue>orange & rising + vol up + RSI>50.
+    MTF confirmation (15m/1H PPST bullish) feeds grade, doesn't block.
+    """
+    closes = [b["c"] for b in bars_5m]
+    price  = closes[-1]
+    info: dict = {"price": price, "setup": "B", "blockers": []}
+
+    if price < min_price or price > max_price:
+        info["fail"] = f"price ${price} outside range"
+        return False, info
+
+    passed, max_possible = 0, 4
+    blockers: list = []
+
+    # 1. PPST bullish on 5m
+    st = pivot_point_supertrend(bars_5m, pivot_period=pivot_period, atr_factor=atr_factor)
+    if st == 1:
+        passed += 1
+    else:
+        blockers.append("PPST bearish")
+
+    # 2. Standard MACD (12,26,9) blue > orange AND rising
+    min_macd_len = 26 + 9 + 2
+    if len(closes) >= min_macd_len:
+        e_fast = _ema(closes, 12)
+        e_slow = _ema(closes, 26)
+        ml = [a - b for a, b in zip(e_fast, e_slow)]
+        sl = _ema(ml, 9)
+        macd_line_val = ml[-1]
+        macd_line_prev = ml[-2]
+        signal_val = sl[-1]
+        macd_above = macd_line_val > signal_val
+        macd_rising = macd_line_val > macd_line_prev
+        info["macd_line_std"] = round(macd_line_val, 6)
+        info["macd_signal_std"] = round(signal_val, 6)
+        info["macd_rising"] = macd_rising
+        if macd_above and macd_rising:
+            passed += 1
+        else:
+            if not macd_above:
+                blockers.append(f"MACD(12,26,9) blue below orange")
+            elif not macd_rising:
+                blockers.append(f"MACD(12,26,9) not rising")
+    else:
+        blockers.append("not enough bars for MACD(12,26,9)")
+
+    # 3. Volume increasing
+    vols = [b["v"] for b in bars_5m]
+    vol_cur = vols[-1]
+    vol_prev = vols[-2] if len(vols) >= 2 else 0
+    vol_avg = sum(vols[-20:]) / min(len(vols), 20) if vols else 0
+    vol_up = vol_cur > vol_prev or vol_cur > vol_avg
+    info["vol_ratio"] = round(vol_cur / vol_avg, 2) if vol_avg > 0 else None
+    if vol_up:
+        passed += 1
+    else:
+        blockers.append("volume not increasing")
+
+    # 4. RSI(14) > 50
+    rsi_val = rsi(closes)
+    info["rsi"] = round(rsi_val, 1) if rsi_val is not None else None
+    if rsi_val is not None and rsi_val > 50:
+        passed += 1
+    else:
+        blockers.append(f"RSI {rsi_val:.0f} ≤ 50" if rsi_val else "RSI unavailable")
+
+    info["score"] = passed
+    info["max"] = max_possible
+    core_pass = passed == max_possible
+
+    # Multi-timeframe confirmation (bonus, not blocking)
+    mtf_15m = False
+    mtf_1h = False
+    if bars_15m and len(bars_15m) >= pivot_period * 2 + 12:
+        st_15 = pivot_point_supertrend(bars_15m, pivot_period=pivot_period, atr_factor=atr_factor)
+        mtf_15m = st_15 == 1
+    if bars_1h and len(bars_1h) >= pivot_period * 2 + 12:
+        st_1h = pivot_point_supertrend(bars_1h, pivot_period=pivot_period, atr_factor=atr_factor)
+        mtf_1h = st_1h == 1
+    info["mtf_15m"] = mtf_15m
+    info["mtf_1h"] = mtf_1h
+
+    info["blockers"] = blockers
+    info["fail"] = "; ".join(blockers) if blockers else None
+    info["full_pass"] = core_pass
+    return core_pass, info
+
+
+def check_setup_b_exit(bars: list, pivot_period: int = 2,
+                       atr_factor: float = 3.0) -> str | None:
+    """
+    Setup B exit signals. Simpler than Setup A — no ZLSMA, no Chandelier.
+    Just PPST bearish flip or MACD(12,26,9) blue crosses below orange.
+    """
+    closes = [b["c"] for b in bars]
+
+    st = pivot_point_supertrend(bars, pivot_period=pivot_period, atr_factor=atr_factor)
+    if st == -1:
+        return "supertrend_bearish"
+
+    m_line, hist = macd(closes, 12, 26, 9)
+    if m_line is not None and hist is not None and hist < 0:
+        return "macd_std_bearish_cross"
+
+    return None
 
 
 def check_exit_signal(bars: list, chandelier: bool = True,

@@ -38,6 +38,20 @@ EDGE_WINRATE_FLOOR = 0.45      # a grade must win ≥45% (over enough trades) to
 EDGE_MIN_SAMPLE    = 8         # need ≥8 closed trades on a grade before judging it
 CATALYST_PROXY     = True      # price-action catalyst detection (gap / halt-resume / runner)
 
+# ── Setup B "Trend Rider" — second strategy running alongside Setup A ────────
+# Setup B uses: PPST bullish + MACD(12,26,9) blue>orange & rising + volume up + RSI>50
+# Multi-timeframe (15m/1H PPST bullish) feeds grade but doesn't block entry.
+# Both setups run independently with separate edge profiles and learning phases.
+SETUP_B_ENABLED           = True     # flip to False to disable Setup B entirely
+SETUP_B_MAX_POSITIONS     = 5        # max simultaneous Setup B positions
+MAX_TOTAL_POSITIONS       = 10       # combined cap (Setup A + Setup B)
+SETUP_B_DOLLARS_PER_TRADE = 100      # flat $/trade during learning
+SETUP_B_DOLLARS_BY_GRADE  = {"A+": 100, "A": 100, "B": 100, "C": 100}
+SETUP_B_DOLLARS_MIN       = 100
+SETUP_B_DOLLARS_MAX       = 100
+SETUP_B_LEARN_THRESHOLD   = 30       # closed Setup B trades before tightening
+SETUP_B_MTF_ENABLED       = True     # fetch 15m/1H bars for MTF grade bonus
+
 # Scanner filters (W118 universe — matches Colab scanner exactly)
 MIN_PRICE         = 0.10
 MAX_PRICE         = 15.00     # matches TradingView Yassss screen
