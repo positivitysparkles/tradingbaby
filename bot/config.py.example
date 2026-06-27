@@ -33,7 +33,7 @@ DOLLARS_MAX        = 200       # hard ceiling per trade — never exceeded, what
 # (gathering data), then auto-buy only grades proven to win (win-rate ≥
 # EDGE_WINRATE_FLOOR over ≥ EDGE_MIN_SAMPLE trades). Restrict-only — it can drop a
 # weak setup to a manual alert but never loosens a rule or raises a cap.
-LEARN_THRESHOLD    = 30        # closed trades before the bot starts tightening
+LEARN_THRESHOLD    = 50        # closed trades before the bot starts tightening
 EDGE_WINRATE_FLOOR = 0.45      # a grade must win ≥45% (over enough trades) to stay auto-buy
 EDGE_MIN_SAMPLE    = 8         # need ≥8 closed trades on a grade before judging it
 CATALYST_PROXY     = True      # price-action catalyst detection (gap / halt-resume / runner)
@@ -49,7 +49,7 @@ SETUP_B_DOLLARS_PER_TRADE = 100      # flat $/trade during learning
 SETUP_B_DOLLARS_BY_GRADE  = {"A+": 100, "A": 100, "B": 100, "C": 100}
 SETUP_B_DOLLARS_MIN       = 100
 SETUP_B_DOLLARS_MAX       = 100
-SETUP_B_LEARN_THRESHOLD   = 30       # closed Setup B trades before tightening
+SETUP_B_LEARN_THRESHOLD   = 50       # closed Setup B trades before tightening
 SETUP_B_MTF_ENABLED       = True     # fetch 15m/1H bars for MTF grade bonus
 
 # Scanner filters (W118 universe — matches Colab scanner exactly)

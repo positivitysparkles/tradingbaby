@@ -172,7 +172,7 @@ bot/bot.py  (runs every 1 min, 2am–4pm MT / 4am–6pm ET — all-day observati
 | `bot/status.py` | Quick positions/P&L check |
 
 ### Edge Engine (self-improving, caged)
-Every entry is graded **A+/A/B/C**. Sizing is **flat $100/trade** during the learning phase (all grades equal — gathering data). The bot **learns then tightens**: it takes every valid signal until `LEARN_THRESHOLD` (30) closed trades exist, then auto-buys only grades proven to win (≥`EDGE_WINRATE_FLOOR` over ≥`EDGE_MIN_SAMPLE`). Edge profile buckets by: grade, session, catalyst, deep_curl, vol ratio, K-at-entry range. Recomputed on startup + daily audit, cached to `data/edge_profile.json` + `w118_edge` (Supabase). Setup B has its own independent edge profile and learning phase, starting at 0 closed trades.
+Every entry is graded **A+/A/B/C**. Sizing is **flat $100/trade** during the learning phase (all grades equal — gathering data). The bot **learns then tightens**: it takes every valid signal until `LEARN_THRESHOLD` (50) closed trades exist, then auto-buys only grades proven to win (≥`EDGE_WINRATE_FLOOR` over ≥`EDGE_MIN_SAMPLE`). Edge profile buckets by: grade, session, catalyst, deep_curl, vol ratio, K-at-entry range. Recomputed on startup + daily audit, cached to `data/edge_profile.json` + `w118_edge` (Supabase). Setup B has its own independent edge profile and learning phase, starting at 0 closed trades.
 
 ### Key data files (runtime, gitignored)
 | File | Contents |
