@@ -14,7 +14,6 @@ Usage:
 """
 
 import json
-import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -78,108 +77,137 @@ def fetch_daily(ticker: str) -> list | None:
         return None
 
 
-def discover_runners(max_price: float = 15.0, pages: int = 10) -> list:
-    """Find small-cap stocks under max_price that had big moves recently via finviz."""
-    headers = {
+def discover_runners(max_price: float = 15.0) -> list:
+    """Find small-cap runners using TradingView scanner + Yahoo gainers."""
+    tv_headers = {
         "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
+        "Origin":  "https://www.tradingview.com",
+        "Referer": "https://www.tradingview.com/",
+        "Accept":  "application/json",
     }
-    tickers = set()
+    tickers: set = set()
     print(f"Discovering small-cap runners under ${max_price:.0f}...")
 
-    for page in range(pages):
-        offset = page * 20 + 1
-        url = (f"https://finviz.com/screener.ashx?v=111"
-               f"&f=cap_micro,sh_price_u{max_price:.0f},ta_change_u20"
-               f"&ft=4&o=-change&r={offset}")
+    # Method 1: TradingView scanner — multiple passes with different change thresholds
+    # to catch stocks at different points in their run
+    for min_change in [5.0, 10.0, 20.0, 50.0]:
         try:
-            r = requests.get(url, headers=headers, timeout=15)
-            if not r.ok:
-                break
-            found = re.findall(r'class="screener-link-primary"[^>]*>([A-Z]{1,5})</a>', r.text)
-            if not found:
-                break
-            tickers.update(found)
-            print(f"  Page {page + 1}: found {len(found)} tickers (total: {len(tickers)})")
-            time.sleep(1.5)
+            for chg_field, vol_field in [("change", "volume"),
+                                         ("premarket_change", "premarket_volume")]:
+                body = {
+                    "filter": [
+                        {"left": chg_field,  "operation": "greater",  "right": min_change},
+                        {"left": "close",    "operation": "in_range", "right": [0.10, max_price]},
+                        {"left": vol_field,  "operation": "greater",  "right": 500_000},
+                    ],
+                    "options":  {"lang": "en"},
+                    "symbols":  {"query": {"types": []}, "tickers": []},
+                    "columns":  ["name", "close", chg_field, vol_field],
+                    "sort":     {"sortBy": chg_field, "sortOrder": "desc"},
+                    "range":    [0, 200],
+                    "markets":  ["america"],
+                }
+                r = requests.post("https://scanner.tradingview.com/america/scan",
+                                  json=body, headers=tv_headers, timeout=15)
+                if r.ok:
+                    rows = r.json().get("data") or []
+                    for row in rows:
+                        sym = row.get("s", "")
+                        if ":" in sym:
+                            tickers.add(sym.split(":", 1)[1])
+            print(f"  TradingView scan (change>{min_change}%): total {len(tickers)} tickers")
+            time.sleep(1)
         except Exception as e:
-            print(f"  Page {page + 1} failed: {e}")
-            break
+            print(f"  TradingView scan failed: {e}")
 
-    # Also try Yahoo Finance trending/gainers for broader coverage
-    try:
-        from yfinance import Tickers
-        for screener_key in ["day_gainers", "most_actives"]:
-            try:
-                screener = yf.Screener()
-                screener.set_default_body({"query": {"operator": "and", "operands": [
-                    {"operator": "lt", "operands": ["regularmarketprice", max_price]},
-                    {"operator": "gt", "operands": ["regularmarketchangepercent", 10]},
-                ]}})
-            except Exception:
-                pass
-    except Exception:
-        pass
+    # Method 2: Yahoo Finance small-cap gainers
+    for scr_id in ["small_cap_gainers", "aggressive_small_caps", "most_actives"]:
+        try:
+            r = requests.get(
+                "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved",
+                params={"scrIds": scr_id, "count": 100,
+                        "formatted": "false", "lang": "en-US", "region": "US"},
+                headers={"User-Agent": tv_headers["User-Agent"]},
+                timeout=10,
+            )
+            if r.ok:
+                quotes = r.json().get("finance", {}).get("result", [{}])[0].get("quotes", [])
+                for q in quotes:
+                    sym = q.get("symbol", "")
+                    price = q.get("regularMarketPrice", 999)
+                    if sym and price <= max_price and price >= 0.10:
+                        tickers.add(sym)
+                print(f"  Yahoo {scr_id}: total {len(tickers)} tickers")
+        except Exception:
+            pass
+        time.sleep(0.5)
 
-    if not tickers:
-        # Fallback: scan a curated list of known small-cap runner tickers
-        print("  Finviz unavailable, using expanded universe from yfinance...")
-        fallback = _scan_yfinance_gainers(max_price)
-        tickers.update(fallback)
+    # Method 3: TradingView "top gainers" performance screen (weekly/monthly movers)
+    for perf_field in ["Perf.W", "Perf.1M"]:
+        try:
+            body = {
+                "filter": [
+                    {"left": perf_field, "operation": "greater", "right": 0.20},
+                    {"left": "close",    "operation": "in_range", "right": [0.10, max_price]},
+                    {"left": "volume",   "operation": "greater",  "right": 200_000},
+                ],
+                "options": {"lang": "en"},
+                "symbols": {"query": {"types": []}, "tickers": []},
+                "columns": ["name", "close", perf_field, "volume"],
+                "sort":    {"sortBy": perf_field, "sortOrder": "desc"},
+                "range":   [0, 200],
+                "markets": ["america"],
+            }
+            r = requests.post("https://scanner.tradingview.com/america/scan",
+                              json=body, headers=tv_headers, timeout=15)
+            if r.ok:
+                rows = r.json().get("data") or []
+                for row in rows:
+                    sym = row.get("s", "")
+                    if ":" in sym:
+                        tickers.add(sym.split(":", 1)[1])
+            print(f"  TradingView {perf_field}: total {len(tickers)} tickers")
+            time.sleep(1)
+        except Exception:
+            pass
 
-    print(f"Discovered {len(tickers)} unique tickers\n")
+    # Method 4: yfinance seed list — broad small-cap universe, filter to 10%+ movers
+    # Kept as fallback in case TradingView/Yahoo are blocked from VPS
+    tv_count = len(tickers)
+    seed_tickers = _yfinance_seed_scan(max_price)
+    tickers.update(seed_tickers)
+    if seed_tickers:
+        print(f"  yfinance seed scan: +{len(seed_tickers)} new (total {len(tickers)})")
+
+    print(f"\nDiscovered {len(tickers)} unique tickers "
+          f"({tv_count} from TV/Yahoo, {len(seed_tickers)} from yfinance seed)\n")
     return sorted(tickers)
 
 
-def _scan_yfinance_gainers(max_price: float = 15.0) -> set:
-    """Scan daily bars of a broad small-cap list to find recent 10%+ movers."""
-    broad_list = []
-    # Pull tickers from multiple NASDAQ/OTC small-cap ETF holdings as a seed universe
-    seed_tickers_url = [
-        "ABTS", "ACHR", "ACRV", "AEMD", "AEVA", "AGFY", "AHMA", "AIMD", "AIRI",
-        "AITX", "AIXI", "AKAN", "AKTS", "ALBT", "ALLR", "ALTO", "ALVR", "AMST",
-        "AMPS", "ANGH", "ANNA", "ANTE", "APDN", "APLT", "APRE", "ARTL", "ASNS",
-        "ASTS", "ATAI", "ATER", "ATGL", "ATPC", "AUVI", "AVDL", "AVTE", "AYRO",
-        "BACK", "BCAN", "BCDA", "BEAT", "BENF", "BFRG", "BGXX", "BHAT", "BIAF",
-        "BIMI", "BJDX", "BLBX", "BLFY", "BLIN", "BLNK", "BNAI", "BNED", "BNOX",
-        "BNTX", "BOLT", "BOXL", "BPTS", "BREZ", "BSFC", "BTAI", "BTBT", "BTMD",
-        "BURU", "BVFL", "BYND", "BYRN", "CAPR", "CARM", "CBAT", "CBRG", "CDIO",
-        "CDT", "CELU", "CENN", "CETX", "CFRX", "CGBS", "CGTX", "CHCI", "CHEK",
-        "CHMG", "CISS", "CKPT", "CLBS", "CLDI", "CLNN", "CLPS", "CLVR", "CMND",
-        "CMPX", "CNSP", "COOK", "CORZ", "COSM", "COYA", "CPOP", "CRIS", "CRVO",
-        "CSLR", "CTHR", "CUEN", "CYTH", "DAVE", "DATS", "DBGI", "DERM", "DFLI",
-        "DGLY", "DMAC", "DRUG", "DUNE", "DUOT", "EAST", "EDBL", "EFTR", "EGAN",
-        "ELEV", "ELSE", "ELTX", "EMKR", "ENSC", "ENVB", "EOSE", "EPOW", "ESGL",
-        "EVFM", "EVGO", "EVLV", "FAMI", "FANH", "FBIO", "FBRX", "FCEL", "FFIE",
-        "FGFPP", "FIGS", "FINW", "FLUX", "FMST", "FNVT", "FOMC", "FORD", "FOXO",
-        "FREY", "FRGE", "FROG", "FTCI", "FUBO", "FUSN", "GALT", "GANX", "GASS",
-        "GBIO", "GBOX", "GDEV", "GDTC", "GFAI", "GGR", "GHSI", "GILT", "GIPR",
-        "GLBE", "GLBS", "GLDG", "GLER", "GMBL", "GNPX", "GOEV", "GRCL", "GREE",
-        "GROM", "GRPN", "GSAT", "GSMG", "GTBP", "GWAV", "HCWB", "HEPS", "HFFG",
-        "HGEN", "HLAH", "HLIT", "HMPT", "HOOD", "HPCO", "HSTO", "HTOO", "HUGE",
-        "HUSA", "HYMC", "IBRX", "ICAD", "ICCT", "ICLK", "IDAI", "IDEX", "IFRX",
-        "IGMS", "IMNN", "IMPL", "IMPP", "INBS", "INDO", "INFI", "INKW", "INPX",
-        "INSW", "INTJ", "INTZ", "IONQ", "IPDN", "IRIX", "ISEE", "ISIG", "ISPC",
-        "ISRL", "IZEA", "JAGX", "JFIN", "JOBY", "JSPR", "JTAI", "JWEL", "KAVL",
-        "KBNT", "KDLY", "KERO", "KGEI", "KILI", "KIRK", "KORE", "KPLT", "KPRX",
-        "KRTX", "KULR", "KVSA", "LABP", "LASE", "LAZR", "LCID", "LEXX", "LIDR",
-        "LIQT", "LITB", "LLAP", "LMFA", "LNSR", "LOAN", "LOOP", "LPCN", "LQDA",
-        "LTRN", "LUCY", "LXRX", "MAQC", "MASS", "MATH", "MBIO", "MBOT", "MBRX",
-        "MCAG", "MEGL", "MELI", "MEOA", "MESA", "MGAM", "MGOL", "MGRM", "MGTX",
-        "MIRA", "MIRM", "MKFG", "MNDO", "MNDY", "MNKD", "MNTS", "MOGO", "MOLN",
-        "MOMO", "MOXC", "MPLN", "MRSN", "MRVI", "MSAI", "MTEM", "MTNB", "MULN",
-        "MURA", "MVST", "NAUT", "NBEV", "NBRV", "NCPL", "NDRA", "NEGG", "NEON",
-        "NEPT", "NERV", "NILE", "NISN", "NKLA", "NKTX", "NLSP", "NMRD", "NNVC",
-        "NOTA", "NRBO", "NRGV", "NRIX", "NSPR", "NTES", "NUKK", "NUVB", "NVAX",
-        "NVOS", "NWTN", "NYAX", "OBLG", "OCGN", "OCSF", "OCUT", "OLLI", "ONCT",
-        "ONFO", "OPGN", "OPRA", "OPRT", "ORMP", "OUST", "OWLT", "OXBR", "PALI",
-        "PARA", "PAYS", "PBLA", "PCSA", "PDFS", "PDSB", "PFIE", "PGEN", "PHGE",
-        "PHIO", "PHUN", "PIXY", "PLBY", "PLTK", "PLUG", "PMVP", "PNTG", "POAI",
+def _yfinance_seed_scan(max_price: float = 15.0) -> set:
+    """Scan a broad small-cap list via yfinance daily bars for recent 10%+ days."""
+    seed_list = [
+        "ABTS", "ACRV", "AEMD", "AHMA", "AIMD", "AIXI", "AKAN", "ALBT",
+        "ALLR", "ALTO", "AMST", "ANNA", "APRE", "ARTL", "ASBP", "ASTC",
+        "ATAI", "ATER", "ATPC", "AUVI", "BATL", "BBBY", "BCG", "BCDA",
+        "BEAT", "BENF", "BFRG", "BIAF", "BIYA", "BJDX", "BLIN", "BLNK",
+        "BNED", "BOLT", "BOXL", "BTAI", "BTBT", "BTMD", "BURU", "BYND",
+        "CDT", "CELU", "CENN", "CETX", "CLPS", "COOK", "CORZ", "CRIS",
+        "CRVO", "DAVE", "DFLI", "EAST", "EOSE", "EVGO", "FCEL", "FUBO",
+        "GALT", "GASS", "GDEV", "GFAI", "GILT", "GOEV", "GROM", "GRPN",
+        "GSAT", "HOOD", "HUSA", "HYMC", "IDEX", "IMPP", "INDO", "IONQ",
+        "ISPC", "IZEA", "JOBY", "KAVL", "KIRK", "KPLT", "KULR", "LAZR",
+        "LCID", "LMFA", "LOOP", "MBIO", "MEGL", "MGNX", "MNKD", "MNTS",
+        "MULN", "MVST", "NEGG", "NKLA", "NVAX", "OCGN", "PHUN", "PIXY",
+        "PLUG", "PRAX", "QUBT", "RBLX", "RNXT", "SDIG", "SENS", "SKLZ",
+        "SOFI", "SOLO", "SOUN", "SPCE", "SRNE", "TELL", "TLIS", "TNXP",
+        "TPST", "TTOO", "VERB", "VLD", "VNET", "WKHS", "XELA", "ZAPP",
     ]
     found = set()
-    batch_size = 50
-    for i in range(0, len(seed_tickers_url), batch_size):
-        batch = seed_tickers_url[i:i + batch_size]
+    batch_size = 40
+    for i in range(0, len(seed_list), batch_size):
+        batch = seed_list[i:i + batch_size]
         try:
             data = yf.download(batch, period="60d", interval="1d",
                                progress=False, threads=True)
@@ -187,9 +215,10 @@ def _scan_yfinance_gainers(max_price: float = 15.0) -> set:
                 continue
             for t in batch:
                 try:
-                    if t not in data.columns.get_level_values(1):
+                    col = ("Close", t) if ("Close", t) in data.columns else None
+                    if col is None:
                         continue
-                    closes = data[("Close", t)].dropna()
+                    closes = data[col].dropna()
                     if closes.empty:
                         continue
                     last_price = float(closes.iloc[-1])
@@ -202,9 +231,7 @@ def _scan_yfinance_gainers(max_price: float = 15.0) -> set:
                     continue
         except Exception:
             continue
-        print(f"  Scanned {min(i + batch_size, len(seed_tickers_url))}/{len(seed_tickers_url)}"
-              f" seed tickers, found {len(found)} runners")
-        time.sleep(0.5)
+        time.sleep(0.3)
     return found
 
 
