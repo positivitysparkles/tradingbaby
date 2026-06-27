@@ -502,6 +502,101 @@ def catalyst_score(bars_5m: list, daily_bars: list | None = None) -> tuple[str |
     return None, "no catalyst signal"
 
 
+# ── Chart DNA — 10 numerical features describing the chart shape at entry ────
+
+def compute_chart_dna(bars: list) -> dict:
+    """
+    Compute 10 numerical features describing the chart's shape at entry time.
+    Returns dict with all 10 features (each float | None). Safe on sparse data —
+    features that can't be computed return None (bucketing skips them).
+    """
+    if len(bars) < 20:
+        return {}
+
+    closes = [b["c"] for b in bars]
+    highs = [b["h"] for b in bars]
+    lows = [b["l"] for b in bars]
+    price = closes[-1]
+    dna: dict = {}
+
+    # 1. momentum_5: short-term price acceleration (5 bars back)
+    if len(closes) >= 6 and closes[-6] > 0:
+        dna["momentum_5"] = round((price - closes[-6]) / closes[-6] * 100, 2)
+    else:
+        dna["momentum_5"] = None
+
+    # 2. momentum_10: medium-term trend strength (10 bars back)
+    if len(closes) >= 11 and closes[-11] > 0:
+        dna["momentum_10"] = round((price - closes[-11]) / closes[-11] * 100, 2)
+    else:
+        dna["momentum_10"] = None
+
+    # 3. vwap_dist_pct: distance from session VWAP (shelf bounce = ~0%)
+    vw = vwap_session(bars)
+    dna["vwap_dist_pct"] = round((price - vw) / vw * 100, 2) if vw and vw > 0 else None
+
+    # 4. zlsma_dist_pct: how stretched above trend support
+    zl = zlsma(closes)
+    dna["zlsma_dist_pct"] = round((price - zl) / zl * 100, 2) if zl and zl > 0 else None
+
+    # 5. k_reset_depth: deepest K dip in last 12 bars (lower = stronger spring)
+    _, _, _, k_low = stochrsi(closes, curl_lookback=12)
+    dna["k_reset_depth"] = round(k_low, 2) if k_low is not None else None
+
+    # 6. vol_accel: recent volume acceleration (last 3 bars / prev 10 bars avg)
+    vols = [b["v"] for b in bars]
+    if len(vols) >= 13:
+        recent_3 = sum(vols[-3:]) / 3
+        prev_10 = sum(vols[-13:-3]) / 10
+        dna["vol_accel"] = round(recent_3 / prev_10, 2) if prev_10 > 0 else None
+    else:
+        dna["vol_accel"] = None
+
+    # 7. range_compression: coil/shelf detection (tighter = stronger breakout)
+    ranges = [highs[i] - lows[i] for i in range(len(bars))]
+    if len(ranges) >= 20:
+        avg_5 = sum(ranges[-5:]) / 5
+        avg_20 = sum(ranges[-20:]) / 20
+        dna["range_compression"] = round(avg_5 / avg_20, 2) if avg_20 > 0 else None
+    else:
+        dna["range_compression"] = None
+
+    # 8. day_range_pct: where in today's range (0=pullback entry, 100=chase)
+    last_day = str(bars[-1].get("t", ""))[:10]
+    if last_day:
+        day_h = [b["h"] for b in bars if str(b.get("t", ""))[:10] == last_day]
+        day_l = [b["l"] for b in bars if str(b.get("t", ""))[:10] == last_day]
+        if day_h and day_l:
+            dh, dl = max(day_h), min(day_l)
+            rng = dh - dl
+            dna["day_range_pct"] = round((price - dl) / rng * 100, 1) if rng > 0 else None
+        else:
+            dna["day_range_pct"] = None
+    else:
+        dna["day_range_pct"] = None
+
+    # 9. rsi_entry: RSI(14) momentum confirmation
+    rsi_val = rsi(closes)
+    dna["rsi_entry"] = round(rsi_val, 1) if rsi_val is not None else None
+
+    # 10. macd_slope: MACD histogram direction (hist[-1] - hist[-2])
+    fast_p, slow_p, sig_p = 5, 10, 16
+    if len(closes) >= slow_p + sig_p + 3:
+        ef = _ema(closes, fast_p)
+        es = _ema(closes, slow_p)
+        ml = [a - b for a, b in zip(ef, es)]
+        sl = _ema(ml, sig_p)
+        hv = [ml[i] - sl[i] for i in range(len(sl))]
+        if len(hv) >= 2:
+            dna["macd_slope"] = round(hv[-1] - hv[-2], 6)
+        else:
+            dna["macd_slope"] = None
+    else:
+        dna["macd_slope"] = None
+
+    return dna
+
+
 # ── Setup B "Trend Rider" entry/exit ─────────────────────────────────────────
 
 def check_setup_b_entry(bars_5m: list, min_price: float, max_price: float,

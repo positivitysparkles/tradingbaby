@@ -167,12 +167,35 @@ bot/bot.py  (runs every 1 min, 2am–4pm MT / 4am–6pm ET — all-day observati
 | `bot/config.py` | API keys + trade rules (edit this once) |
 | `bot/bot.py` | Main loop — run this |
 | `bot/indicators.py` | PPST, RSI, StochRSI, ZLSMA, MACD, VWAP, Chandelier, catalyst proxy |
-| `bot/edge.py` | Edge Engine — A+/A/B/C grading, grade-scaled sizing, learn→tighten gate, K-range bucketing; `grade_setup_b()` for Setup B grading |
+| `bot/edge.py` | Edge Engine — A+/A/B/C grading, grade-scaled sizing, learn→tighten gate, K-range bucketing, Chart DNA mining + scoring; `grade_setup_b()` for Setup B grading |
 | `bot/add_ticker.py` | `python bot/add_ticker.py AHMA JRSH` |
 | `bot/status.py` | Quick positions/P&L check |
 
 ### Edge Engine (self-improving, caged)
 Every entry is graded **A+/A/B/C**. Sizing is **flat $100/trade** during the learning phase (all grades equal — gathering data). The bot **learns then tightens**: it takes every valid signal until `LEARN_THRESHOLD` (50) closed trades exist, then auto-buys only grades proven to win (≥`EDGE_WINRATE_FLOOR` over ≥`EDGE_MIN_SAMPLE`). Edge profile buckets by: grade, session, catalyst, deep_curl, vol ratio, K-at-entry range. Recomputed on startup + daily audit, cached to `data/edge_profile.json` + `w118_edge` (Supabase). Setup B has its own independent edge profile and learning phase, starting at 0 closed trades.
+
+### Chart DNA Pattern Learning (added 2026-06-27)
+10 numerical features captured at every entry, describing the chart's shape:
+| # | Feature | What it captures |
+|---|---------|-----------------|
+| 1 | `momentum_5` | Short-term price acceleration (5 bars) |
+| 2 | `momentum_10` | Medium-term trend strength (10 bars) |
+| 3 | `vwap_dist_pct` | Distance from VWAP (shelf bounce = ~0%) |
+| 4 | `zlsma_dist_pct` | How stretched above trend support |
+| 5 | `k_reset_depth` | Stoch reset depth (deeper = stronger spring) |
+| 6 | `vol_accel` | Volume accelerating or dying |
+| 7 | `range_compression` | Coil/shelf pattern (lower = tighter) |
+| 8 | `day_range_pct` | Pullback entry (0%) vs chase (100%) |
+| 9 | `rsi_entry` | RSI(14) momentum confirmation |
+| 10 | `macd_slope` | MACD histogram direction |
+
+**Mining:** `mine_chart_patterns()` in edge.py buckets each feature into ranges, computes win rates vs baseline, finds sweet spots (+15pp lift), danger zones (-15pp), and the strongest two-feature combos.
+
+**Scoring:** `chart_dna_score()` scores new entries 0-100 based on matches against the mined pattern profile. 50=neutral, sweet spot matches add points, danger zone matches subtract.
+
+**Config:** `DNA_GATE_ENABLED = False` (default). Advisory-only — DNA score appears in Telegram alerts and the daily audit but never blocks trades. Set to True to let low scores block auto-buy.
+
+**Supabase:** 11 new columns on `w118_trades` (10 features + `dna_score`). Run the ALTER TABLE statements from `supabase/schema.sql` in the SQL Editor.
 
 ### Key data files (runtime, gitignored)
 | File | Contents |
@@ -282,6 +305,8 @@ print("✅ Drive ready")
 | AVOID_MIDDAY re-enabled (default True) | #86 | 2026-06-25 |
 | Software trailing stop (T1→breakeven, T2→trail 10%) | #87 | 2026-06-25 |
 | Setup B "Trend Rider" dual-strategy architecture | #91 | 2026-06-27 |
+| Learning threshold raised 30→50 (both setups) | #92 | 2026-06-27 |
+| Chart DNA pattern learning (10 features + mining + scoring) | #93 | 2026-06-27 |
 
 ## Pending features (roadmap)
 - [ ] Historical backtesting — run `check_all_entry()` on 6-month bar history for our early-bird tickers. Needs Polygon.io (~$30/mo) or Alpaca historical 5m data. See June-25 conversation.

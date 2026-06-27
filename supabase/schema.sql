@@ -60,6 +60,19 @@ alter table public.w118_trades add column if not exists bars_held integer;      
 -- Dual-setup support (Setup A = Curl if Flow, Setup B = Trend Rider — added 2026-06-27):
 alter table public.w118_trades add column if not exists setup text default 'A';
 
+-- Chart DNA pattern-learning columns (10 features + score — added 2026-06-27):
+alter table public.w118_trades add column if not exists momentum_5        numeric(8,2);
+alter table public.w118_trades add column if not exists momentum_10       numeric(8,2);
+alter table public.w118_trades add column if not exists vwap_dist_pct     numeric(8,2);
+alter table public.w118_trades add column if not exists zlsma_dist_pct    numeric(8,2);
+alter table public.w118_trades add column if not exists k_reset_depth     numeric(6,2);
+alter table public.w118_trades add column if not exists vol_accel         numeric(6,2);
+alter table public.w118_trades add column if not exists range_compression numeric(6,2);
+alter table public.w118_trades add column if not exists day_range_pct     numeric(6,1);
+alter table public.w118_trades add column if not exists rsi_entry         numeric(6,1);
+alter table public.w118_trades add column if not exists macd_slope        numeric(10,6);
+alter table public.w118_trades add column if not exists dna_score         smallint;
+
 -- Indexes
 create index if not exists w118_trades_date_idx   on public.w118_trades (date desc);
 create index if not exists w118_trades_ticker_idx on public.w118_trades (ticker);
