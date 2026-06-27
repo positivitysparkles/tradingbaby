@@ -172,8 +172,67 @@ def discover_runners(max_price: float = 15.0) -> list:
         except Exception:
             pass
 
-    print(f"\nDiscovered {len(tickers)} unique tickers\n")
+    # Method 4: yfinance seed list — broad small-cap universe, filter to 10%+ movers
+    # Kept as fallback in case TradingView/Yahoo are blocked from VPS
+    tv_count = len(tickers)
+    seed_tickers = _yfinance_seed_scan(max_price)
+    tickers.update(seed_tickers)
+    if seed_tickers:
+        print(f"  yfinance seed scan: +{len(seed_tickers)} new (total {len(tickers)})")
+
+    print(f"\nDiscovered {len(tickers)} unique tickers "
+          f"({tv_count} from TV/Yahoo, {len(seed_tickers)} from yfinance seed)\n")
     return sorted(tickers)
+
+
+def _yfinance_seed_scan(max_price: float = 15.0) -> set:
+    """Scan a broad small-cap list via yfinance daily bars for recent 10%+ days."""
+    seed_list = [
+        "ABTS", "ACRV", "AEMD", "AHMA", "AIMD", "AIXI", "AKAN", "ALBT",
+        "ALLR", "ALTO", "AMST", "ANNA", "APRE", "ARTL", "ASBP", "ASTC",
+        "ATAI", "ATER", "ATPC", "AUVI", "BATL", "BBBY", "BCG", "BCDA",
+        "BEAT", "BENF", "BFRG", "BIAF", "BIYA", "BJDX", "BLIN", "BLNK",
+        "BNED", "BOLT", "BOXL", "BTAI", "BTBT", "BTMD", "BURU", "BYND",
+        "CDT", "CELU", "CENN", "CETX", "CLPS", "COOK", "CORZ", "CRIS",
+        "CRVO", "DAVE", "DFLI", "EAST", "EOSE", "EVGO", "FCEL", "FUBO",
+        "GALT", "GASS", "GDEV", "GFAI", "GILT", "GOEV", "GROM", "GRPN",
+        "GSAT", "HOOD", "HUSA", "HYMC", "IDEX", "IMPP", "INDO", "IONQ",
+        "ISPC", "IZEA", "JOBY", "KAVL", "KIRK", "KPLT", "KULR", "LAZR",
+        "LCID", "LMFA", "LOOP", "MBIO", "MEGL", "MGNX", "MNKD", "MNTS",
+        "MULN", "MVST", "NEGG", "NKLA", "NVAX", "OCGN", "PHUN", "PIXY",
+        "PLUG", "PRAX", "QUBT", "RBLX", "RNXT", "SDIG", "SENS", "SKLZ",
+        "SOFI", "SOLO", "SOUN", "SPCE", "SRNE", "TELL", "TLIS", "TNXP",
+        "TPST", "TTOO", "VERB", "VLD", "VNET", "WKHS", "XELA", "ZAPP",
+    ]
+    found = set()
+    batch_size = 40
+    for i in range(0, len(seed_list), batch_size):
+        batch = seed_list[i:i + batch_size]
+        try:
+            data = yf.download(batch, period="60d", interval="1d",
+                               progress=False, threads=True)
+            if data.empty:
+                continue
+            for t in batch:
+                try:
+                    col = ("Close", t) if ("Close", t) in data.columns else None
+                    if col is None:
+                        continue
+                    closes = data[col].dropna()
+                    if closes.empty:
+                        continue
+                    last_price = float(closes.iloc[-1])
+                    if last_price > max_price or last_price < 0.10:
+                        continue
+                    daily_returns = closes.pct_change() * 100
+                    if (daily_returns > 10).any():
+                        found.add(t)
+                except Exception:
+                    continue
+        except Exception:
+            continue
+        time.sleep(0.3)
+    return found
 
 
 def simulate_trade(bars: list, entry_idx: int, entry_price: float) -> dict:
