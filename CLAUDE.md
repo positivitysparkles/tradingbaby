@@ -201,12 +201,13 @@ Every entry is graded **A+/A/B/C**. Sizing is **flat $100/trade** during the lea
 **DNA Evolution (intraday pattern tracking):** At entry, DNA snapshot is saved to `_entry_dna[ticker]`. At exit, current DNA is recomputed and the drift (exit - entry) is logged to `data/dna_drift.json`. The daily self-audit compares drift patterns between winners and losers — e.g. "winners' momentum_5 drifts +3.2 vs losers -1.1" reveals which chart shapes deteriorate vs accelerate during the hold.
 
 ### Historical Backtester (added 2026-06-27)
-`python bot/backtest.py [TICKER...] [--days N] [--seed]`
+`python bot/backtest.py [TICKER...] [--days N] [--seed] [--discover]`
 - Uses yfinance (free, no API key) for 5m bars (max 60 days back)
 - Replays bars through the exact same `check_all_entry()` / `check_setup_b_entry()` + `check_exit_signal()` logic
 - Simulates each trade: -8% stop, trailing stop (T1→breakeven, T2→10% trail), signal exits, T3 target
 - Computes DNA at entry + snapshots every 10 bars during hold for evolution analysis
 - `--seed` saves DNA profile to `data/backtest_dna_profile.json` for the live bot to bootstrap from
+- `--discover` finds 200-500 recent small-cap runners (under $15, 10%+ movers) via finviz + yfinance — studies the whole universe, not just our tickers
 - With no tickers given, uses all tickers from `data/trades-parsed.json`
 
 ### Key data files (runtime, gitignored)
