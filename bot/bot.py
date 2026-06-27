@@ -401,6 +401,7 @@ def _sb(method: str, path: str, **kwargs) -> dict | list | None:
 # ── Edge memory (the learn→tighten loop) ──────────────────────────────────────
 
 EDGE_CACHE     = DATA_DIR / "edge_profile.json"
+BACKTEST_DNA   = DATA_DIR / "backtest_dna_profile.json"
 _edge_profile: dict = {}    # latest per-bucket win-rate map (from compute_edge_profile)
 _edge_n_closed: int = 0     # how many closed trades the profile is built on
 _dna_profile: dict  = {}    # Chart DNA pattern profile (sweet spots, danger zones, combos)
@@ -441,6 +442,15 @@ def refresh_edge() -> str:
     except Exception as e:
         log.warning(f"[dna] pattern mining failed: {e}")
         _dna_profile = {}
+    # Fall back to backtest-seeded profile when live DNA data is sparse
+    if _dna_profile.get("dna_trades", 0) < 10 and BACKTEST_DNA.exists():
+        try:
+            seeded = json.loads(BACKTEST_DNA.read_text())
+            if seeded.get("dna_trades", 0) > _dna_profile.get("dna_trades", 0):
+                _dna_profile = seeded
+                log.info(f"[dna] using backtest-seeded profile ({seeded['dna_trades']} trades)")
+        except Exception:
+            pass
 
     try:
         edge_data = {
