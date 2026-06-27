@@ -57,7 +57,7 @@ from edge import (
 # Defaults are baked in here so the VPS config.py needs NO edits — a plain
 # `git pull` + restart picks all of this up. Override any of them in config.py.
 import config as _cfg
-LEARN_THRESHOLD    = getattr(_cfg, "LEARN_THRESHOLD", 30)       # closed trades before tightening
+LEARN_THRESHOLD    = getattr(_cfg, "LEARN_THRESHOLD", 50)       # closed trades before tightening
 EDGE_WINRATE_FLOOR = getattr(_cfg, "EDGE_WINRATE_FLOOR", 0.45)  # min win-rate to keep a grade live
 EDGE_MIN_SAMPLE    = getattr(_cfg, "EDGE_MIN_SAMPLE", 8)        # min trades before judging a grade
 LEARNING_FLAT_SIZE = getattr(_cfg, "LEARNING_FLAT_SIZE", 100)    # flat $/trade during learning phase
@@ -78,7 +78,7 @@ SETUP_B_DOLLARS_BY_GRADE = getattr(_cfg, "SETUP_B_DOLLARS_BY_GRADE",
                                     "B": SETUP_B_DOLLARS_PER, "C": SETUP_B_DOLLARS_PER})
 SETUP_B_DOLLARS_MIN     = getattr(_cfg, "SETUP_B_DOLLARS_MIN", SETUP_B_DOLLARS_PER)
 SETUP_B_DOLLARS_MAX     = getattr(_cfg, "SETUP_B_DOLLARS_MAX", SETUP_B_DOLLARS_PER)
-SETUP_B_LEARN_THRESHOLD = getattr(_cfg, "SETUP_B_LEARN_THRESHOLD", 30)
+SETUP_B_LEARN_THRESHOLD = getattr(_cfg, "SETUP_B_LEARN_THRESHOLD", 50)
 SETUP_B_MTF_ENABLED     = getattr(_cfg, "SETUP_B_MTF_ENABLED", True)
 
 # ── Scanner / VWAP / Chandelier (defaults baked in — no config.py edit needed) ──
