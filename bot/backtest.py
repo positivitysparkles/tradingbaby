@@ -365,8 +365,9 @@ def main():
     if not tickers:
         trades_file = DATA_DIR / "trades-parsed.json"
         if trades_file.exists():
-            historical = json.loads(trades_file.read_text())
-            tickers = sorted(set(t["ticker"] for t in historical))
+            raw = json.loads(trades_file.read_text())
+            historical = raw.get("trades", raw) if isinstance(raw, dict) else raw
+            tickers = sorted(set(t["ticker"] for t in historical if isinstance(t, dict)))
             print(f"Using {len(tickers)} tickers from historical trades")
         else:
             print("Usage: python bot/backtest.py [TICKER ...] [--days N] [--seed]")
