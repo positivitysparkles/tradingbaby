@@ -1,2 +1,10 @@
 __pycache__/
 bot/config.py
+data/trail_state.json
+data/exit_pending.json
+data/watch_sent.json
+data/edge_profile.json
+data/entry_dna.json
+data/dna_drift.json
+data/backtest_results.json
+data/backtest_dna_profile.json
