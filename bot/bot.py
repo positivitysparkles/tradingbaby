@@ -68,6 +68,7 @@ DOLLARS_MIN        = getattr(_cfg, "DOLLARS_MIN", LEARNING_FLAT_SIZE)
 DOLLARS_MAX        = getattr(_cfg, "DOLLARS_MAX", LEARNING_FLAT_SIZE)
 CATALYST_PROXY     = getattr(_cfg, "CATALYST_PROXY", True)      # price-action catalyst detection
 EDGE_CUTOFF_DATE   = getattr(_cfg, "EDGE_CUTOFF_DATE", None)   # e.g. "2026-06-25" — ignore older trades for tightening
+PPST_MAX_AGE       = getattr(_cfg, "PPST_MAX_AGE", 5)         # max bars since PPST flipped (5 = 25 min on 5m)
 
 # ── Setup B "Trend Rider" config ─────────────────────────────────────────────
 SETUP_B_ENABLED         = getattr(_cfg, "SETUP_B_ENABLED", True)
@@ -1432,6 +1433,7 @@ def _in_midday_chop() -> bool:
 def _blocker_bucket(reason: str) -> str:
     """Map a check_all_entry fail string to a human bucket for the heartbeat."""
     r = reason.lower()
+    if "stale" in r:                          return "PPST stale (signal too old)"
     if "supertrend" in r:                     return "Supertrend not green"
     if r.startswith("k ") or "stoch" in r:    return "StochRSI (K below D / not rising)"
     if "zlsma" in r:                          return "below ZLSMA"
@@ -1821,7 +1823,7 @@ def scan():
 
         ok, info = check_all_entry(bars, MIN_PRICE, MAX_PRICE, REL_VOL_MIN, DEEP_CURL_RESET,
                                    vwap_tol=VWAP_TOLERANCE, vwap_gate=VWAP_GATE,
-                                   overbought_k=OVERBOUGHT_K)
+                                   overbought_k=OVERBOUGHT_K, ppst_max_age=PPST_MAX_AGE)
         score, max_ = info.get("score", 0), info.get("max", 5)
         ranked.append((score, max_, ticker, info))
 
@@ -1937,7 +1939,8 @@ def scan():
                 bars_15m = get_bars(ticker, limit=100, timeframe="15Min") if SETUP_B_MTF_ENABLED else None
                 bars_1h  = get_bars(ticker, limit=100, timeframe="1Hour") if SETUP_B_MTF_ENABLED else None
                 ok_b, info_b = check_setup_b_entry(bars, MIN_PRICE, MAX_PRICE,
-                                                   bars_15m=bars_15m, bars_1h=bars_1h)
+                                                   bars_15m=bars_15m, bars_1h=bars_1h,
+                                                   ppst_max_age=PPST_MAX_AGE)
                 if ok_b:
                     signals += 1
                     catalyst_tier_b = None

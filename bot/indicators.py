@@ -136,12 +136,12 @@ def supertrend(bars: list, period: int = 10, mult: float = 2.0) -> int | None:
 
 
 def pivot_point_supertrend(bars: list, pivot_period: int = 2,
-                           atr_factor: float = 3.0, atr_period: int = 10) -> int | None:
+                           atr_factor: float = 3.0, atr_period: int = 10) -> tuple[int, int] | None:
     """
-    Pivot Point SuperTrend. Returns 1=bullish, -1=bearish.
+    Pivot Point SuperTrend. Returns (trend, bars_since_flip) or None.
+    trend: 1=bullish, -1=bearish.
+    bars_since_flip: how many bars ago the last trend change occurred (0 = this bar).
     Settings from IMG_4105: Pivot Period=2, ATR Factor=3, ATR Period=10.
-    Anchors ATR bands on confirmed swing pivot highs/lows (period bars each side) rather than
-    rolling hl2 — bands only step when a new pivot is confirmed, reducing whipsaw vs. regular ST.
     """
     min_bars = pivot_period * 2 + atr_period + 2
     if len(bars) < min_bars:
@@ -158,11 +158,10 @@ def pivot_point_supertrend(bars: list, pivot_period: int = 2,
     for i in range(atr_period, len(trs)):
         atr_v[i] = (atr_v[i - 1] * (atr_period - 1) + trs[i]) / atr_period
 
-    # Track last confirmed pivot high/low.
-    # A pivot at bar index conf_i is confirmed after pivot_period more bars have elapsed.
     ph = highs[0]
     pl = lows[0]
     trend = 1
+    flip_bar = 0
 
     for i in range(pivot_period * 2, len(bars)):
         conf_i = i - pivot_period
@@ -175,13 +174,16 @@ def pivot_point_supertrend(bars: list, pivot_period: int = 2,
         atr = atr_v[i - 1] if i - 1 < len(atr_v) else atr_v[-1]
         upper = ph + atr_factor * atr
         lower = pl - atr_factor * atr
+        prev_trend = trend
         if closes[i] > upper:
             trend = 1
         elif closes[i] < lower:
             trend = -1
-        # else: persist previous trend
+        if trend != prev_trend:
+            flip_bar = i
 
-    return trend
+    bars_since_flip = len(bars) - 1 - flip_bar
+    return (trend, bars_since_flip)
 
 
 def vwap_session(bars: list) -> float | None:
@@ -241,7 +243,8 @@ def chandelier_exit(bars: list, period: int = 10, mult: float = 2.0) -> dict | N
 def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min: float,
                     deep_curl_reset: float = 20.0, vwap_tol: float = 0.005,
                     vwap_gate: bool = True, overbought_k: float = 85.0,
-                    pivot_period: int = 2, atr_factor: float = 3.0) -> tuple[bool, dict]:
+                    pivot_period: int = 2, atr_factor: float = 3.0,
+                    ppst_max_age: int = 5) -> tuple[bool, dict]:
     """
     Run all W118 entry conditions. Returns (CORE_pass, details_dict).
 
@@ -275,11 +278,18 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
     blockers = []
 
     # 1. Pivot Point SuperTrend bullish — PRIMARY trigger (Period=2, Factor=3, ATR=10)
-    st = pivot_point_supertrend(bars, pivot_period=pivot_period, atr_factor=atr_factor)
-    if st == 1:
-        passed += 1
+    ppst_result = pivot_point_supertrend(bars, pivot_period=pivot_period, atr_factor=atr_factor)
+    if ppst_result is None:
+        st, bars_since_flip = -1, 999
+        blockers.append("PPST error")
     else:
-        blockers.append("Supertrend bearish")
+        st, bars_since_flip = ppst_result
+        if st != 1:
+            blockers.append("Supertrend bearish")
+        elif bars_since_flip > ppst_max_age:
+            blockers.append(f"PPST stale ({bars_since_flip} bars ago)")
+        else:
+            passed += 1
 
     # 2. StochRSI K > D AND K rising
     k, d, k_prev, k_low = stochrsi(closes)
@@ -373,8 +383,9 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
     not_overbought = (k is not None and k < overbought_k)
     stoch_hook = (k is not None and d is not None and k > d
                   and (k_prev is None or k >= k_prev))
+    ppst_fresh = (st == 1 and bars_since_flip <= ppst_max_age)
     core_pass = (
-        st == 1
+        ppst_fresh
         and ((zl is None) or (price > zl))            # ZLSMA: pass or skip
         and ((above_vwap is None) or (above_vwap is True))  # VWAP: pass or skip
         and stoch_hook and not_overbought
@@ -387,6 +398,7 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
         "max":       max_possible,
         "core":      core_pass,
         "overbought": (k is not None and k >= overbought_k),
+        "ppst_age":  bars_since_flip,
         "k":         round(k, 1)      if k    is not None else None,
         "d":         round(d, 1)      if d    is not None else None,
         "k_prev":    round(k_prev, 1) if k_prev is not None else None,
@@ -601,7 +613,8 @@ def compute_chart_dna(bars: list) -> dict:
 
 def check_setup_b_entry(bars_5m: list, min_price: float, max_price: float,
                         bars_15m: list | None = None, bars_1h: list | None = None,
-                        pivot_period: int = 2, atr_factor: float = 3.0) -> tuple[bool, dict]:
+                        pivot_period: int = 2, atr_factor: float = 3.0,
+                        ppst_max_age: int = 5) -> tuple[bool, dict]:
     """
     Setup B entry check. Simpler than Setup A — no StochRSI, ZLSMA, or VWAP.
     CORE: PPST bullish + MACD(12,26,9) blue>orange & rising + vol up + RSI>50.
@@ -618,12 +631,20 @@ def check_setup_b_entry(bars_5m: list, min_price: float, max_price: float,
     passed, max_possible = 0, 4
     blockers: list = []
 
-    # 1. PPST bullish on 5m
-    st = pivot_point_supertrend(bars_5m, pivot_period=pivot_period, atr_factor=atr_factor)
-    if st == 1:
-        passed += 1
+    # 1. PPST bullish on 5m (must be fresh — flipped within ppst_max_age bars)
+    ppst_result = pivot_point_supertrend(bars_5m, pivot_period=pivot_period, atr_factor=atr_factor)
+    if ppst_result is None:
+        st, bars_since_flip = -1, 999
+        blockers.append("PPST error")
     else:
-        blockers.append("PPST bearish")
+        st, bars_since_flip = ppst_result
+        if st != 1:
+            blockers.append("PPST bearish")
+        elif bars_since_flip > ppst_max_age:
+            blockers.append(f"PPST stale ({bars_since_flip} bars ago)")
+        else:
+            passed += 1
+    info["ppst_age"] = bars_since_flip
 
     # 2. Standard MACD (12,26,9) blue > orange AND rising
     min_macd_len = 26 + 9 + 2
@@ -678,11 +699,11 @@ def check_setup_b_entry(bars_5m: list, min_price: float, max_price: float,
     mtf_15m = False
     mtf_1h = False
     if bars_15m and len(bars_15m) >= pivot_period * 2 + 12:
-        st_15 = pivot_point_supertrend(bars_15m, pivot_period=pivot_period, atr_factor=atr_factor)
-        mtf_15m = st_15 == 1
+        r15 = pivot_point_supertrend(bars_15m, pivot_period=pivot_period, atr_factor=atr_factor)
+        mtf_15m = r15 is not None and r15[0] == 1
     if bars_1h and len(bars_1h) >= pivot_period * 2 + 12:
-        st_1h = pivot_point_supertrend(bars_1h, pivot_period=pivot_period, atr_factor=atr_factor)
-        mtf_1h = st_1h == 1
+        r1h = pivot_point_supertrend(bars_1h, pivot_period=pivot_period, atr_factor=atr_factor)
+        mtf_1h = r1h is not None and r1h[0] == 1
     info["mtf_15m"] = mtf_15m
     info["mtf_1h"] = mtf_1h
 
@@ -700,8 +721,8 @@ def check_setup_b_exit(bars: list, pivot_period: int = 2,
     """
     closes = [b["c"] for b in bars]
 
-    st = pivot_point_supertrend(bars, pivot_period=pivot_period, atr_factor=atr_factor)
-    if st == -1:
+    ppst_r = pivot_point_supertrend(bars, pivot_period=pivot_period, atr_factor=atr_factor)
+    if ppst_r is not None and ppst_r[0] == -1:
         return "supertrend_bearish"
 
     m_line, hist = macd(closes, 12, 26, 9)
@@ -732,8 +753,8 @@ def check_exit_signal(bars: list, chandelier: bool = True,
     price  = closes[-1]
 
     # Structure exit 1 — trend reversal (Pivot Point SuperTrend)
-    st = pivot_point_supertrend(bars, pivot_period=pivot_period, atr_factor=atr_factor)
-    if st == -1:
+    ppst_r = pivot_point_supertrend(bars, pivot_period=pivot_period, atr_factor=atr_factor)
+    if ppst_r is not None and ppst_r[0] == -1:
         return "supertrend_bearish"
 
     # Structure exit 2 — lost uptrend support

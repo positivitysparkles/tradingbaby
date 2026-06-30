@@ -93,6 +93,7 @@ MIDDAY_END_ET   = 15.0        # 3:00pm ET  — entries resume (power hour)
 # above ZLSMA + Stoch hook (K>D & rising) + MACD histogram > 0 + K < OVERBOUGHT_K.
 # The Edge Engine prunes weak grades (learn→tighten), so relaxing the gate is safe.
 OVERBOUGHT_K = 85.0           # K at/above this = blow-off top, NOT a reset — never auto-buy
+PPST_MAX_AGE = 5              # max bars since PPST flipped bullish (5 bars = 25 min on 5m). Stale = alert only, no auto-buy.
 
 # Entry quality — deep-curl flag. StochRSI K that recently dipped low then curled up
 # = stronger reload (Colab grader's ⭐). Raised 20→30 on 2026-06-19: the user's own A+
