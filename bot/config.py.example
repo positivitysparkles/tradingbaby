@@ -38,6 +38,12 @@ EDGE_WINRATE_FLOOR = 0.45      # a grade must win ≥45% (over enough trades) to
 EDGE_MIN_SAMPLE    = 8         # need ≥8 closed trades on a grade before judging it
 CATALYST_PROXY     = True      # price-action catalyst detection (gap / halt-resume / runner)
 
+# Edge cutoff — ignore trades BEFORE this date for tightening decisions.
+# Useful after changing system settings (PPST, trailing stops, etc.) so old-system
+# losses don't poison the edge profile. DNA mining still uses ALL trades.
+# Set to None to use all trades (default).
+EDGE_CUTOFF_DATE   = "2026-06-25"  # date PPST + trailing stops shipped
+
 # ── Setup B "Trend Rider" — second strategy running alongside Setup A ────────
 # Setup B uses: PPST bullish + MACD(12,26,9) blue>orange & rising + volume up + RSI>50
 # Multi-timeframe (15m/1H PPST bullish) feeds grade but doesn't block entry.

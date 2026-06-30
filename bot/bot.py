@@ -67,6 +67,7 @@ DOLLARS_BY_GRADE   = getattr(_cfg, "DOLLARS_BY_GRADE",
 DOLLARS_MIN        = getattr(_cfg, "DOLLARS_MIN", LEARNING_FLAT_SIZE)
 DOLLARS_MAX        = getattr(_cfg, "DOLLARS_MAX", LEARNING_FLAT_SIZE)
 CATALYST_PROXY     = getattr(_cfg, "CATALYST_PROXY", True)      # price-action catalyst detection
+EDGE_CUTOFF_DATE   = getattr(_cfg, "EDGE_CUTOFF_DATE", None)   # e.g. "2026-06-25" — ignore older trades for tightening
 
 # ── Setup B "Trend Rider" config ─────────────────────────────────────────────
 SETUP_B_ENABLED         = getattr(_cfg, "SETUP_B_ENABLED", True)
@@ -355,6 +356,28 @@ def _save_dna_drift(ticker: str, entry_dna: dict, exit_dna: dict,
     except Exception as e:
         log.warning(f"[dna-drift] save failed: {e}")
 
+def _reconcile_positions():
+    """Reconcile Supabase 'open' records against actual Alpaca holdings.
+    Marks stale records as closed so the dashboard count is accurate."""
+    if not _SB_ENABLED:
+        return
+    try:
+        sb_open = _sb("GET", "/rest/v1/w118_trades?status=eq.open&select=id,ticker") or []
+        held = get_held()
+        stale = [r for r in sb_open if r.get("ticker") not in held]
+        for r in stale:
+            rid = r.get("id")
+            if rid:
+                _sb("PATCH", f"/rest/v1/w118_trades?id=eq.{rid}", json={
+                    "status": "closed", "exit_reason": "reconciled_stale",
+                    "notes": "position not found in Alpaca — closed by reconciliation"
+                })
+                log.info(f"[reconcile] {r['ticker']} marked closed (not in Alpaca)")
+        if stale:
+            log.info(f"[reconcile] closed {len(stale)} stale Supabase records")
+    except Exception as e:
+        log.warning(f"[reconcile] failed: {e}")
+
 def tg(msg: str):
     try:
         r = requests.post(
@@ -417,21 +440,32 @@ def refresh_edge() -> str:
     rows = _sb("GET", "/rest/v1/w118_trades?status=in.(closed,stopped)&select=*&limit=2000") or []
     closed = [r for r in rows if r.get("realized_pnl") is not None]
 
+    # Apply edge cutoff date — only count recent trades for tightening decisions.
+    # DNA mining still uses ALL trades (pattern data is valid regardless of system version).
+    if EDGE_CUTOFF_DATE:
+        edge_closed = [r for r in closed if (r.get("date") or "") >= EDGE_CUTOFF_DATE]
+        n_excluded = len(closed) - len(edge_closed)
+        if n_excluded:
+            log.info(f"[edge] cutoff {EDGE_CUTOFF_DATE}: {len(closed)} total, "
+                     f"{len(edge_closed)} for tightening ({n_excluded} pre-cutoff excluded)")
+    else:
+        edge_closed = closed
+
     # Setup A (default for old trades without setup field)
-    closed_a = [r for r in closed if (r.get("setup") or "A") == "A"]
+    closed_a = [r for r in edge_closed if (r.get("setup") or "A") == "A"]
     _edge_n_closed = len(closed_a)
     _edge_profile  = compute_edge_profile(closed_a)
     phase_a  = phase_for(_edge_n_closed, LEARN_THRESHOLD)
     summary  = edge_summary(_edge_profile, _edge_n_closed, phase_a)
 
     # Setup B
-    closed_b = [r for r in closed if r.get("setup") == "B"]
+    closed_b = [r for r in edge_closed if r.get("setup") == "B"]
     _edge_n_closed_b = len(closed_b)
     _edge_profile_b  = compute_edge_profile(closed_b)
     phase_b   = phase_for(_edge_n_closed_b, SETUP_B_LEARN_THRESHOLD)
     summary_b = edge_summary(_edge_profile_b, _edge_n_closed_b, phase_b)
 
-    # Chart DNA pattern mining (all closed trades, both setups)
+    # Chart DNA pattern mining (all closed trades, both setups — no cutoff)
     try:
         _dna_profile = mine_chart_patterns(closed)
         dna_n = _dna_profile.get("dna_trades", 0)
@@ -1032,17 +1066,35 @@ def _self_audit_insights() -> str:
     Returns a formatted insights block for the daily Telegram audit.
     Runs after refresh_edge() so _edge_profile is fresh."""
     rows = _sb("GET", "/rest/v1/w118_trades?status=in.(closed,stopped)&select=*&limit=2000") or []
-    closed = [r for r in rows if r.get("realized_pnl") is not None]
-    if len(closed) < 3:
+    all_closed = [r for r in rows if r.get("realized_pnl") is not None]
+    if len(all_closed) < 3:
         return ""
 
+    # Show all-time stats, then apply cutoff for tightening-relevant analysis
+    if EDGE_CUTOFF_DATE:
+        closed = [r for r in all_closed if (r.get("date") or "") >= EDGE_CUTOFF_DATE]
+        n_excluded = len(all_closed) - len(closed)
+    else:
+        closed = all_closed
+        n_excluded = 0
+
     lines = []
+    # All-time headline (always uses full data)
+    all_wins = [t for t in all_closed if float(t.get("realized_pnl", 0)) > 0]
+    all_net = sum(float(t.get("realized_pnl", 0)) for t in all_closed)
+    all_wr = len(all_wins) / len(all_closed) * 100
+    lines.append(f"All-time: {len(all_closed)} trades · {all_wr:.0f}% win · ${all_net:+.2f} net")
+
+    if n_excluded:
+        lines.append(f"Edge cutoff {EDGE_CUTOFF_DATE}: {len(closed)} post-cutoff, {n_excluded} pre-cutoff excluded")
+
     wins = [t for t in closed if float(t.get("realized_pnl", 0)) > 0]
     losses = [t for t in closed if float(t.get("realized_pnl", 0)) <= 0]
     total = len(closed)
     wr = len(wins) / total * 100 if total else 0
     net = sum(float(t.get("realized_pnl", 0)) for t in closed)
-    lines.append(f"All-time: {total} trades · {wr:.0f}% win · ${net:+.2f} net")
+    if n_excluded:
+        lines.append(f"Post-cutoff: {total} trades · {wr:.0f}% win · ${net:+.2f} net")
 
     # Best/worst session
     sessions: dict = {}
@@ -1284,6 +1336,12 @@ def daily_audit():
                 f"Net: <b>${net_pnl:+.2f}</b>  ({wins}W / {losses}L  {win_rate})\n")
     if pos_lines:
         msg += f"\n<b>Open now (unrealized):</b>\n{pos_lines}"
+
+    # Reconcile stale Supabase records before edge refresh
+    try:
+        _reconcile_positions()
+    except Exception:
+        pass
 
     # Edge Engine: recompute what's working and report the phase + grade win-rates.
     try:
@@ -2030,6 +2088,7 @@ def main():
     # Reload trailing stop state so a VPS restart doesn't lose T1/T2 levels mid-trade.
     _load_trail_state()
     _load_entry_dna()
+    _reconcile_positions()
 
     # Reconstruct _setup_map for open positions from Supabase (which positions are Setup A vs B)
     if _SB_ENABLED:
