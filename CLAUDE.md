@@ -43,6 +43,8 @@ data/trades-parsed.json            ← 101 historical trades, 98.0% win rate
 
 **Note:** MACD settings (5,10,16) — faster than standard 12,26,9, fires in sync with PPST. `hist > 0` = hard gate in CORE. StochRSI requires K rising (K > K_prev) in addition to K > D.
 
+**PPST freshness gate (June-30):** Auto-buy requires PPST to have flipped bullish within the last `PPST_MAX_AGE` bars (default 5 = 25 min on 5m). Stale PPST (flipped hours ago) → WATCH alert only, no auto-buy. Prevents buying 89% into a move (BIYA lesson).
+
 ### Condition priority tiers (MUST vs soft)
 - **Tier 1 — Structure (hard MUST):** PPST green (5m) · Price > VWAP · Price > ZLSMA-50
 - **Tier 2 — Ignition (entry timing):** StochRSI K>D & rising · MACD hist > 0
@@ -325,6 +327,9 @@ print("✅ Drive ready")
 | Learning threshold raised 30→50 (both setups) | #92 | 2026-06-27 |
 | Chart DNA pattern learning (10 features + mining + scoring) | #93 | 2026-06-27 |
 | Historical backtester + DNA evolution tracking | — | 2026-06-27 |
+| Edge cutoff date + stale position reconciliation | #100 | 2026-06-30 |
+| Dashboard HELD/LIVE edge badges | #100 | 2026-06-30 |
+| PPST signal freshness gate (stop late entries) | — | 2026-06-30 |
 
 ## Pending features (roadmap)
 - [x] Historical backtesting — `python bot/backtest.py` uses yfinance 5m bars (60 days, free). Done 2026-06-27.
@@ -343,6 +348,7 @@ print("✅ Drive ready")
 9. **Exit timing:** June-25 audit showed MFE avg +19.7% vs exit avg -3.0%. Bot was exiting at losses while stocks later went up 19%. Root cause: ZLSMA/Chandelier signal exits firing during healthy pullbacks. PPST reduces whipsaws; trailing stop preserves profit once T1 hits.
 10. **MAE -23.7% was a data artifact.** Fixed in PR #86 — now filters to bars after `_sb_entry_ts[ticker]`. Real MAE on a -8% stop system should be 2–8%.
 11. **PPST replaced regular Supertrend (June-25).** Uses confirmed swing pivot highs/lows as band anchors instead of rolling hl2 → fewer whipsaw flips during consolidation. Settings: Period=2, Factor=3, ATR=10.
+12. **PPST "is green" ≠ "just flipped green" (June-30).** BIYA bought at $0.54 (+89% into the move) because the bot checked `st == 1` (is bullish), not when it flipped. `PPST_MAX_AGE = 5` (25 min on 5m) now blocks stale signals.
 
 ## What "no alerts" means
 The **30-min heartbeat** (💓) shows TOP BLOCKERS in journalctl (not Telegram — QUIET_ALERTS is on).
