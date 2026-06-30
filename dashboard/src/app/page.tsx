@@ -61,6 +61,8 @@ type Trade = {
 }
 
 const LEARN_THRESHOLD = 50
+const EDGE_WINRATE_FLOOR = 45
+const EDGE_MIN_SAMPLE = 8
 const GRADES = ['A+', 'A', 'B', 'C'] as const
 const SESSIONS = ['premarket', 'open', 'midday', 'power hour', 'after-hours'] as const
 
@@ -596,18 +598,33 @@ export default function Dashboard() {
           {/* By grade — show setup split if B exists */}
           <div>
             <p style={{ color: C.ink }} className="text-xs font-semibold tracking-wide uppercase mb-3 mono">Win Rate by Grade</p>
-            {gradeStats.length ? gradeStats.map(s => (
+            {gradeStats.length ? gradeStats.map(s => {
+              const isLearning = phase === 'Learning'
+              const hasEnoughData = s.count >= EDGE_MIN_SAMPLE
+              const meetsFloor = (s.win ?? 0) >= EDGE_WINRATE_FLOOR
+              const isHighConviction = s.g === 'A+' || s.g === 'A'
+              const edgeStatus = isLearning ? 'live'
+                : hasEnoughData ? (meetsFloor ? 'live' : 'held')
+                : (isHighConviction ? 'live' : 'held')
+              return (
               <div key={s.g} className="flex items-center gap-3 mb-2">
                 <span className="w-7"><GradeBadge grade={s.g} /></span>
                 <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: C.surface2 }}>
                   <div style={{ width: `${s.win ?? 0}%`, background: (s.win ?? 0) >= 50 ? C.win : C.pink }} className="h-full rounded-full" />
                 </div>
+                <span style={{
+                  background: edgeStatus === 'live' ? 'rgba(87,224,160,0.12)' : 'rgba(255,107,129,0.12)',
+                  color: edgeStatus === 'live' ? C.win : C.loss,
+                }} className="text-[9px] px-1.5 py-0.5 rounded font-semibold tracking-wider uppercase mono shrink-0">
+                  {edgeStatus === 'live' ? 'LIVE' : 'HELD'}
+                </span>
                 <span className="text-xs mono shrink-0" style={{ color: C.inkSoft }}>{s.win}% · {s.count}</span>
                 <span className="text-xs mono shrink-0 w-16 text-right" style={{ color: s.pnl >= 0 ? C.win : C.loss }}>
                   {s.pnl >= 0 ? '+' : ''}${s.pnl.toFixed(0)}
                 </span>
               </div>
-            )) : <span style={{ color: C.inkSoft }} className="text-xs">No graded closed trades yet.</span>}
+              )
+            }) : <span style={{ color: C.inkSoft }} className="text-xs">No graded closed trades yet.</span>}
           </div>
 
           {/* By session */}
