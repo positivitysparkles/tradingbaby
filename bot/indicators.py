@@ -278,6 +278,8 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
     blockers = []
 
     # 1. Pivot Point SuperTrend bullish — PRIMARY trigger (Period=2, Factor=3, ATR=10)
+    #    PPST = structure check (are we in an uptrend?). Timing comes from StochRSI + MACD.
+    #    bars_since_flip is kept in info dict for grading/audit but does NOT block entry.
     ppst_result = pivot_point_supertrend(bars, pivot_period=pivot_period, atr_factor=atr_factor)
     if ppst_result is None:
         st, bars_since_flip = -1, 999
@@ -286,8 +288,6 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
         st, bars_since_flip = ppst_result
         if st != 1:
             blockers.append("Supertrend bearish")
-        elif bars_since_flip > ppst_max_age:
-            blockers.append(f"PPST stale ({bars_since_flip} bars ago)")
         else:
             passed += 1
 
@@ -383,9 +383,8 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
     not_overbought = (k is not None and k < overbought_k)
     stoch_hook = (k is not None and d is not None and k > d
                   and (k_prev is None or k >= k_prev))
-    ppst_fresh = (st == 1 and bars_since_flip <= ppst_max_age)
     core_pass = (
-        ppst_fresh
+        st == 1
         and ((zl is None) or (price > zl))            # ZLSMA: pass or skip
         and ((above_vwap is None) or (above_vwap is True))  # VWAP: pass or skip
         and stoch_hook and not_overbought
@@ -631,7 +630,7 @@ def check_setup_b_entry(bars_5m: list, min_price: float, max_price: float,
     passed, max_possible = 0, 4
     blockers: list = []
 
-    # 1. PPST bullish on 5m (must be fresh — flipped within ppst_max_age bars)
+    # 1. PPST bullish on 5m — structure check (uptrend confirmed)
     ppst_result = pivot_point_supertrend(bars_5m, pivot_period=pivot_period, atr_factor=atr_factor)
     if ppst_result is None:
         st, bars_since_flip = -1, 999
@@ -640,8 +639,6 @@ def check_setup_b_entry(bars_5m: list, min_price: float, max_price: float,
         st, bars_since_flip = ppst_result
         if st != 1:
             blockers.append("PPST bearish")
-        elif bars_since_flip > ppst_max_age:
-            blockers.append(f"PPST stale ({bars_since_flip} bars ago)")
         else:
             passed += 1
     info["ppst_age"] = bars_since_flip

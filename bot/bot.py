@@ -1433,7 +1433,6 @@ def _in_midday_chop() -> bool:
 def _blocker_bucket(reason: str) -> str:
     """Map a check_all_entry fail string to a human bucket for the heartbeat."""
     r = reason.lower()
-    if "stale" in r:                          return "PPST stale (signal too old)"
     if "supertrend" in r:                     return "Supertrend not green"
     if r.startswith("k ") or "stoch" in r:    return "StochRSI (K below D / not rising)"
     if "zlsma" in r:                          return "below ZLSMA"
