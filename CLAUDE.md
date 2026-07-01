@@ -348,7 +348,7 @@ print("✅ Drive ready")
 9. **Exit timing:** June-25 audit showed MFE avg +19.7% vs exit avg -3.0%. Bot was exiting at losses while stocks later went up 19%. Root cause: ZLSMA/Chandelier signal exits firing during healthy pullbacks. PPST reduces whipsaws; trailing stop preserves profit once T1 hits.
 10. **MAE -23.7% was a data artifact.** Fixed in PR #86 — now filters to bars after `_sb_entry_ts[ticker]`. Real MAE on a -8% stop system should be 2–8%.
 11. **PPST replaced regular Supertrend (June-25).** Uses confirmed swing pivot highs/lows as band anchors instead of rolling hl2 → fewer whipsaw flips during consolidation. Settings: Period=2, Factor=3, ATR=10.
-12. **PPST "is green" ≠ "just flipped green" (June-30).** BIYA bought at $0.54 (+89% into the move) because the bot checked `st == 1` (is bullish), not when it flipped. `PPST_MAX_AGE = 5` (25 min on 5m) now blocks stale signals.
+12. **PPST freshness gate was too strict (July-1).** `PPST_MAX_AGE = 5` blocked EVERY candidate because scanner finds stocks already running (10%+ move = PPST flipped long ago). Removed as hard gate — PPST = structure (uptrend?), StochRSI + K<85 overbought = timing. `ppst_age` kept in info dict for grading only.
 
 ## What "no alerts" means
 The **30-min heartbeat** (💓) shows TOP BLOCKERS in journalctl (not Telegram — QUIET_ALERTS is on).
