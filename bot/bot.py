@@ -955,7 +955,7 @@ def execute_buy(ticker: str, price: float, info: dict):
         msg = (
             f"<b>🟢 AUTO BUY — {html.escape(ticker)}</b>  <b>[{grade}]</b>  [{setup_label}]{' ⭐ DEEP CURL' if info.get('deep_curl') else ''}\n"
             f"Entry: ${price:.4f}  ×{qty} shares (~${qty*price:.0f})  ·  grade {grade}\n"
-            f"K={info['k']}↑  D={info['d']}  MACD(5,10,16)={'▲' if info['macd_hist'] > 0 else '▽'}  Vol {info['vol_ratio']}x\n"
+            f"K={info['k']}↑  D={info['d']}  ({info.get('timing_tf','5m')})  MACD={'▲' if info['macd_hist'] > 0 else '▽'}  Vol {info['vol_ratio']}x\n"
             f"VWAP {_vwap_tag(info)}  ·  ZLSMA ${info.get('zlsma')}{dna_line}\n"
             f"🛑 Stop: ${stop}  (-8%) — {stop_note}\n"
             f"🎯 T1: ${t1}  (+15%)  ×{t1_qty} — {'✓' if res['T1'] else '❌ FAILED'}\n"
@@ -1515,7 +1515,7 @@ def _send_setup_alert(ticker: str, info: dict, why: str) -> None:
             f"🔔 <b>MANUAL SETUP — {html.escape(ticker)}</b>{gtag}{curl}  [{setup_label}]\n"
             f"<i>Bot can't auto-buy ({html.escape(why)}) — you can paper-trade it:</i>\n"
             f"Entry ~${price:.4f} ({price_note})  ×{qty} shares (~${qty*price:.0f})\n"
-            f"K={info['k']}↑ D={info['d']}  MACD {macd}  Vol {info['vol_ratio']}x\n"
+            f"K={info['k']}↑ D={info['d']}  ({info.get('timing_tf','5m')})  MACD {macd}  Vol {info['vol_ratio']}x\n"
             f"VWAP {_vwap_tag(info)}\n"
             f"🛑 Stop ${stop}  (-8%)\n"
             f"🎯 T1 ${t1} (+15%)   T2 ${t2} (+30%)   T3 ${t3} (+60%)"
@@ -1820,28 +1820,19 @@ def scan():
         if not bars:
             continue
 
+        # 1-min bars for timing indicators (StochRSI, MACD, RSI) — catches entries
+        # early before 5-min K rockets past overbought. Fails open: if 1-min bars
+        # unavailable, check_all_entry falls back to 5-min for everything.
+        bars_1m = get_bars(ticker, limit=60, timeframe="1Min")
+
         ok, info = check_all_entry(bars, MIN_PRICE, MAX_PRICE, REL_VOL_MIN, DEEP_CURL_RESET,
                                    vwap_tol=VWAP_TOLERANCE, vwap_gate=VWAP_GATE,
-                                   overbought_k=OVERBOUGHT_K, ppst_max_age=PPST_MAX_AGE)
+                                   overbought_k=OVERBOUGHT_K, ppst_max_age=PPST_MAX_AGE,
+                                   bars_1m=bars_1m)
         score, max_ = info.get("score", 0), info.get("max", 5)
         ranked.append((score, max_, ticker, info))
 
         if ok:
-            # Micro-timeframe freshness — W118's "zoom to 1m". The 5-min signal lags;
-            # block it if the 1-min move is already rolling over (the ATPC $3.43 top
-            # chase). Fails open when 1-min history is thin so young names aren't blocked.
-            if REQUIRE_1M_FRESH:
-                bars_1m = get_bars(ticker, limit=60, timeframe="1Min")
-                if bars_1m:
-                    fresh, why_stale = is_fresh_1m(bars_1m)
-                    if not fresh:
-                        log.info(f"[skip-stale] {ticker} 5/5 on 5m but {why_stale}")
-                        blockers["1m rolling over (stale)"] += 1
-                        # Still alert — 5/5 on the 5m chart is real. User can decide
-                        # whether to take it manually while 1m momentum recovers.
-                        _send_setup_alert(ticker, info, f"1m rolling over ({why_stale}) — watch chart")
-                        time.sleep(0.15)
-                        continue
 
             signals += 1
             curl = " ⭐deep-curl" if info.get("deep_curl") else ""
@@ -1939,7 +1930,8 @@ def scan():
                 bars_1h  = get_bars(ticker, limit=100, timeframe="1Hour") if SETUP_B_MTF_ENABLED else None
                 ok_b, info_b = check_setup_b_entry(bars, MIN_PRICE, MAX_PRICE,
                                                    bars_15m=bars_15m, bars_1h=bars_1h,
-                                                   ppst_max_age=PPST_MAX_AGE)
+                                                   ppst_max_age=PPST_MAX_AGE,
+                                                   bars_1m=bars_1m)
                 if ok_b:
                     signals += 1
                     catalyst_tier_b = None

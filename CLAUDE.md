@@ -23,32 +23,32 @@ data/trades-parsed.json            ← 101 historical trades, 98.0% win rate
 
 **Author:** Weatherman118 | **Universe:** NASDAQ small-caps $0.10–$15, float <10M (tightened 2026-06-05)
 
-### Entry System (updated 2026-06-25)
+### Entry System (updated 2026-07-01)
 
 **Step 1 — Stock Discovery (Scanner):**
 - TradingView scanner → filter: price $0.10–$15, change > 10%, rel vol > 1.5x
 - Absolute volume > 1M shares (filters out dead stocks)
 - Yahoo predefined gainers kept as fallback. Price ceiling raised $5→$15 on 2026-06-17 (BIRD lesson)
 
-**Step 2 — Chart Confirmation:**
+**Step 2 — Chart Confirmation (dual-timeframe: 5m structure + 1m timing):**
 | # | Condition | Timeframe | Weight |
 |---|-----------|-----------|--------|
-| 1 | **Pivot Point SuperTrend flips bullish** (Period=2, Factor=3, ATR=10) | 5m | PRIMARY trigger |
-| 2 | Price above ZLSMA-50 | 5m | critical — NEVER trade below |
-| 3 | StochRSI K > D AND K rising | 5m | critical |
-| 4 | Volume > 1.5x 20-bar average | 5m | soft (score only — dries up during coil) |
+| 1 | **Pivot Point SuperTrend flips bullish** (Period=2, Factor=3, ATR=10) | 5m (structure) | PRIMARY trigger |
+| 2 | Price above ZLSMA-50 | 5m (structure) | critical — NEVER trade below |
+| 3 | StochRSI K > D AND K rising | **1m** (timing) | critical |
+| 4 | Volume > 1.5x 20-bar average | 5m (structure) | soft (score only — dries up during coil) |
 | 5 | Catalyst: Tier 1 (FDA/merger) > Tier 2 (halt-resume) > Tier 3 (momentum) | — | confirming |
-| 6 | **Price holds above Session VWAP** | 5m | hard gate w/ 0.5% tolerance |
-| 7 | **RSI(14) > 50** | 5m | soft confirmation (score only, never blocks) |
+| 6 | **Price holds above Session VWAP** | 5m (structure) | hard gate w/ 0.5% tolerance |
+| 7 | **RSI(14) > 50** | **1m** (timing) | soft confirmation (score only, never blocks) |
 
-**Note:** MACD settings (5,10,16) — faster than standard 12,26,9, fires in sync with PPST. `hist > 0` = hard gate in CORE. StochRSI requires K rising (K > K_prev) in addition to K > D.
+**Dual-timeframe (July-1):** 5-min bars confirm STRUCTURE (PPST, ZLSMA, VWAP, volume) — "is this stock in an uptrend?" 1-min bars determine TIMING (StochRSI, MACD, RSI) — "when to pull the trigger." This catches entries early while 1-min K is at 40-60, instead of waiting for 5-min K to rocket past 85 (overbought). Falls back to all-5-min when 1-min bars unavailable.
 
-**PPST freshness gate (June-30):** Auto-buy requires PPST to have flipped bullish within the last `PPST_MAX_AGE` bars (default 5 = 25 min on 5m). Stale PPST (flipped hours ago) → WATCH alert only, no auto-buy. Prevents buying 89% into a move (BIYA lesson).
+**Note:** MACD settings (5,10,16) — faster than standard 12,26,9, fires in sync with PPST. `hist > 0` = hard gate in CORE. StochRSI requires K rising (K > K_prev) in addition to K > D. Both computed from 1-min closes for faster timing.
 
 ### Condition priority tiers (MUST vs soft)
-- **Tier 1 — Structure (hard MUST):** PPST green (5m) · Price > VWAP · Price > ZLSMA-50
-- **Tier 2 — Ignition (entry timing):** StochRSI K>D & rising · MACD hist > 0
-- **Tier 3 — Quality/context (soft):** Volume > 1.5× · RSI > 50 · MACD line > 0
+- **Tier 1 — Structure (hard MUST, 5m):** PPST green · Price > VWAP · Price > ZLSMA-50
+- **Tier 2 — Ignition (entry timing, 1m):** StochRSI K>D & rising · MACD hist > 0
+- **Tier 3 — Quality/context (soft, 1m):** Volume > 1.5× (5m) · RSI > 50 · MACD line > 0
 - **PPST is a hard gate to BUY, not to WATCH.** Bearish-PPST names STAY on watchlist — the flip to bullish IS the entry.
 - **Auto-buy = CORE:** PPST green + above VWAP + above ZLSMA + Stoch hook + MACD hist > 0 + K < 85 (not overbought). Volume/RSI/MACD-line are SOFT — raise grade but never block.
 
@@ -330,6 +330,7 @@ print("✅ Drive ready")
 | Edge cutoff date + stale position reconciliation | #100 | 2026-06-30 |
 | Dashboard HELD/LIVE edge badges | #100 | 2026-06-30 |
 | PPST signal freshness gate (stop late entries) | — | 2026-06-30 |
+| Dual-timeframe entry (5m structure + 1m timing) | — | 2026-07-01 |
 
 ## Pending features (roadmap)
 - [x] Historical backtesting — `python bot/backtest.py` uses yfinance 5m bars (60 days, free). Done 2026-06-27.
@@ -348,7 +349,8 @@ print("✅ Drive ready")
 9. **Exit timing:** June-25 audit showed MFE avg +19.7% vs exit avg -3.0%. Bot was exiting at losses while stocks later went up 19%. Root cause: ZLSMA/Chandelier signal exits firing during healthy pullbacks. PPST reduces whipsaws; trailing stop preserves profit once T1 hits.
 10. **MAE -23.7% was a data artifact.** Fixed in PR #86 — now filters to bars after `_sb_entry_ts[ticker]`. Real MAE on a -8% stop system should be 2–8%.
 11. **PPST replaced regular Supertrend (June-25).** Uses confirmed swing pivot highs/lows as band anchors instead of rolling hl2 → fewer whipsaw flips during consolidation. Settings: Period=2, Factor=3, ATR=10.
-12. **PPST freshness gate was too strict (July-1).** `PPST_MAX_AGE = 5` blocked EVERY candidate because scanner finds stocks already running (10%+ move = PPST flipped long ago). Removed as hard gate — PPST = structure (uptrend?), StochRSI + K<85 overbought = timing. `ppst_age` kept in info dict for grading only.
+12. **PPST freshness gate was too strict (June-30).** `PPST_MAX_AGE = 5` blocked EVERY candidate because scanner finds stocks already running (10%+ move = PPST flipped long ago). Removed as hard gate — PPST = structure (uptrend?), StochRSI + K<85 overbought = timing. `ppst_age` kept in info dict for grading only.
+13. **5-min K overbought blocks everything (July-1).** On 5-min bars, K rockets past 85 within minutes of a move starting — by the time the 5-min candle closes, the entry window is gone. On 1-min bars, K is still at 40-60 during the same move. Fix: dual-timeframe — 5-min for structure (PPST/ZLSMA/VWAP), 1-min for timing (StochRSI/MACD/RSI). BTCT, ELAB, CODX all confirmed this pattern.
 
 ## What "no alerts" means
 The **30-min heartbeat** (💓) shows TOP BLOCKERS in journalctl (not Telegram — QUIET_ALERTS is on).

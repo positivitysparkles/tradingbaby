@@ -244,9 +244,14 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
                     deep_curl_reset: float = 20.0, vwap_tol: float = 0.005,
                     vwap_gate: bool = True, overbought_k: float = 85.0,
                     pivot_period: int = 2, atr_factor: float = 3.0,
-                    ppst_max_age: int = 5) -> tuple[bool, dict]:
+                    ppst_max_age: int = 5,
+                    bars_1m: list | None = None) -> tuple[bool, dict]:
     """
     Run all W118 entry conditions. Returns (CORE_pass, details_dict).
+
+    Dual-timeframe: 5-min bars for STRUCTURE (PPST, ZLSMA, VWAP, volume),
+    1-min bars for TIMING (StochRSI, MACD, RSI). When bars_1m is None,
+    falls back to all-5-min (backward compatible for backtester).
 
     The first return value is the AUTO-BUY gate = the priority-tier "core":
       Tier-1 (Supertrend green + above VWAP + above ZLSMA) + Stoch hook (K>D & rising,
@@ -255,19 +260,14 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
     block a buy (6/6 rarely lines up; the Edge Engine prunes weak grades via learn→
     tighten). `score`/`max` in the info dict still tally all 6 for grading + display.
 
-    Checks ALL conditions instead of short-circuiting so we can score
-    partial setups for WATCH alerts. ZLSMA / VWAP are skipped (not failed)
-    when insufficient bar history.
-
-    `deep_curl_reset`: if StochRSI K dipped below this within the lookback and is
-    now curling up, the setup is flagged deep_curl=True (stronger reload). This is
-    INFORMATIONAL only — it does not gate entry, just enriches alerts + the audit.
-
     info dict always contains: score, max, blockers, price, k, d, vol_ratio, deep_curl
     On full pass: fail=None. On partial: fail = joined blocker string.
     """
     closes = [b["c"] for b in bars]
     price  = closes[-1]
+
+    # Timing indicators use 1-min closes when available, else fall back to 5-min
+    timing_closes = [b["c"] for b in bars_1m] if bars_1m and len(bars_1m) >= 20 else closes
 
     if not (min_price <= price <= max_price):
         return False, {"fail": "price_range", "price": price, "score": 0, "max": 5,
@@ -291,8 +291,8 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
         else:
             passed += 1
 
-    # 2. StochRSI K > D AND K rising
-    k, d, k_prev, k_low = stochrsi(closes)
+    # 2. StochRSI K > D AND K rising (1-min timing when available)
+    k, d, k_prev, k_low = stochrsi(timing_closes)
     if k is None:
         blockers.append("StochRSI error")
     elif k <= d:
@@ -317,9 +317,8 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
         blockers.append(f"below ZLSMA ${zl:.3f}")
 
     # 4. MACD(5,10,16): blue line above ZERO (sustained uptrend) AND histogram > 0
-    #    (momentum turning up). Both = the A+ runner structure. Line-above-zero is
-    #    what the histogram-only check was missing — it rejects dead-cat bounces.
-    m_line, hist = macd(closes)
+    #    (momentum turning up). Uses 1-min closes for timing when available.
+    m_line, hist = macd(timing_closes)
     if hist is None or m_line is None:
         blockers.append("MACD error")
     elif m_line <= 0:
@@ -360,8 +359,8 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
         above_vwap = False
         blockers.append(f"below VWAP ${vw:.3f}")
 
-    # 7. RSI(14) > 50 — soft momentum confirmation (score only, never gates entry)
-    rsi_val = rsi(closes)
+    # 7. RSI(14) > 50 — soft momentum confirmation (1-min timing when available)
+    rsi_val = rsi(timing_closes)
 
     # Max possible: start at 5, +1 if VWAP was evaluated, −1 if ZLSMA was skipped, +1 if RSI data available
     max_possible = 5
@@ -398,6 +397,7 @@ def check_all_entry(bars: list, min_price: float, max_price: float, rel_vol_min:
         "core":      core_pass,
         "overbought": (k is not None and k >= overbought_k),
         "ppst_age":  bars_since_flip,
+        "timing_tf": "1m" if (bars_1m and len(bars_1m) >= 20) else "5m",
         "k":         round(k, 1)      if k    is not None else None,
         "d":         round(d, 1)      if d    is not None else None,
         "k_prev":    round(k_prev, 1) if k_prev is not None else None,
@@ -613,15 +613,19 @@ def compute_chart_dna(bars: list) -> dict:
 def check_setup_b_entry(bars_5m: list, min_price: float, max_price: float,
                         bars_15m: list | None = None, bars_1h: list | None = None,
                         pivot_period: int = 2, atr_factor: float = 3.0,
-                        ppst_max_age: int = 5) -> tuple[bool, dict]:
+                        ppst_max_age: int = 5,
+                        bars_1m: list | None = None) -> tuple[bool, dict]:
     """
     Setup B entry check. Simpler than Setup A — no StochRSI, ZLSMA, or VWAP.
     CORE: PPST bullish + MACD(12,26,9) blue>orange & rising + vol up + RSI>50.
     MTF confirmation (15m/1H PPST bullish) feeds grade, doesn't block.
+    Dual-timeframe: 5-min for structure (PPST, volume), 1-min for timing (MACD, RSI).
     """
     closes = [b["c"] for b in bars_5m]
     price  = closes[-1]
-    info: dict = {"price": price, "setup": "B", "blockers": []}
+    timing_closes = [b["c"] for b in bars_1m] if bars_1m and len(bars_1m) >= 40 else closes
+    info: dict = {"price": price, "setup": "B", "blockers": [],
+                  "timing_tf": "1m" if (bars_1m and len(bars_1m) >= 40) else "5m"}
 
     if price < min_price or price > max_price:
         info["fail"] = f"price ${price} outside range"
@@ -643,11 +647,11 @@ def check_setup_b_entry(bars_5m: list, min_price: float, max_price: float,
             passed += 1
     info["ppst_age"] = bars_since_flip
 
-    # 2. Standard MACD (12,26,9) blue > orange AND rising
+    # 2. Standard MACD (12,26,9) blue > orange AND rising (1-min timing when available)
     min_macd_len = 26 + 9 + 2
-    if len(closes) >= min_macd_len:
-        e_fast = _ema(closes, 12)
-        e_slow = _ema(closes, 26)
+    if len(timing_closes) >= min_macd_len:
+        e_fast = _ema(timing_closes, 12)
+        e_slow = _ema(timing_closes, 26)
         ml = [a - b for a, b in zip(e_fast, e_slow)]
         sl = _ema(ml, 9)
         macd_line_val = ml[-1]
@@ -680,8 +684,8 @@ def check_setup_b_entry(bars_5m: list, min_price: float, max_price: float,
     else:
         blockers.append("volume not increasing")
 
-    # 4. RSI(14) > 50
-    rsi_val = rsi(closes)
+    # 4. RSI(14) > 50 (1-min timing when available)
+    rsi_val = rsi(timing_closes)
     info["rsi"] = round(rsi_val, 1) if rsi_val is not None else None
     if rsi_val is not None and rsi_val > 50:
         passed += 1
